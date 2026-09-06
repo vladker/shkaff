@@ -1,7 +1,9 @@
 package ru.vldkr.shkaff.di
 
 import android.content.Context
+import kotlinx.coroutines.runBlocking
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
+import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.repository.AttributeRepository
@@ -43,6 +45,7 @@ object Deps {
         storages = StorageRepository(db)
         attributes = AttributeRepository(db)
         seedDefaultAttributes()
+        seedDefaultTemplate()
         ready = true
     }
 
@@ -61,5 +64,31 @@ object Deps {
             AttributeDefEntity(newId(), "location", "zone", "Зона", "text", "[]", 1, false, now, now, null, dev)
         )
         for (d in defs) db.attributeDao().upsert(d)
+    }
+
+    private fun seedDefaultTemplate() {
+        if (db.labelTemplateDao().count() > 0) return
+        val now = System.currentTimeMillis()
+        val t = LabelTemplateEntity(
+            id = newId(),
+            name = "QR 58×40",
+            format = "QR",
+            width_mm = 58.0,
+            height_mm = 40.0,
+            margin_mm = 3.0,
+            show_text = true,
+            text_content = "{name} {code}",
+            font_size = 12.0,
+            text_color = "#000000",
+            bg_color = "#FFFFFF",
+            invert = false,
+            logo_path = null,
+            quiet_zone = true,
+            created_at = now,
+            updated_at = now,
+            deleted_at = null,
+            device_last_modified = deviceId
+        )
+        runBlocking { db.labelTemplateDao().upsert(t) }
     }
 }

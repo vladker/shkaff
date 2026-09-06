@@ -43,6 +43,7 @@ import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.ScanBus
 
 class ItemFormVm(
     private val itemId: String?,
@@ -91,6 +92,11 @@ class ItemFormVm(
             }
         } else {
             locationId = preselectLocationId
+            val scanned = ScanBus.lastCode
+            if (scanned != null) {
+                code = scanned
+                ScanBus.lastCode = null
+            }
             loaded.value = true
         }
     }

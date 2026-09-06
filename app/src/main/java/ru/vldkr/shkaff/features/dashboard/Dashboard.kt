@@ -13,14 +13,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +70,7 @@ class DashboardVm : ViewModel() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(nav: NavController) {
     val vm: DashboardVm = viewModel()
@@ -74,6 +79,16 @@ fun DashboardScreen(nav: NavController) {
     val locations = LocationMap()
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Шкаф") },
+                actions = {
+                    IconButton(onClick = { nav.navigate("scan") }) {
+                        Icon(Icons.Filled.QrCodeScanner, contentDescription = "Сканер")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
                 Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
@@ -87,13 +102,6 @@ fun DashboardScreen(nav: NavController) {
                 .fillMaxSize(),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            item {
-                Text(
-                    "Шкаф",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-            }
             item {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

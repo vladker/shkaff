@@ -189,6 +189,9 @@ interface LabelTemplateDao {
     @Query("SELECT * FROM label_template")
     suspend fun allWithDeleted(): List<LabelTemplateEntity>
 
+    @Query("SELECT COUNT(*) FROM label_template")
+    fun count(): Int
+
     @Query("UPDATE label_template SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
     suspend fun softDelete(id: String, now: Long, dev: String)
 

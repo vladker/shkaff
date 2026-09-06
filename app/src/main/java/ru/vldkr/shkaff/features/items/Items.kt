@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.displayLabel
@@ -70,6 +72,13 @@ fun ItemsScreen(nav: NavController) {
     val list by vm.list.collectAsState()
     val locations = LocationMap()
     var queryText by remember { mutableStateOf(vm.query.value) }
+    LaunchedEffect(Unit) {
+        ScanBus.lastCode?.let { code ->
+            queryText = code
+            vm.query.value = code
+            ScanBus.lastCode = null
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Вещи") }) },

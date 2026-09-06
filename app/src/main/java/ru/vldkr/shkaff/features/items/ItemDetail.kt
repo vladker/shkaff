@@ -13,7 +13,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -165,11 +167,15 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                         }
                     }
                 }
-                item { SectionTitle("Действия (появятся в следующих этапах)") }
+                item { SectionTitle("Действия") }
                 item {
                     Column(Modifier.fillMaxWidth()) {
+                        Button(onClick = { nav.navigate("labels/$itemId/0") }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Этикетка: QR / штрихкод")
+                        }
                         ActionStub("Фотография и удаление фона", "M5")
-                        ActionStub("Этикетка: QR / штрихкод, печать", "M2")
                         ActionStub("Отсканировать код этой вещи", "M3")
                     }
                 }

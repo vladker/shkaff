@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -167,7 +168,11 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Фото хранилища с разметкой ящиков", style = MaterialTheme.typography.bodyLarge)
-                            Text("Появится в следующем этапе (M4)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Рисуйте ящики прямо на фото", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = { nav.navigate("annotations/$storageId") }) {
+                            Text("Разметка")
                         }
                     }
                 }

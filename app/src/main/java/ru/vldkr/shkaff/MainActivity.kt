@@ -25,13 +25,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import ru.vldkr.shkaff.features.annotations.AnnotationScreen
 import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
 import ru.vldkr.shkaff.features.items.ItemFormScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
+import ru.vldkr.shkaff.features.labels.LabelsScreen
+import ru.vldkr.shkaff.features.labels.TemplatesScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
 import ru.vldkr.shkaff.features.locations.LocationFormScreen
+import ru.vldkr.shkaff.features.scan.ScannerScreen
 import ru.vldkr.shkaff.features.settings.SettingsScreen
 import ru.vldkr.shkaff.features.storages.StorageDetailScreen
 import ru.vldkr.shkaff.features.storages.StorageFormScreen
@@ -130,6 +134,22 @@ fun AppRoot() {
                     b.arguments?.getString("locationId").orEmpty()
                 )
             }
+
+            composable("scan") { ScannerScreen(navController) }
+            composable("annotations/{storageId}", arguments = listOf(navArgument("storageId") { type = NavType.StringType })) { b ->
+                AnnotationScreen(navController, b.arguments?.getString("storageId").orEmpty())
+            }
+            composable("labels/{itemId}/{templateId}", arguments = listOf(
+                navArgument("itemId") { type = NavType.StringType },
+                navArgument("templateId") { type = NavType.StringType }
+            )) { b ->
+                LabelsScreen(
+                    navController,
+                    b.arguments?.getString("itemId").orEmpty(),
+                    b.arguments?.getString("templateId").orEmpty()
+                )
+            }
+            composable("templates") { TemplatesScreen(navController) }
 
             composable("attrdefs") { AttrDefsScreen(navController) }
             composable("settings") { SettingsScreen(navController) }
