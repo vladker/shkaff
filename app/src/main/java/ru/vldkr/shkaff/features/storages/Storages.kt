@@ -35,12 +35,19 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
 
 class StoragesVm : ViewModel() {
-    val list = MutableStateFlow<List<StorageEntity>>(emptyList())
+
+    data class Row(val storage: StorageEntity, val depth: Int)
+
+    val rows = MutableStateFlow<List<Row>>(emptyList())
     val locationsCount = MutableStateFlow<Map<String, Int>>(emptyMap())
+    private val all = MutableStateFlow<List<StorageEntity>>(emptyList())
 
     init {
         viewModelScope.launch {
-            Deps.storages.observeAll().collect { list.value = it }
+            Deps.storages.observeAll().collect { l ->
+                all.value = l
+                rows.value = flatten(l)
+            }
         }
         viewModelScope.launch {
             Deps.locations.observeAll().collect { locs ->
@@ -48,13 +55,31 @@ class StoragesVm : ViewModel() {
             }
         }
     }
+
+    // старшие хранилища первыми, вложенные — вглубь; сироты (родитель удалён) — на верхнем уровне
+    private fun flatten(all: List<StorageEntity>): List<Row> {
+        val byId = all.associateBy { it.id }
+        val byParent = all.groupBy { it.parent_id ?: "" }
+        val out = mutableListOf<Row>()
+        val seen = mutableSetOf<String>()
+        fun rec(id: String, depth: Int) {
+            if (!seen.add(id)) return
+            byId[id]?.let { out += Row(it, depth) }
+            (byParent[id] ?: emptyList()).forEach { rec(it.id, depth + 1) }
+        }
+        all.forEach { s ->
+            val pid = s.parent_id
+            if (pid == null || pid !in byId) rec(s.id, 0)
+        }
+        return out
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoragesScreen(nav: NavController) {
     val vm: StoragesVm = viewModel()
-    val list by vm.list.collectAsState()
+    val rows by vm.rows.collectAsState()
     val counts by vm.locationsCount.collectAsState()
 
     Scaffold(
@@ -65,9 +90,9 @@ fun StoragesScreen(nav: NavController) {
             }
         }
     ) { padding ->
-        if (list.isEmpty()) {
+        if (rows.isEmpty()) {
             Column(Modifier.padding(padding).padding(16.dp)) {
-                EmptyState("Добавьте первое хранилище: шкаф, стеллаж, комод.\nПотом — ящики и вещи внутри.")
+                EmptyState("Добавьте первое хранилище: шкаф, стеллаж, комод.\nХранилища можно вкладывать друг в друга, потом — ящики и вещи внутри.")
             }
         } else {
             LazyColumn(
@@ -77,8 +102,8 @@ fun StoragesScreen(nav: NavController) {
                     .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp)
             ) {
-                items(list, key = { it.id }) { s ->
-                    StorageRow(s, counts[s.id] ?: 0) { nav.navigate("storage/${s.id}") }
+                items(rows, key = { it.storage.id }) { r ->
+                    StorageRow(r.storage, r.depth, counts[r.storage.id] ?: 0) { nav.navigate("storage/${r.storage.id}") }
                 }
             }
         }
@@ -86,17 +111,20 @@ fun StoragesScreen(nav: NavController) {
 }
 
 @Composable
-private fun StorageRow(storage: StorageEntity, locationsCount: Int, onClick: () -> Unit) {
+private fun StorageRow(storage: StorageEntity, depth: Int, locationsCount: Int, onClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 4.dp)
+            .padding(start = 16.dp * depth + 4.dp, top = 12.dp, end = 4.dp, bottom = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (depth > 0) {
+                Text("↳ ", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text(
                 storage.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (depth == 0) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f)
             )
             Text(

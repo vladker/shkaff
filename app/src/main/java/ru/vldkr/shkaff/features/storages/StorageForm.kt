@@ -13,14 +13,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,11 +36,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
+import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.StorageData
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.components.StoragePickerDialog
+import ru.vldkr.shkaff.ui.components.subtreeIds
 
 class StorageFormVm(
     private val storageId: String?
@@ -45,8 +51,10 @@ class StorageFormVm(
 
     var name by mutableStateOf("")
     var description by mutableStateOf("")
+    var parentId by mutableStateOf<String?>(null)
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
+    val allStorages = MutableStateFlow<List<StorageEntity>>(emptyList())
     val error = MutableStateFlow<String?>(null)
     val saving = MutableStateFlow(false)
     val loaded = MutableStateFlow(false)
@@ -61,11 +69,15 @@ class StorageFormVm(
         viewModelScope.launch {
             attrDefs.value = Deps.attributes.forScope("storage")
         }
+        viewModelScope.launch {
+            Deps.storages.observeAll().collect { allStorages.value = it }
+        }
         if (storageId != null) {
             viewModelScope.launch {
                 Deps.storages.byId(storageId)?.let {
                     name = it.name
                     description = it.description
+                    parentId = it.parent_id
                     attrs = AttrJson.toMap(it.attributes)
                 }
                 loaded.value = true
@@ -73,6 +85,17 @@ class StorageFormVm(
         } else {
             loaded.value = true
         }
+    }
+
+    // исключаем себя и потомков — иначе получился бы цикл вложенности
+    fun parentCandidates(): List<StorageEntity> {
+        val all = allStorages.value
+        if (storageId == null) return all
+        return all.filter { it.id !in subtreeIds(storageId, all, { s -> s.id }, { s -> s.parent_id }) }
+    }
+
+    fun parentName(): String? = parentId?.let { id ->
+        allStorages.value.firstOrNull { it.id == id }?.name
     }
 
     fun save(onDone: (String?) -> Unit) {
@@ -83,12 +106,17 @@ class StorageFormVm(
         viewModelScope.launch {
             saving.value = true
             error.value = null
-            val d = StorageData(name = name, description = description, attributes = attrs)
+            val d = StorageData(
+                name = name,
+                description = description,
+                attributes = attrs,
+                parentId = parentId
+            )
             try {
                 val id = if (storageId == null) {
                     Deps.storages.create(d).id
                 } else {
-                    storageId
+                    Deps.storages.update(storageId, d)?.id ?: throw IllegalStateException("Хранилище не найдено")
                 }
                 onDone(id)
             } catch (e: Exception) {
@@ -109,6 +137,9 @@ fun StorageFormScreen(nav: NavController, id: String) {
     val saving by vm.saving.collectAsState()
     val defs by vm.attrDefs.collectAsState()
     val loaded by vm.loaded.collectAsState()
+    var showParentPicker by remember { mutableStateOf(false) }
+
+    val parentName = vm.parentName()
 
     Scaffold(
         topBar = {
@@ -156,6 +187,18 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     singleLine = true
                 )
             }
+            FieldRow("Вложено в хранилище (опционально)") {
+                Column {
+                    OutlinedButton(onClick = { showParentPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(parentName ?: "— без родителя —")
+                    }
+                    if (parentName != null) {
+                        TextButton(onClick = { vm.parentId = null }) {
+                            Text("Сбросить", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
             FieldRow("Описание") {
                 OutlinedTextField(
                     value = vm.description,
@@ -173,6 +216,15 @@ fun StorageFormScreen(nav: NavController, id: String) {
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
             }
+        }
+
+        if (showParentPicker) {
+            StoragePickerDialog(
+                storages = vm.parentCandidates(),
+                currentId = vm.parentId,
+                onPick = { vm.parentId = it },
+                onDismiss = { showParentPicker = false }
+            )
         }
     }
 }

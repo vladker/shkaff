@@ -50,6 +50,9 @@ interface LocationDao {
     @Query("SELECT * FROM location WHERE parent_id = :parentId AND deleted_at IS NULL")
     suspend fun children(parentId: String): List<LocationEntity>
 
+    @Query("SELECT * FROM location WHERE parent_id = :parentId AND deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED")
+    fun observeChildren(parentId: String): Flow<List<LocationEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(l: LocationEntity)
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -54,11 +55,15 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.FormBus
 
 class StorageDetailVm(val storageId: String) : ViewModel() {
 
+    data class LocRow(val location: LocationEntity, val depth: Int)
+
     val storage = MutableStateFlow<StorageEntity?>(null)
-    val locations = MutableStateFlow<List<LocationEntity>>(emptyList())
+    val parentName = MutableStateFlow<String?>(null)
+    val locRows = MutableStateFlow<List<LocRow>>(emptyList())
     val itemCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
 
     class Factory(private val storageId: String) : ViewModelProvider.Factory {
@@ -69,16 +74,38 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            storage.value = Deps.storages.byId(storageId)
+            val s = Deps.storages.byId(storageId)
+            storage.value = s
+            s?.parent_id?.let { pid ->
+                parentName.value = Deps.storages.byId(pid)?.name
+            }
         }
         viewModelScope.launch {
             Deps.locations.observeByStorage(storageId).collect { locs ->
-                locations.value = locs
+                locRows.value = flatten(locs)
                 val counts = HashMap<String, Int>()
                 for (l in locs) counts[l.id] = Deps.items.countByLocation(l.id)
                 itemCounts.value = counts
             }
         }
+    }
+
+    // верхние ящики первыми, вложенные — вглубь; сироты (родитель удалён) — на верхнем уровне
+    private fun flatten(locs: List<LocationEntity>): List<LocRow> {
+        val byId = locs.associateBy { it.id }
+        val byParent = locs.groupBy { it.parent_id ?: "" }
+        val out = mutableListOf<LocRow>()
+        val seen = mutableSetOf<String>()
+        fun rec(id: String, depth: Int) {
+            if (!seen.add(id)) return
+            byId[id]?.let { out += LocRow(it, depth) }
+            (byParent[id] ?: emptyList()).forEach { rec(it.id, depth + 1) }
+        }
+        locs.forEach { l ->
+            val pid = l.parent_id
+            if (pid == null || pid !in byId) rec(l.id, 0)
+        }
+        return out
     }
 
     fun softDelete() {
@@ -91,7 +118,8 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
 fun StorageDetailScreen(nav: NavController, storageId: String) {
     val vm: StorageDetailVm = viewModel(factory = StorageDetailVm.Factory(storageId))
     val storage by vm.storage.collectAsState()
-    val locations by vm.locations.collectAsState()
+    val parentName by vm.parentName.collectAsState()
+    val locRows by vm.locRows.collectAsState()
     val itemCounts by vm.itemCounts.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
 
@@ -130,6 +158,14 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
         ) {
             if (s != null) {
                 item {
+                    if (parentName != null) {
+                        Text(
+                            "Вложено в: $parentName",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                     if (s.description.isNotBlank()) {
                         Text(
                             s.description,
@@ -177,25 +213,39 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                     }
                 }
             }
-            item { SectionTitle("Ящики (${locations.size})") }
-            if (locations.isEmpty()) {
-                item { EmptyState("Ящиков пока нет.\nНажмите «+», чтобы добавить первый ящик.") }
+            item { SectionTitle("Ящики (${locRows.size})") }
+            if (locRows.isEmpty()) {
+                item { EmptyState("Ящиков пока нет.\nНажмите «+», чтобы добавить первый ящик. Ящики можно вкладывать друг в друга.") }
             } else {
-                items(locations, key = { it.id }) { l ->
+                items(locRows, key = { it.location.id }) { r ->
+                    val l = r.location
                     val label = l.label.ifBlank { l.name }.ifBlank { "Ящик" }
                     Column(
                         Modifier
                             .fillMaxWidth()
                             .clickable { nav.navigate("location/${l.id}") }
-                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                            .padding(start = 16.dp * r.depth + 4.dp, top = 10.dp, end = 4.dp, bottom = 10.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            if (r.depth > 0) {
+                                Text("↳ ", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                label,
+                                style = if (r.depth == 0) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
                             Text(
                                 "${itemCounts[l.id] ?: 0} вещей",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            IconButton(onClick = {
+                                FormBus.locationParentPreset = l.id
+                                nav.navigate("location-form/$storageId/0")
+                            }) {
+                                Icon(Icons.Filled.AddCircle, contentDescription = "Вложенный ящик в «$label»")
+                            }
                         }
                         Spacer(Modifier.height(6.dp))
                         HorizontalDivider()

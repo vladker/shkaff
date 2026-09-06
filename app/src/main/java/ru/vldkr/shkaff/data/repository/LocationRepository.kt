@@ -24,6 +24,8 @@ class LocationRepository(
 
     suspend fun children(parentId: String): List<LocationEntity> = dao.children(parentId)
 
+    fun observeChildren(parentId: String): Flow<List<LocationEntity>> = dao.observeChildren(parentId)
+
     suspend fun count(): Int = dao.count()
 
     suspend fun countByStorage(storageId: String): Int = dao.countByStorage(storageId)

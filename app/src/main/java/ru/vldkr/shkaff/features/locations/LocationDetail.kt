@@ -53,11 +53,13 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.FormBus
 
 class LocationDetailVm(val locationId: String) : ViewModel() {
 
     val location = MutableStateFlow<LocationEntity?>(null)
     val storage = MutableStateFlow<StorageEntity?>(null)
+    val nested = MutableStateFlow<List<LocationEntity>>(emptyList())
     val items = MutableStateFlow<List<ItemEntity>>(emptyList())
 
     class Factory(private val locationId: String) : ViewModelProvider.Factory {
@@ -77,6 +79,9 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
         viewModelScope.launch {
             Deps.items.observeByLocation(locationId).collect { items.value = it }
         }
+        viewModelScope.launch {
+            Deps.locations.observeChildren(locationId).collect { nested.value = it }
+        }
     }
 
     fun softDelete() {
@@ -90,6 +95,7 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
     val vm: LocationDetailVm = viewModel(factory = LocationDetailVm.Factory(locationId))
     val location by vm.location.collectAsState()
     val storage by vm.storage.collectAsState()
+    val nested by vm.nested.collectAsState()
     val items by vm.items.collectAsState()
     val locations = LocationMap()
     var showDelete by remember { mutableStateOf(false) }
@@ -157,6 +163,43 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                                 }
                             }
                         }
+                    }
+                }
+            }
+            if (l != null) {
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Вложенные ящики (${nested.size})", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            FormBus.locationParentPreset = locationId
+                            nav.navigate("location-form/${l.storage_id}/0")
+                        }) { Text("Добавить") }
+                    }
+                }
+                if (nested.isEmpty()) {
+                    item {
+                        Text(
+                            "Внутри пусто — можно положить ящик в этот ящик.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                } else {
+                    items(nested, key = { "nested-${it.id}" }) { c ->
+                        val label = c.label.ifBlank { c.name }.ifBlank { "Ящик" }
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { nav.navigate("location/${c.id}") }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("↳ ", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text("открыть →", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        HorizontalDivider()
                     }
                 }
             }

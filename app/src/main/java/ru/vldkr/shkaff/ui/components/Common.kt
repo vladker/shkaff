@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import org.json.JSONArray
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 
 @Composable
@@ -194,27 +195,75 @@ private fun SelectField(def: AttributeDefEntity, value: String, onChange: (Strin
     }
 }
 
+// IDs самого узла и всех его потомков — чтобы при выборе родителя исключить цикл
+fun <T> subtreeIds(
+    rootId: String,
+    all: List<T>,
+    idOf: (T) -> String,
+    parentOf: (T) -> String?
+): Set<String> {
+    val byParent = all.groupBy { parentOf(it) ?: "" }
+    val result = mutableSetOf<String>()
+    val queue = ArrayDeque<String>()
+    queue.add(rootId)
+    while (queue.isNotEmpty()) {
+        byParent[queue.removeFirst()]?.forEach { child ->
+            val cid = idOf(child)
+            if (result.add(cid)) queue.add(cid)
+        }
+    }
+    return result
+}
+
+private data class PickerRow(val text: String, val id: String?, val depth: Int)
+
+// Плоский список строк дерева (сироты — на верхнем уровне, защита от циклов)
+private fun <T> treeRows(
+    all: List<T>,
+    labelOf: (T) -> String,
+    idOf: (T) -> String,
+    parentOf: (T) -> String?
+): List<PickerRow> {
+    val byId = all.associateBy { idOf(it) }
+    val byParent = all.groupBy { parentOf(it) ?: "" }
+    val out = mutableListOf<PickerRow>()
+    val seen = mutableSetOf<String>()
+    fun rec(id: String, depth: Int) {
+        if (!seen.add(id)) return
+        byId[id]?.let { out += PickerRow(labelOf(it), id, depth) }
+        (byParent[id] ?: emptyList()).forEach { rec(idOf(it), depth + 1) }
+    }
+    all.forEach { node ->
+        val pid = parentOf(node)
+        if (pid == null || pid !in byId) rec(idOf(node), 0)
+    }
+    return out
+}
+
 @Composable
 fun LocationPickerDialog(
     locations: List<LocationEntity>,
     currentId: String?,
     onPick: (String?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    title: String = "Где хранится?",
+    emptyLabel: String = "— без ящика —",
+    excludeIds: Set<String> = emptySet()
 ) {
+    val visible = locations.filter { it.id !in excludeIds }
+    val rows = treeRows(
+        visible,
+        { loc -> loc.label.ifBlank { loc.name }.ifBlank { "Ящик" } },
+        { loc -> loc.id },
+        { loc -> loc.parent_id }
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Где хранится?") },
+        title = { Text(title) },
         text = {
             Column {
-                LocationOption("— без ящика —", null, currentId, onPick)
-                locations.forEach { loc ->
-                    LocationOption(
-                        loc.label.ifBlank { loc.name }.ifBlank { "Ящик" },
-                        loc.id,
-                        currentId,
-                        onPick
-                    )
-                }
+                LocationOption(emptyLabel, null, currentId, onPick, 0)
+                rows.forEach { r -> LocationOption(r.text, r.id, currentId, onPick, r.depth) }
             }
         },
         confirmButton = {
@@ -224,11 +273,43 @@ fun LocationPickerDialog(
 }
 
 @Composable
-private fun LocationOption(text: String, id: String?, currentId: String?, onPick: (String?) -> Unit) {
+fun StoragePickerDialog(
+    storages: List<StorageEntity>,
+    currentId: String?,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit,
+    title: String = "Родительское хранилище",
+    emptyLabel: String = "— без родителя —",
+    excludeIds: Set<String> = emptySet()
+) {
+    val visible = storages.filter { it.id !in excludeIds }
+    val rows = treeRows(
+        visible,
+        { s -> s.name },
+        { s -> s.id },
+        { s -> s.parent_id }
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                LocationOption(emptyLabel, null, currentId, onPick, 0)
+                rows.forEach { r -> LocationOption(r.text, r.id, currentId, onPick, r.depth) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        }
+    )
+}
+
+@Composable
+private fun LocationOption(text: String, id: String?, currentId: String?, onPick: (String?) -> Unit, depth: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(start = 16.dp * depth, top = 6.dp, bottom = 6.dp)
             .clickable { onPick(id) },
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -42,6 +43,8 @@ import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.components.subtreeIds
+import ru.vldkr.shkaff.util.FormBus
 
 class LocationFormVm(
     private val storageId: String,
@@ -78,13 +81,22 @@ class LocationFormVm(
                     parentId = it.parent_id
                     attrs = AttrJson.toMap(it.attributes)
                 }
+            } else {
+                FormBus.locationParentPreset?.let { preset ->
+                    if (preset in all.map { l -> l.id }) parentId = preset
+                }
+                FormBus.locationParentPreset = null
             }
             loaded.value = true
         }
     }
 
-    fun parentCandidates(): List<LocationEntity> =
-        siblings.value.filter { it.id != locationId }
+    // исключаем себя и своих потомков — иначе вложенность превратится в цикл
+    fun parentCandidates(): List<LocationEntity> {
+        val all = siblings.value
+        if (locationId == null) return all
+        return all.filter { it.id !in subtreeIds(locationId, all, { l -> l.id }, { l -> l.parent_id }) }
+    }
 
     fun save(onDone: (String) -> Unit) {
         if (label.isBlank() && name.isBlank()) {
@@ -105,7 +117,7 @@ class LocationFormVm(
                 val id = if (locationId == null) {
                     Deps.locations.create(d).id
                 } else {
-                    locationId
+                    Deps.locations.update(locationId, d)?.id ?: throw IllegalStateException("Ящик не найден")
                 }
                 onDone(id)
             } catch (e: Exception) {
@@ -187,8 +199,15 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                 )
             }
             FieldRow("Вложен в ящик (опционально)") {
-                OutlinedButton(onClick = { showParentPicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(parentName ?: "— не вложено —")
+                Column {
+                    OutlinedButton(onClick = { showParentPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(parentName ?: "— не вложено —")
+                    }
+                    if (parentName != null) {
+                        TextButton(onClick = { vm.parentId = null }) {
+                            Text("Сбросить", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
             if (defs.isNotEmpty()) {
@@ -207,7 +226,9 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                 locations = vm.parentCandidates(),
                 currentId = vm.parentId,
                 onPick = { vm.parentId = it },
-                onDismiss = { showParentPicker = false }
+                onDismiss = { showParentPicker = false },
+                title = "Вложен в ящик",
+                emptyLabel = "— не вложено —"
             )
         }
     }
