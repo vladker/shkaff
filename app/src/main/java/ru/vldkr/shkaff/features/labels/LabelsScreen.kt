@@ -1,0 +1,254 @@
+package ru.vldkr.shkaff.features.labels
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.ScanBus
+import ru.vldkr.shkaff.util.newId
+import android.content.Intent
+
+class LabelsVm(
+    private val itemId: String?,
+    templateId: String?
+) : ViewModel() {
+
+    data class Ui(
+        val item: ItemEntity? = null,
+        val code: String = "",
+        val name: String = "",
+        val templates: List<LabelTemplateEntity> = emptyList(),
+        val template: LabelTemplateEntity? = null,
+        val bitmap: Bitmap? = null,
+        val savedMsg: String? = null
+    )
+
+    val ui = MutableStateFlow(Ui())
+
+    class Factory(private val itemId: String, private val templateId: String) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = LabelsVm(
+            if (itemId == "0") null else itemId,
+            if (templateId == "0" || templateId.isEmpty()) null else templateId
+        ) as T
+    }
+
+    private fun update(f: (Ui) -> Ui) {
+        ui.value = f(ui.value)
+    }
+
+    fun setCode(c: String) {
+        update { it.copy(code = c, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun setTemplate(id: String) {
+        update { it.copy(template = ui.value.templates.firstOrNull { t -> t.id == id }) }
+        regenerate()
+    }
+
+    fun regenerate() {
+        val t = ui.value.template ?: return
+        val bmp = LabelGenerator.generate(t, ui.value.code, ui.value.name)
+        update { it.copy(bitmap = bmp, savedMsg = null) }
+    }
+
+    fun saveToGallery(ctx: Context) {
+        val bmp = ui.value.bitmap ?: return
+        val name = ui.value.name.ifBlank { "label" }
+        val uri = LabelGenerator.saveToGallery(ctx, bmp, "${LabelGenerator.sanitizeFileName(name)}.png")
+        update { it.copy(savedMsg = if (uri != null) "Сохранено в галерею" else "Не удалось сохранить") }
+    }
+
+    fun share(ctx: Context) {
+        val bmp = ui.value.bitmap ?: return
+        val name = ui.value.name.ifBlank { "label" }
+        val file = LabelGenerator.saveToInternal(ctx, bmp, name)
+        val uri = LabelGenerator.fileShareUri(ctx, file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        ctx.startActivity(Intent.createChooser(intent, "Поделиться этикеткой"))
+    }
+
+    init {
+        viewModelScope.launch {
+            Deps.db.labelTemplateDao().observeAll().collect { list ->
+                val cur = ui.value
+                val t = list.firstOrNull { it.id == (templateId ?: cur.template?.id) } ?: list.firstOrNull()
+                update { it.copy(templates = list, template = t) }
+                regenerate()
+            }
+        }
+        if (itemId != null) {
+            viewModelScope.launch {
+                Deps.items.byId(itemId)?.let { found ->
+                    update {
+                        it.copy(
+                            item = found,
+                            code = if (found.code.isNotBlank()) found.code else (ScanBus.lastCode ?: found.code),
+                            name = found.name
+                        )
+                    }
+                    regenerate()
+                }
+            }
+        }
+        if (ui.value.code.isEmpty() && ui.value.item == null) {
+            val scanned = ScanBus.lastCode
+            if (scanned != null) {
+                update { it.copy(code = scanned) }
+                ScanBus.lastCode = null
+                regenerate()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
+    val ctx = LocalContext.current
+    val vm: LabelsVm = viewModel(factory = LabelsVm.Factory(itemId, templateId))
+    val ui by vm.ui.collectAsState()
+    var showTemplatePicker by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (ui.item == null) "Этикетка" else "Этикетка: ${ui.item?.name}") },
+                navigationIcon = {
+                    IconButton(onClick = { nav.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showTemplatePicker = true }) {
+                        Text("Шаблон", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            Modifier
+                .padding(padding)
+                .padding(16.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            OutlinedTextField(
+                value = ui.code,
+                onValueChange = { vm.setCode(it) },
+                label = { Text("Код (QR / штрихкод)") },
+                supportingText = { Text("Содержимое штрихкода. Пусто — сгенерировать нельзя") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionTitle("Предпросмотр")
+            ui.bitmap?.let { bmp ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(bmp.width.toFloat() / bmp.height)
+                        .padding(vertical = 8.dp)
+                ) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Этикетка",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            } ?: Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text(
+                    "Выберите шаблон и введите код",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            ui.savedMsg?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { vm.saveToGallery(ctx) }, enabled = ui.bitmap != null, modifier = Modifier.weight(1f)) {
+                    Text("Сохранить")
+                }
+                OutlinedButton(onClick = { vm.share(ctx) }, enabled = ui.bitmap != null, modifier = Modifier.weight(1f)) {
+                    Text("Поделиться")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Сохранение — PNG в галерею; «Поделиться» — печать, отправка в мессенджер и т.п.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (showTemplatePicker) {
+            TemplatePickerDialog(
+                templates = ui.templates,
+                currentId = ui.template?.id,
+                onPick = { vm.setTemplate(it) },
+                onManage = {
+                    showTemplatePicker = false
+                    nav.navigate("templates")
+                },
+                onDismiss = { showTemplatePicker = false }
+            )
+        }
+    }
+}
