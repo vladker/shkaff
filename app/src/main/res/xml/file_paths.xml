@@ -2,5 +2,6 @@
 <paths>
     <cache-path name="photo_tmp" path="photo_tmp/"/>
     <files-path name="labels" path="labels/"/>
+    <files-path name="backup" path="backup/"/>
     <files-path name="photos" path="photos/"/>
 </paths>

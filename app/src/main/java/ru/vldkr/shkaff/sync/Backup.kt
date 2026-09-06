@@ -223,6 +223,14 @@ object Backup {
         }
     }
 
+    fun exportZipToStream(input: MergeInput, out: java.io.OutputStream) {
+        ZipOutputStream(out.buffered()).use { zos ->
+            zos.putNextEntry(ZipEntry("backup.json"))
+            zos.write(toJson(input).toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+        }
+    }
+
     fun importFromFile(file: File): MergeInput {
         return when (file.extension.lowercase()) {
             "zip" -> {

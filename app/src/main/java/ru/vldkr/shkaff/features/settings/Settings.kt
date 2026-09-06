@@ -68,13 +68,13 @@ fun SettingsScreen(nav: NavController) {
             }
             item {
                 SettingRow(
-                    "Экспорт / импорт / облако",
-                    "Один файл базы, сетевая папка, онлайн-хранилище — этап M6",
-                    null
+                    "Экспорт / импорт",
+                    "Один файл базы; обмен с другим устройством; слияние с выбором конфликтов",
+                    { nav.navigate("backup") }
                 )
             }
             item {
-                SettingRow("Облако (Yandex/Dropbox/Drive)", "Синхронизация и слитие баз — этап M6", null)
+                SettingRow("Облако (Yandex/Dropbox/Drive)", "Автоматическая синхронизация — в планах (M11)", null)
             }
             item { Section("Об устройстве") }
             item {

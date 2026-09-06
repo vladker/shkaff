@@ -30,8 +30,10 @@ import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
 import ru.vldkr.shkaff.features.items.ItemFormScreen
+import ru.vldkr.shkaff.features.backup.BackupScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
 import ru.vldkr.shkaff.features.labels.LabelsScreen
+import ru.vldkr.shkaff.features.merge.ConflictsScreen
 import ru.vldkr.shkaff.features.labels.TemplatesScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
 import ru.vldkr.shkaff.features.locations.LocationFormScreen
@@ -150,6 +152,8 @@ fun AppRoot() {
                 )
             }
             composable("templates") { TemplatesScreen(navController) }
+            composable("backup") { BackupScreen(navController) }
+            composable("conflicts") { ConflictsScreen(navController) }
 
             composable("attrdefs") { AttrDefsScreen(navController) }
             composable("settings") { SettingsScreen(navController) }

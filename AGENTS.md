@@ -7,8 +7,8 @@
 ## Команды (Windows)
 
 - Сборка: `.\gradlew.bat :app:assembleDebug`
-- Юнит-тесты: `.\gradlew.bat :app:testDebugUnitTest`
-- Зависимости для тестов (JUnit4, Robolectric, coroutines-test) объявлены, но **тестовых файлов пока нет** — `app/src/test/` пуст. `sync/MergeEngine.kt` и `sync/Backup.kt` — чистый Kotlin, их можно тестировать без эмулятора.
+- Юнит-тесты: `.\gradlew.bat :app:testDebugUnitTest` (JUnit4 + Robolectric; тесты — `sync/MergeEngineTest.kt`, `sync/MergeSanitizerTest.kt`, `sync/MergeSessionTest.kt`, `sync/BackupFormatTest.kt` в `app/src/test/`)
+- Установка на смартфон: `adb install -r app\build\outputs\apk\debug\app-debug.apk` — **обязательный шаг в конце каждого комита** (после успешной сборки и тестов; adb: `C:\Users\vldkr\AppData\Local\Android\Sdk\platform-tools\adb.exe`, устройство: SM-S928B, Android 16)
 - Room: схемы экспортируются в `app/schemas/` (KSP-арг). При изменении сущностей — поднять `version` в `ShkaffDatabase` + миграция.
 - В базе включён `allowMainThreadQueries()` — не «чинить» без явной задачи.
 
