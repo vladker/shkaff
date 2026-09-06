@@ -50,7 +50,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.printer.PrintManager
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.util.newId
@@ -68,7 +71,11 @@ class LabelsVm(
         val templates: List<LabelTemplateEntity> = emptyList(),
         val template: LabelTemplateEntity? = null,
         val bitmap: Bitmap? = null,
-        val savedMsg: String? = null
+        val savedMsg: String? = null,
+        val profiles: List<PrinterProfileEntity> = emptyList(),
+        val printBusy: Boolean = false,
+        val printMsg: String? = null,
+        val printError: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
@@ -121,7 +128,32 @@ class LabelsVm(
         ctx.startActivity(Intent.createChooser(intent, "Поделиться этикеткой"))
     }
 
+    fun print(profile: PrinterProfileEntity) {
+        val t = ui.value.template ?: return
+        val code = ui.value.code
+        if (code.isBlank()) {
+            update { it.copy(printError = "Пустой код — нечего печатать") }
+            return
+        }
+        viewModelScope.launch {
+            update { it.copy(printBusy = true, printMsg = null, printError = null) }
+            PrintManager.printLabel(profile, t, code, ui.value.name).fold(
+                onSuccess = {
+                    update { it.copy(printBusy = false, printMsg = "Отправлено на печать: ${PrintManager.describe(profile)}") }
+                },
+                onFailure = { e ->
+                    update { it.copy(printBusy = false, printError = "Ошибка: ${e.message ?: e.javaClass.simpleName}") }
+                }
+            )
+        }
+    }
+
     init {
+        viewModelScope.launch {
+            Deps.db.printerDao().observeAll().collect { list ->
+                update { it.copy(profiles = list) }
+            }
+        }
         viewModelScope.launch {
             Deps.db.labelTemplateDao().observeAll().collect { list ->
                 val cur = ui.value
@@ -162,6 +194,7 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
     val vm: LabelsVm = viewModel(factory = LabelsVm.Factory(itemId, templateId))
     val ui by vm.ui.collectAsState()
     var showTemplatePicker by remember { mutableStateOf(false) }
+    var showPrintPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -229,10 +262,19 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                 OutlinedButton(onClick = { vm.share(ctx) }, enabled = ui.bitmap != null, modifier = Modifier.weight(1f)) {
                     Text("Поделиться")
                 }
+                OutlinedButton(onClick = { showPrintPicker = true }, enabled = ui.bitmap != null && !ui.printBusy, modifier = Modifier.weight(1f)) {
+                    Text("Печать")
+                }
+            }
+            ui.printMsg?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            }
+            ui.printError?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "Сохранение — PNG в галерею; «Поделиться» — печать, отправка в мессенджер и т.п.",
+                "Сохранение — PNG в галерею; «Печать» — напрямую на 58-мм принтер (TCP/BT, ESC/POS); «Поделиться» — печать из стороннего приложения.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -248,6 +290,21 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                     nav.navigate("templates")
                 },
                 onDismiss = { showTemplatePicker = false }
+            )
+        }
+
+        if (showPrintPicker) {
+            PrinterPickerDialog(
+                profiles = ui.profiles,
+                onPick = { p ->
+                    vm.print(p)
+                    showPrintPicker = false
+                },
+                onManage = {
+                    showPrintPicker = false
+                    nav.navigate("printers")
+                },
+                onDismiss = { showPrintPicker = false }
             )
         }
     }

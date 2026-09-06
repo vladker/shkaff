@@ -74,6 +74,13 @@ fun SettingsScreen(nav: NavController) {
                 )
             }
             item {
+                SettingRow(
+                    "Принтеры",
+                    "58-мм ESC/POS: TCP (IP:9100) и Bluetooth; тестовая печать",
+                    { nav.navigate("printers") }
+                )
+            }
+            item {
                 SettingRow("Облако (Yandex/Dropbox/Drive)", "Автоматическая синхронизация — в планах (M11)", null)
             }
             item { Section("Об устройстве") }
