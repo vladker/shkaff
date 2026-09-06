@@ -247,7 +247,7 @@ private fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     try {
                         if (!enabledRef.value) return@setAnalyzer
-                        val bmp = toBitmap(image)
+                        val bmp = image.toBitmap()
                         val code = runCatching { BarcodeScanner.decode(bmp) }.getOrNull()
                         bmp.recycle()
                         if (code != null) {
@@ -274,12 +274,4 @@ private fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
         factory = { previewView },
         modifier = Modifier.fillMaxSize()
     )
-}
-
-private fun toBitmap(image: ImageProxy): Bitmap {
-    val plane = image.planes[0]
-    val buffer = plane.buffer
-    val bmp = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-    bmp.copyPixelsFromBuffer(buffer)
-    return bmp
 }
