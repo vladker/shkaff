@@ -46,6 +46,8 @@ import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.Expiry
+import java.time.LocalDate
 
 class ItemDetailVm(val itemId: String) : ViewModel() {
 
@@ -126,6 +128,21 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                                     style = MaterialTheme.typography.titleLarge,
                                     fontFamily = FontFamily.Monospace
                                 )
+                            }
+                        }
+                    }
+                    i.expiry_date?.let { raw ->
+                        Expiry.parse(raw)?.let { date ->
+                            val days = Expiry.daysUntil(date, LocalDate.now())
+                            Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text("Срок годности", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        Expiry.label(date, LocalDate.now()) ?: raw,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = if (days < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }

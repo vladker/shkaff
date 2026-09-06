@@ -107,7 +107,7 @@ fun ItemsScreen(nav: NavController) {
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
                     items(list, key = { it.id }) { it ->
-                        ItemRow(it, locations[it.location_id]?.displayLabel()) { nav.navigate("item/${it.id}") }
+                        ItemRow(it, locations[it.location_id]?.displayLabel(), { nav.navigate("item/${it.id}") })
                     }
                 }
             }

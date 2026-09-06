@@ -3,19 +3,24 @@ package ru.vldkr.shkaff.features.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +40,12 @@ import ru.vldkr.shkaff.di.Deps
 
 class SettingsVm : ViewModel() {
     val deviceId = MutableStateFlow(Deps.deviceId)
+    val expiryThreshold = MutableStateFlow(Deps.expiryThresholdDays())
+
+    fun setExpiryThreshold(days: Int) {
+        Deps.setExpiryThresholdDays(days)
+        expiryThreshold.value = days
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +53,7 @@ class SettingsVm : ViewModel() {
 fun SettingsScreen(nav: NavController) {
     val vm: SettingsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val deviceId by vm.deviceId.collectAsState()
+    var showExpiryDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -62,6 +74,14 @@ fun SettingsScreen(nav: NavController) {
                 .fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
         ) {
+            item { Section("Сроки годности") }
+            item {
+                SettingRow(
+                    "Напоминать о сроках",
+                    "В дашборде подсвечиваются вещи, истекающие за ${vm.expiryThreshold.value} дн.",
+                    { showExpiryDialog = true }
+                )
+            }
             item { Section("Данные") }
             item {
                 SettingRow("Словарь атрибутов", "Типы и варианты полей", { nav.navigate("attrdefs") })
@@ -99,6 +119,38 @@ fun SettingsScreen(nav: NavController) {
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
+        }
+
+        if (showExpiryDialog) {
+            AlertDialog(
+                onDismissRequest = { showExpiryDialog = false },
+                title = { Text("За сколько дней напоминать?") },
+                text = {
+                    Column {
+                        listOf(30, 60, 90).forEach { n ->
+                            Row(
+                                Modifier
+                                    .clickable {
+                                        vm.setExpiryThreshold(n)
+                                        showExpiryDialog = false
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = vm.expiryThreshold.value == n, onClick = {
+                                    vm.setExpiryThreshold(n)
+                                    showExpiryDialog = false
+                                })
+                                Spacer(Modifier.width(12.dp))
+                                Text("за $n дн.", style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showExpiryDialog = false }) { Text("Закрыть") }
+                }
+            )
         }
     }
 }

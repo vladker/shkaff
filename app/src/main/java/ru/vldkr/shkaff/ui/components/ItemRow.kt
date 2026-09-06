@@ -14,6 +14,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import ru.vldkr.shkaff.data.db.ItemEntity
@@ -22,7 +23,13 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 fun LocationEntity.displayLabel(): String = label.ifBlank { name }.ifBlank { "Ящик" }
 
 @Composable
-fun ItemRow(item: ItemEntity, locationLabel: String?, onClick: () -> Unit) {
+fun ItemRow(
+    item: ItemEntity,
+    locationLabel: String?,
+    onClick: () -> Unit,
+    expiryText: String? = null,
+    expiryColor: Color = Color.Transparent
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -41,6 +48,14 @@ fun ItemRow(item: ItemEntity, locationLabel: String?, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (expiryText != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    expiryText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = expiryColor
                 )
             }
         }

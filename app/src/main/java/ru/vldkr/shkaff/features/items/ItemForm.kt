@@ -39,6 +39,7 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
@@ -54,6 +55,7 @@ class ItemFormVm(
     var code by mutableStateOf("")
     var description by mutableStateOf("")
     var locationId by mutableStateOf<String?>(null)
+    var expiryDate by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
     val locations = MutableStateFlow<List<LocationEntity>>(emptyList())
@@ -86,6 +88,7 @@ class ItemFormVm(
                     code = it.code
                     description = it.description
                     locationId = it.location_id
+                    expiryDate = it.expiry_date ?: ""
                     attrs = AttrJson.toMap(it.attributes)
                 }
                 loaded.value = true
@@ -111,6 +114,11 @@ class ItemFormVm(
             error.value = "Введите название вещи"
             return
         }
+        val rawExpiry = expiryDate.trim()
+        if (rawExpiry.isNotEmpty() && Expiry.parse(rawExpiry) == null) {
+            error.value = "Не распознал «Срок годности». Формат: ДД.ММ.ГГГГ"
+            return
+        }
         viewModelScope.launch {
             saving.value = true
             error.value = null
@@ -119,13 +127,14 @@ class ItemFormVm(
                 code = code,
                 description = description,
                 attributes = attrs,
-                locationId = locationId
+                locationId = locationId,
+                expiryDate = if (rawExpiry.isEmpty()) null else Expiry.normalize(rawExpiry)
             )
             try {
                 val id = if (itemId == null) {
                     Deps.items.create(d).id
                 } else {
-                    itemId
+                    Deps.items.update(itemId, d)?.id ?: throw IllegalStateException("Вещь не найдена")
                 }
                 onDone(id)
             } catch (e: Exception) {
@@ -223,6 +232,15 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                         }
                     }
                 }
+            }
+            FieldRow("Срок годности") {
+                OutlinedTextField(
+                    value = vm.expiryDate,
+                    onValueChange = { vm.expiryDate = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("ДД.ММ.ГГГГ") },
+                    singleLine = true
+                )
             }
             if (defs.isNotEmpty()) {
                 SectionTitle("Атрибуты")

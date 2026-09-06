@@ -6,7 +6,9 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
+import java.time.LocalDate
 
 class ItemRepository(
     private val db: ShkaffDatabase,
@@ -41,7 +43,8 @@ class ItemRepository(
             created_at = now,
             updated_at = now,
             deleted_at = null,
-            device_last_modified = deviceId()
+            device_last_modified = deviceId(),
+            expiry_date = d.expiryDate
         )
         dao.upsert(e)
         return e
@@ -57,10 +60,23 @@ class ItemRepository(
             photo_path = d.photoPath,
             location_id = d.locationId,
             updated_at = System.currentTimeMillis(),
-            device_last_modified = deviceId()
+            device_last_modified = deviceId(),
+            expiry_date = d.expiryDate
         )
         dao.upsert(u)
         return u
+    }
+
+    suspend fun expiringSoon(thresholdDays: Int, today: LocalDate = LocalDate.now(), limit: Int = 20): List<ItemEntity> {
+        return dao.withExpiry()
+            .mapNotNull { i ->
+                val d = Expiry.parse(i.expiry_date) ?: return@mapNotNull null
+                Expiry.daysUntil(d, today) to i
+            }
+            .filter { (days, _) -> Expiry.isDueForSort(days, thresholdDays) }
+            .sortedBy { (days, _) -> days }
+            .take(limit)
+            .map { it.second }
     }
 
     suspend fun softDelete(id: String) {

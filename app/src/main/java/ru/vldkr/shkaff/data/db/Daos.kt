@@ -111,6 +111,9 @@ interface ItemDao {
     )
     suspend fun likeSearch(q: String): List<ItemEntity>
 
+    @Query("SELECT * FROM item WHERE deleted_at IS NULL AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1000")
+    suspend fun withExpiry(): List<ItemEntity>
+
     @Query("SELECT * FROM item")
     suspend fun allWithDeleted(): List<ItemEntity>
 

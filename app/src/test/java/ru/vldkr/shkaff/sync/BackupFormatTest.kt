@@ -37,6 +37,16 @@ class BackupFormatTest {
     }
 
     @Test
+    fun expiryDateSurvivesRoundTrip() {
+        val withExpiry = item.copy(expiry_date = "2026-12-15")
+        val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(withExpiry))))
+        assertEquals("2026-12-15", back.items.single().expiry_date)
+        val without = item.copy(expiry_date = null)
+        val back2 = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(without))))
+        assertEquals("", back2.items.single().expiry_date ?: "")
+    }
+
+    @Test
     fun deletedRowSurvivesRoundTrip() {
         val gone = item.copy(deleted_at = 500L)
         val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(gone))))

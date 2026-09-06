@@ -2,7 +2,11 @@ package ru.vldkr.shkaff.features.printers
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +31,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -62,6 +67,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.printer.PrintManager
+import ru.vldkr.shkaff.data.printer.UsbPermission
+import ru.vldkr.shkaff.data.printer.UsbPermissionPendingException
+import ru.vldkr.shkaff.data.printer.UsbTransport
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.util.newId
@@ -75,7 +83,11 @@ class PrintersVm : ViewModel() {
         val message: String? = null,
         val error: String? = null,
         val permRequest: Boolean = false,
-        val bonded: List<String> = emptyList()
+        val permToRequest: String? = null,
+        val bonded: List<String> = emptyList(),
+        val usb: List<String> = emptyList(),
+        val found: List<String> = emptyList(),
+        val discovering: Boolean = false
     )
 
     val ui = MutableStateFlow(Ui())
@@ -111,6 +123,89 @@ class PrintersVm : ViewModel() {
         update { it.copy(bonded = list) }
     }
 
+    fun loadUsb(ctx: Context) {
+        update { it.copy(usb = UsbTransport.list(ctx)) }
+    }
+
+    private var pendingScan = false
+    private var scanningReceiver: BroadcastReceiver? = null
+
+    fun startBtScan(ctx: Context) {
+        val missing = if (Build.VERSION.SDK_INT >= 31) {
+            listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ).firstOrNull { ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED }
+        } else {
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) Manifest.permission.BLUETOOTH else null
+        }
+        if (missing != null) {
+            pendingScan = true
+            update { it.copy(permRequest = true, permToRequest = missing, error = null) }
+            return
+        }
+        doBtScan(ctx)
+    }
+
+    private fun doBtScan(ctx: Context) {
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        if (adapter == null || !adapter.isEnabled) {
+            update { it.copy(error = "Включите Bluetooth в настройках телефона") }
+            return
+        }
+        if (Build.VERSION.SDK_INT <= 30 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            update { it.copy(error = "На Android 10 и ниже для поиска BT нужен доступ к местоположению (разрешите в настройках приложения)") }
+            return
+        }
+        if (scanningReceiver != null) {
+            update { it.copy(discovering = true) }
+            return
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent) {
+                when (intent.action) {
+                    BluetoothDevice.ACTION_FOUND -> {
+                        @Suppress("DEPRECATION")
+                        val d: BluetoothDevice? = if (Build.VERSION.SDK_INT >= 33) {
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                        } else {
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                        }
+                        d?.let { dev ->
+                            val label = "${dev.name?.ifBlank { "Без имени" } ?: "Без имени"} — ${dev.address}"
+                            if (label !in ui.value.found) {
+                                update { it -> it.copy(found = it.found + label) }
+                            }
+                        }
+                    }
+                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> update { it -> it.copy(discovering = false) }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_FOUND)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        }
+        runCatching { ctx.registerReceiver(receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }
+            .onFailure {
+                update { it.copy(error = "Не удалось начать поиск: ${it.message}") }
+                return
+            }
+        scanningReceiver = receiver
+        update { it.copy(discovering = true, found = emptyList(), error = null) }
+        adapter.cancelDiscovery()
+        adapter.startDiscovery()
+    }
+
+    fun stopBtScan(ctx: Context) {
+        BluetoothAdapter.getDefaultAdapter()?.cancelDiscovery()
+        scanningReceiver?.let { runCatching { ctx.unregisterReceiver(it) } }
+        scanningReceiver = null
+        update { it.copy(discovering = false) }
+    }
+
     fun save(p: PrinterProfileEntity) {
         viewModelScope.launch {
             update { it.copy(busy = true, busyText = "Сохранение…", message = null, error = null) }
@@ -129,7 +224,7 @@ class PrintersVm : ViewModel() {
 
     fun test(ctx: Context, profileId: String) {
         val p = ui.value.profiles.firstOrNull { it.id == profileId } ?: return
-        if (p.transport.lowercase() != "tcp" && !btAllowed(ctx)) {
+        if (p.transport.lowercase() == "bluetooth" && !btAllowed(ctx)) {
             pendingTestId = profileId
             update { it.copy(permRequest = true, error = null) }
             return
@@ -137,13 +232,16 @@ class PrintersVm : ViewModel() {
         doTest(profileId)
     }
 
-    fun onPermissionResult(granted: Boolean) {
+    fun onPermissionResult(granted: Boolean, ctx: Context) {
         val id = pendingTestId
+        val scan = pendingScan
         pendingTestId = null
+        pendingScan = false
         update { it.copy(permRequest = false) }
-        if (granted && id != null) doTest(id)
-        else if (!granted) {
-            update { it.copy(error = "Нет разрешения «Близкие устройства» — без него Bluetooth-печать не работает") }
+        when {
+            !granted -> update { it.copy(error = "Нет разрешения «Близкие устройства» — без него Bluetooth-печать не работает") }
+            id != null -> doTest(id)
+            scan -> doBtScan(ctx)
         }
     }
 
@@ -156,7 +254,11 @@ class PrintersVm : ViewModel() {
                     update { it.copy(busy = false, message = "Отправлено: ${PrintManager.describe(p)}") }
                 },
                 onFailure = { e ->
-                    update { it.copy(busy = false, error = "Ошибка: ${e.message ?: e.javaClass.simpleName}") }
+                    val msg = UsbPermission.failureMessage(e) { doTest(profileId) }
+                    update {
+                        if (e is UsbPermissionPendingException) it.copy(busy = false, message = msg)
+                        else it.copy(busy = false, error = msg)
+                    }
                 }
             )
         }
@@ -175,12 +277,13 @@ fun PrintersScreen(nav: NavController) {
 
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted -> vm.onPermissionResult(granted) }
+    ) { granted -> vm.onPermissionResult(granted, ctx) }
     LaunchedEffect(ui.permRequest) {
         if (ui.permRequest) {
             permLauncher.launch(
-                if (Build.VERSION.SDK_INT >= 31) Manifest.permission.BLUETOOTH_CONNECT
-                else Manifest.permission.BLUETOOTH
+                ui.permToRequest
+                    ?: if (Build.VERSION.SDK_INT >= 31) Manifest.permission.BLUETOOTH_CONNECT
+                    else Manifest.permission.BLUETOOTH
             )
         }
     }
@@ -217,7 +320,7 @@ fun PrintersScreen(nav: NavController) {
 
             if (ui.profiles.isEmpty()) {
                 item {
-                    EmptyState("Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — сопряжённое устройство.")
+                    EmptyState("Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — сопряжённое устройство; USB — принтер по кабелю Type-C.")
                 }
             }
 
@@ -227,8 +330,11 @@ fun PrintersScreen(nav: NavController) {
                         Column(Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    if (p.transport.lowercase() == "tcp") Icons.Filled.NetworkCheck
-                                    else Icons.Filled.Bluetooth,
+                                    when (p.transport.lowercase()) {
+                                        "tcp" -> Icons.Filled.NetworkCheck
+                                        "usb" -> Icons.Filled.Usb
+                                        else -> Icons.Filled.Bluetooth
+                                    },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -294,11 +400,17 @@ fun PrintersScreen(nav: NavController) {
             initial = editing,
             bonded = ui.bonded,
             onBondedRefresh = { vm.loadBonded(ctx) },
+            usbDevices = ui.usb,
+            onUsbRefresh = { vm.loadUsb(ctx) },
+            found = ui.found,
+            discovering = ui.discovering,
+            onBtScan = { vm.startBtScan(ctx) },
+            onBtScanStop = { vm.stopBtScan(ctx) },
             onSave = { p ->
                 vm.save(p)
                 formOpen = false
             },
-            onDismiss = { formOpen = false }
+            onDismiss = { vm.stopBtScan(ctx); formOpen = false }
         )
     }
 
@@ -324,17 +436,33 @@ fun PrinterFormDialog(
     initial: PrinterProfileEntity?,
     bonded: List<String>,
     onBondedRefresh: () -> Unit,
+    usbDevices: List<String>,
+    onUsbRefresh: () -> Unit,
+    found: List<String>,
+    discovering: Boolean,
+    onBtScan: () -> Unit,
+    onBtScanStop: () -> Unit,
     onSave: (PrinterProfileEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var isTcp by remember { mutableStateOf(initial?.transport?.lowercase() == "tcp") }
+    val initMode = initial?.transport?.lowercase()
+    var isTcp by remember { mutableStateOf(initMode == "tcp") }
+    var isUsb by remember { mutableStateOf(initMode == "usb") }
     var host by remember { mutableStateOf(initial?.host ?: "") }
     var port by remember { mutableStateOf((initial?.port ?: 9100).toString()) }
     var mac by remember { mutableStateOf(initial?.bt_mac ?: "") }
+    var usbKey by remember { mutableStateOf(if (initMode == "usb") initial?.host ?: "" else "") }
     var paperW by remember { mutableStateOf((initial?.paper_width_mm ?: 58.0).toInt().toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     var pickOpen by remember { mutableStateOf(false) }
+    var usbPickOpen by remember { mutableStateOf(false) }
+    var scanOpen by remember { mutableStateOf(false) }
+
+    fun selectMode(mode: String) {
+        isTcp = mode == "tcp"
+        isUsb = mode == "usb"
+    }
 
     fun submit() {
         val w = paperW.toDoubleOrNull()
@@ -342,8 +470,9 @@ fun PrinterFormDialog(
         when {
             name.isBlank() -> error = "Введите название"
             isTcp && host.isBlank() -> error = "Введите IP-адрес"
-            isTcp && pr == null || pr !in 1..65535 -> error = "Порт: число 1–65535"
-            !isTcp && mac.isBlank() -> error = "Выберите устройство или введите MAC"
+            isTcp && (pr == null || pr !in 1..65535) -> error = "Порт: число 1–65535"
+            isUsb && usbKey.isBlank() -> error = "Выберите подключённый USB-принтер"
+            !isTcp && !isUsb && mac.isBlank() -> error = "Выберите устройство или введите MAC"
             w == null || w !in 20.0..300.0 -> error = "Ширина бумаги: 20–300 мм"
             else -> {
                 val now = System.currentTimeMillis()
@@ -351,10 +480,14 @@ fun PrinterFormDialog(
                     PrinterProfileEntity(
                         id = initial?.id ?: newId(),
                         name = name.trim(),
-                        transport = if (isTcp) "tcp" else "bluetooth",
-                        host = if (isTcp) host.trim() else "",
+                        transport = when { isTcp -> "tcp"; isUsb -> "usb"; else -> "bluetooth" },
+                        host = when {
+                            isTcp -> host.trim()
+                            isUsb -> usbKey
+                            else -> ""
+                        },
                         port = pr ?: 9100,
-                        bt_mac = if (isTcp) "" else mac.trim(),
+                        bt_mac = when { isTcp -> ""; isUsb -> ""; else -> mac.trim() },
                         protocol = "escpos",
                         paper_width_mm = w,
                         offset_x_mm = initial?.offset_x_mm ?: 0.0,
@@ -386,17 +519,40 @@ fun PrinterFormDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = isTcp,
-                        onClick = { isTcp = true },
-                        label = { Text("TCP (IP:порт)") }
+                        onClick = { selectMode("tcp") },
+                        label = { Text("TCP") }
                     )
                     FilterChip(
-                        selected = !isTcp,
-                        onClick = { isTcp = false },
+                        selected = isUsb,
+                        onClick = { selectMode("usb") },
+                        label = { Text("USB") }
+                    )
+                    FilterChip(
+                        selected = !isTcp && !isUsb,
+                        onClick = { selectMode("bluetooth") },
                         label = { Text("Bluetooth") }
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                if (isTcp) {
+                if (isUsb) {
+                    OutlinedTextField(
+                        value = usbKey,
+                        onValueChange = { usbKey = it },
+                        label = { Text("Устройство USB (имя из списка ниже)") },
+                        placeholder = { Text("Напр. 1-1.3:1.0") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    if (usbDevices.isNotEmpty()) {
+                        TextButton(onClick = { usbPickOpen = true }) {
+                            Text("Выбрать из подключённых (${usbDevices.size})")
+                        }
+                    } else {
+                        TextButton(onClick = { onUsbRefresh() }) {
+                            Text("Подключите кабель и нажмите, чтобы перечислить устройства")
+                        }
+                    }
+                } else if (isTcp) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = host,
@@ -424,6 +580,9 @@ fun PrinterFormDialog(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    TextButton(onClick = { onBtScan(); scanOpen = true }) {
+                        Text("Найти по Bluetooth")
+                    }
                     if (bonded.isNotEmpty()) {
                         TextButton(onClick = { pickOpen = true }) {
                             Text("Выбрать из сопряжённых (${bonded.size})")
@@ -457,6 +616,30 @@ fun PrinterFormDialog(
         }
     )
 
+    if (usbPickOpen) {
+        AlertDialog(
+            onDismissRequest = { usbPickOpen = false },
+            title = { Text("Подключённые USB-устройства") },
+            text = {
+                Column {
+                    usbDevices.forEach { d ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { usbKey = d.substringAfter(" — "); usbPickOpen = false }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text(d, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { usbPickOpen = false }) { Text("Закрыть") }
+            }
+        )
+    }
+
     if (pickOpen) {
         AlertDialog(
             onDismissRequest = { pickOpen = false },
@@ -477,6 +660,48 @@ fun PrinterFormDialog(
             },
             confirmButton = {
                 TextButton(onClick = { pickOpen = false }) { Text("Закрыть") }
+            }
+        )
+    }
+
+    if (scanOpen) {
+        AlertDialog(
+            onDismissRequest = { onBtScanStop(); scanOpen = false },
+            title = { Text("Поиск Bluetooth-устройств") },
+            text = {
+                Column {
+                    if (discovering) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.width(16.dp).height(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Ищем… (найдите принтер в режиме сопряжения, обычно — удержание кнопки FEED при включении)", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    found.forEach { d ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    mac = d.substringAfter(" — ")
+                                    onBtScanStop()
+                                    scanOpen = false
+                                }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text(d)
+                        }
+                    }
+                    if (found.isEmpty() && !discovering) {
+                        Text(
+                            "Устройства не найдены. Убедитесь, что принтер включён и в режиме поиска.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onBtScanStop(); scanOpen = false }) { Text("Закрыть") }
             }
         )
     }

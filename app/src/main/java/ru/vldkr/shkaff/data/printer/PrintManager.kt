@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.printer.LabelMath
 import ru.vldkr.shkaff.domain.printer.PrintJob
 import ru.vldkr.shkaff.features.labels.LabelGenerator
@@ -12,7 +13,11 @@ object PrintManager {
 
     suspend fun testPrint(profile: PrinterProfileEntity): Result<Unit> {
         val bytes = PrintJob.testPage(profile.paper_width_mm.toInt())
-        return transport(profile).send(bytes)
+        return try {
+            transport(profile).send(bytes)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun printLabel(
@@ -41,6 +46,7 @@ object PrintManager {
 
     fun describe(p: PrinterProfileEntity): String = when (p.transport.lowercase()) {
         "tcp" -> "Сеть ${p.host}:${p.port}"
+        "usb" -> "USB ${p.host}"
         else -> "Bluetooth ${p.bt_mac}"
     }
 
@@ -49,6 +55,7 @@ object PrintManager {
 
     private fun transport(p: PrinterProfileEntity): Transport = when (p.transport.lowercase()) {
         "tcp" -> TcpTransport(p.host, p.port)
+        "usb" -> UsbTransport(Deps.app, p.host)
         else -> BtSppTransport(p.bt_mac)
     }
 }

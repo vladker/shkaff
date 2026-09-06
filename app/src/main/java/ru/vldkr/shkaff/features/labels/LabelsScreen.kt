@@ -52,6 +52,8 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.printer.PrintManager
+import ru.vldkr.shkaff.data.printer.UsbPermission
+import ru.vldkr.shkaff.data.printer.UsbPermissionPendingException
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -137,14 +139,20 @@ class LabelsVm(
         }
         viewModelScope.launch {
             update { it.copy(printBusy = true, printMsg = null, printError = null) }
-            PrintManager.printLabel(profile, t, code, ui.value.name).fold(
-                onSuccess = {
-                    update { it.copy(printBusy = false, printMsg = "Отправлено на печать: ${PrintManager.describe(profile)}") }
-                },
-                onFailure = { e ->
-                    update { it.copy(printBusy = false, printError = "Ошибка: ${e.message ?: e.javaClass.simpleName}") }
+            val r = try {
+                PrintManager.printLabel(profile, t, code, ui.value.name)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            val e = r.exceptionOrNull()
+            when {
+                e == null -> update { it.copy(printBusy = false, printError = null, printMsg = "Отправлено на печать: ${PrintManager.describe(profile)}") }
+                e is UsbPermissionPendingException -> {
+                    val msg = UsbPermission.failureMessage(e) { print(profile) }
+                    update { it.copy(printBusy = false, printMsg = msg) }
                 }
-            )
+                else -> update { it.copy(printBusy = false, printError = "Ошибка: ${e.message ?: "не удалось напечатать"}") }
+            }
         }
     }
 

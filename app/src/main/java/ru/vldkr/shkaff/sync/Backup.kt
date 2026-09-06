@@ -94,6 +94,7 @@ object Backup {
         put("location_id", e.location_id ?: ""); put("photo_path", e.photo_path ?: "")
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+        put("expiry_date", e.expiry_date ?: "")
     }
 
     private fun item(j: JSONObject): ItemEntity = ItemEntity(
@@ -104,7 +105,8 @@ object Backup {
         photo_path = j.optString("photo_path", "").takeIf { it.isNotBlank() },
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
-        device_last_modified = j.optString("device", "")
+        device_last_modified = j.optString("device", ""),
+        expiry_date = j.optString("expiry_date", "").takeIf { it.isNotBlank() }
     )
 
     private fun o(e: AnnotationEntity): JSONObject = JSONObject().apply {

@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -39,6 +40,7 @@ import ru.vldkr.shkaff.features.labels.TemplatesScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
 import ru.vldkr.shkaff.features.locations.LocationFormScreen
 import ru.vldkr.shkaff.features.scan.ScannerScreen
+import ru.vldkr.shkaff.data.printer.UsbPermission
 import ru.vldkr.shkaff.features.settings.SettingsScreen
 import ru.vldkr.shkaff.features.storages.StorageDetailScreen
 import ru.vldkr.shkaff.features.storages.StorageFormScreen
@@ -48,12 +50,19 @@ import ru.vldkr.shkaff.ui.theme.ShkaffTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UsbPermission.onIntent(intent)
         enableEdgeToEdge()
         setContent {
             ShkaffTheme {
                 AppRoot()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        UsbPermission.onIntent(intent)
     }
 }
 

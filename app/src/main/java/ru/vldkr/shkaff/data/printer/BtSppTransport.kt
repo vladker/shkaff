@@ -11,7 +11,7 @@ class BtSppTransport(
 ) : Transport {
 
     companion object {
-        val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-001020000011")
+        val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-0010AC510000")
     }
 
     override suspend fun send(bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {

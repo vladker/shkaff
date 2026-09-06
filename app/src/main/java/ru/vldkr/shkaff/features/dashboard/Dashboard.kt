@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.util.Expiry
+import java.time.LocalDate
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
@@ -53,7 +55,8 @@ class DashboardVm : ViewModel() {
         val itemsCount: Int = 0,
         val locationsCount: Int = 0,
         val storagesCount: Int = 0,
-        val recent: List<ItemEntity> = emptyList()
+        val recent: List<ItemEntity> = emptyList(),
+        val expiringSoon: List<ItemEntity> = emptyList()
     )
 
     val ui = MutableStateFlow(Ui())
@@ -64,7 +67,8 @@ class DashboardVm : ViewModel() {
                 itemsCount = Deps.items.count(),
                 locationsCount = Deps.locations.count(),
                 storagesCount = Deps.storages.count(),
-                recent = Deps.items.recent(5)
+                recent = Deps.items.recent(5),
+                expiringSoon = Deps.items.expiringSoon(Deps.expiryThresholdDays())
             )
         }
     }
@@ -124,13 +128,28 @@ fun DashboardScreen(nav: NavController) {
                     }
                 }
             }
+            if (ui.expiringSoon.isNotEmpty()) {
+                item { SectionTitle("Скоро истечёт") }
+                items(ui.expiringSoon, key = { "exp-${it.id}" }) { it ->
+                    val date = Expiry.parse(it.expiry_date)
+                    val today = LocalDate.now()
+                    val days = date?.let { Expiry.daysUntil(it, today) } ?: 0
+                    ItemRow(
+                        it,
+                        locations[it.location_id]?.displayLabel(),
+                        { nav.navigate("item/${it.id}") },
+                        expiryText = Expiry.label(date, today),
+                        expiryColor = if (days < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
             item { SectionTitle("Недавно изменённые") }
             if (ui.recent.isEmpty()) {
                 item { EmptyState("Пока нет вещей.\nДобавьте первую — с номером, фото и ящиком хранения.") }
             } else {
-                items(ui.recent, key = { it.id }) { it ->
-                    ItemRow(it, locations[it.location_id]?.displayLabel()) { nav.navigate("item/${it.id}") }
-                }
+                    items(ui.recent, key = { it.id }) { it ->
+                        ItemRow(it, locations[it.location_id]?.displayLabel(), { nav.navigate("item/${it.id}") })
+                    }
             }
         }
     }

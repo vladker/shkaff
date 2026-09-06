@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.di
 
 import android.content.Context
 import kotlinx.coroutines.runBlocking
+import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
@@ -10,11 +11,14 @@ import ru.vldkr.shkaff.data.repository.AttributeRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
 import ru.vldkr.shkaff.data.repository.StorageRepository
+import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
 import java.util.UUID
 
 object Deps {
 
+    lateinit var app: Context
+        private set
     lateinit var db: ShkaffDatabase
         private set
     lateinit var deviceId: String
@@ -33,6 +37,7 @@ object Deps {
     fun init(ctx: Context) {
         if (ready) return
         val app = ctx.applicationContext
+        this.app = app
         db = ShkaffDatabase.build(app)
         val meta = db.metaDao()
         deviceId = meta.get("deviceId")
@@ -46,7 +51,39 @@ object Deps {
         attributes = AttributeRepository(db)
         seedDefaultAttributes()
         seedDefaultTemplate()
+        backfillExpiryDates()
         ready = true
+    }
+
+    fun expiryThresholdDays(): Int =
+        meta().get("expiryThresholdDays")?.toIntOrNull()?.coerceIn(1, 365) ?: 90
+
+    fun setExpiryThresholdDays(days: Int) {
+        meta().upsert(SchemaMetaEntity("expiryThresholdDays", days.toString()))
+    }
+
+    private fun meta() = db.metaDao()
+
+    private fun backfillExpiryDates() {
+        if (meta().get("expiryBackfilled") == "1") return
+        // одноразово копируем срок из атрибута «Срок годности» (expired) в отдельное поле
+        val now = System.currentTimeMillis()
+        val dev = deviceId
+        val items = runBlocking { db.itemDao().allWithDeleted() }
+        for (i in items) {
+            if (i.expiry_date != null) continue
+            val attrs = AttrJson.toMap(i.attributes)
+            val raw = attrs["expired"] ?: continue
+            val iso = Expiry.normalize(raw) ?: continue
+            runBlocking {
+                db.itemDao().upsert(i.copy(
+                    expiry_date = iso,
+                    updated_at = now,
+                    device_last_modified = dev
+                ))
+            }
+        }
+        meta().upsert(SchemaMetaEntity("expiryBackfilled", "1"))
     }
 
     private fun seedDefaultAttributes() {

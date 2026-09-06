@@ -59,15 +59,16 @@ data class LocationEntity(
 data class ItemEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val code: String = "",
-    val description: String = "",
-    val attributes: String = "{}",
-    val photo_path: String? = null,
-    val location_id: String? = null,
+    val code: String,
+    val description: String,
+    val attributes: String,
+    val photo_path: String?,
+    val location_id: String?,
     val created_at: Long,
     val updated_at: Long,
-    val deleted_at: Long? = null,
-    val device_last_modified: String = ""
+    val deleted_at: Long?,
+    val device_last_modified: String,
+    val expiry_date: String? = null
 )
 
 @Entity(

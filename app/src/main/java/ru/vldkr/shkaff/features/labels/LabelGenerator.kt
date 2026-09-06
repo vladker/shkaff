@@ -97,7 +97,7 @@ object LabelGenerator {
         val row = IntArray(w)
         for (y in 0 until h) {
             for (x in 0 until w) row[x] = if (m.get(x, y)) dark else light
-            bmp.setPixels(row, 0, w, 0, y, w, h)
+            bmp.setPixels(row, 0, w, 0, y, w, 1)
         }
         return bmp
     }
