@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -126,6 +127,16 @@ fun DashboardScreen(nav: NavController) {
                     OutlinedButton(onClick = { nav.navigate("storages") }, modifier = Modifier.weight(1f)) {
                         Text("Новый ящик")
                     }
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = { nav.navigate("batch") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text("Серия однотипных вещей (массовый ввод)")
                 }
             }
             if (ui.expiringSoon.isNotEmpty()) {

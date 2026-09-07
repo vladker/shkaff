@@ -31,6 +31,7 @@ import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
 import ru.vldkr.shkaff.features.items.ItemFormScreen
+import ru.vldkr.shkaff.features.batch.BatchEntryScreen
 import ru.vldkr.shkaff.features.backup.BackupScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
 import ru.vldkr.shkaff.features.labels.LabelsScreen
@@ -147,6 +148,7 @@ fun AppRoot() {
                 )
             }
 
+            composable("batch") { BatchEntryScreen(navController) }
             composable("scan") { ScannerScreen(navController) }
             composable("annotations/{storageId}", arguments = listOf(navArgument("storageId") { type = NavType.StringType })) { b ->
                 AnnotationScreen(navController, b.arguments?.getString("storageId").orEmpty())
