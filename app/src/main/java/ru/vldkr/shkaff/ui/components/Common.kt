@@ -9,8 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -21,13 +25,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import org.json.JSONArray
+import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
@@ -97,12 +103,7 @@ fun FieldRow(
     }
 }
 
-fun parseOptions(json: String?): List<String> = try {
-    val a = JSONArray(json ?: "[]")
-    (0 until a.length()).map { a.optString(it, "") }.filter { it.isNotBlank() }
-} catch (e: Exception) {
-    emptyList()
-}
+fun parseOptions(json: String?): List<String> = AttrJson.parseOptions(json)
 
 @Composable
 fun AttrFields(
@@ -163,18 +164,53 @@ fun AttrFields(
 @Composable
 private fun SelectField(def: AttributeDefEntity, value: String, onChange: (String, String) -> Unit) {
     val options = remember(def.options) { parseOptions(def.options) }
+    val scope = rememberCoroutineScope()
+    var adding by remember { mutableStateOf(false) }
+    var newOption by remember { mutableStateOf("") }
+    val busy = remember { mutableStateOf(false) }
+
+    fun commitOption() {
+        val t = newOption.trim()
+        if (t.isEmpty() || busy.value) return
+        busy.value = true
+        scope.launch {
+            try {
+                Deps.attributes.addOption(def.id, t, Deps.deviceId)
+            } finally {
+                busy.value = false
+            }
+        }
+        onChange(def.key, t)
+        newOption = ""
+        adding = false
+    }
+
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text(
             def.label + if (def.required) " *" else "",
             style = MaterialTheme.typography.labelLarge
         )
-        if (options.isEmpty()) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { onChange(def.key, it) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+        if (adding) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = newOption,
+                    onValueChange = { newOption = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Новое значение") },
+                    singleLine = true
+                )
+                TextButton(onClick = { commitOption() }, modifier = Modifier.padding(start = 4.dp)) {
+                    Text("Добавить")
+                }
+                IconButton(onClick = { adding = false; newOption = "" }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Отмена")
+                }
+            }
         } else {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -190,6 +226,12 @@ private fun SelectField(def: AttributeDefEntity, value: String, onChange: (Strin
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
+                FilterChip(
+                    selected = false,
+                    onClick = { adding = true },
+                    label = { Text("+ значение") },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
             }
         }
     }

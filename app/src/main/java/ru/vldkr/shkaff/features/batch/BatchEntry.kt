@@ -251,7 +251,9 @@ class BatchVm : ViewModel() {
 
     init {
         viewModelScope.launch {
-            attrDefs.value = Deps.attributes.forScope("item")
+            Deps.attributes.observeAll().collect { all ->
+                attrDefs.value = all.filter { it.scope == "item" || it.scope == "*" }
+            }
         }
         viewModelScope.launch {
             Deps.locations.observeAll().collect { l ->

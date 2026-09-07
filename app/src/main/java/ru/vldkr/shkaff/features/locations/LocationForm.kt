@@ -69,7 +69,9 @@ class LocationFormVm(
 
     init {
         viewModelScope.launch {
-            attrDefs.value = Deps.attributes.forScope("location")
+            Deps.attributes.observeAll().collect { all ->
+                attrDefs.value = all.filter { it.scope == "location" || it.scope == "*" }
+            }
         }
         viewModelScope.launch {
             val all = Deps.locations.allByStorage(storageId)

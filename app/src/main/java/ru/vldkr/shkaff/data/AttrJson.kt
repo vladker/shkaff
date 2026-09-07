@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff.data
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 object AttrJson {
@@ -10,6 +11,26 @@ object AttrJson {
         o.toString()
     } catch (e: Exception) {
         "{}"
+    }
+
+    fun parseOptions(json: String?): List<String> = try {
+        val a = JSONArray(json ?: "[]")
+        (0 until a.length()).map { a.optString(it, "") }.filter { it.isNotBlank() }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    // Добавляет новое значение в JSON-массив словаря; дубликат (без учёта регистра) не добавляется
+    fun optionsWithNew(json: String?, option: String): String {
+        val t = option.trim()
+        val current = parseOptions(json)
+        if (t.isEmpty() || current.any { it.equals(t, ignoreCase = true) }) {
+            return json ?: "[]"
+        }
+        val a = JSONArray()
+        current.forEach { a.put(it) }
+        a.put(t)
+        return a.toString()
     }
 
     fun toMap(json: String?): Map<String, String> = try {
