@@ -26,6 +26,12 @@ interface StorageDao {
     @Query("SELECT COUNT(*) FROM storage WHERE deleted_at IS NULL")
     suspend fun count(): Int
 
+    @Query("SELECT 1 FROM storage WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
+    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+
+    @Query("SELECT code FROM storage WHERE deleted_at IS NULL AND code != ''")
+    suspend fun allCodes(): List<String>
+
     @Query("SELECT * FROM storage")
     suspend fun allWithDeleted(): List<StorageEntity>
 
@@ -68,6 +74,12 @@ interface LocationDao {
     @Query("SELECT COUNT(*) FROM location WHERE storage_id = :storageId AND deleted_at IS NULL")
     suspend fun countByStorage(storageId: String): Int
 
+    @Query("SELECT 1 FROM location WHERE label = :label AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
+    suspend fun existsByLabel(label: String, excludeId: String? = null): Int
+
+    @Query("SELECT label FROM location WHERE deleted_at IS NULL AND label != ''")
+    suspend fun allLabels(): List<String>
+
     @Query("SELECT * FROM location")
     suspend fun allWithDeleted(): List<LocationEntity>
 
@@ -88,6 +100,12 @@ interface ItemDao {
 
     @Query("SELECT * FROM item WHERE code = :code AND deleted_at IS NULL LIMIT 1")
     suspend fun byCode(code: String): ItemEntity?
+
+    @Query("SELECT 1 FROM item WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
+    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+
+    @Query("SELECT code FROM item WHERE deleted_at IS NULL AND code != ''")
+    suspend fun allCodes(): List<String>
 
     @Query("SELECT * FROM item WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): ItemEntity?

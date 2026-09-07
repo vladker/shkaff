@@ -17,6 +17,7 @@ import androidx.room.PrimaryKey
 data class StorageEntity(
     @PrimaryKey val id: String,
     val name: String,
+    val code: String = "",
     val description: String = "",
     val attributes: String = "{}",
     val photo_path: String? = null,

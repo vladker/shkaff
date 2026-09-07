@@ -6,13 +6,15 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
 import java.time.LocalDate
 
 class ItemRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId }
+    private val deviceId: () -> String = { Deps.deviceId },
+    private val numbering: () -> NumberingService = { Deps.numbering }
 ) {
     private val dao get() = db.itemDao()
 
@@ -35,7 +37,7 @@ class ItemRepository(
         val e = ItemEntity(
             id = newId(),
             name = d.name.trim(),
-            code = d.code.trim(),
+            code = resolveCode(d.code.trim()),
             description = d.description.trim(),
             attributes = AttrJson.toJson(d.attributes),
             photo_path = d.photoPath,
@@ -52,9 +54,12 @@ class ItemRepository(
 
     suspend fun update(id: String, d: ItemData): ItemEntity? {
         val e = dao.byId(id) ?: return null
+        val code = d.code.trim()
+        if (code.isNotEmpty() && code != e.code && dao.existsByCode(code, id) > 0)
+            throw IllegalStateException("Номер уже занят: $code")
         val u = e.copy(
             name = d.name.trim(),
-            code = d.code.trim(),
+            code = code,
             description = d.description.trim(),
             attributes = AttrJson.toJson(d.attributes),
             photo_path = d.photoPath,
@@ -65,6 +70,13 @@ class ItemRepository(
         )
         dao.upsert(u)
         return u
+    }
+
+    // Пустой штрих-код → автонумерация серии; заданный → проверка дубля.
+    private suspend fun resolveCode(input: String): String {
+        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_ITEM, dao.allCodes())
+        if (dao.existsByCode(input) > 0) throw IllegalStateException("Номер уже занят: $input")
+        return input
     }
 
     suspend fun expiringSoon(thresholdDays: Int, today: LocalDate = LocalDate.now(), limit: Int = 20): List<ItemEntity> {

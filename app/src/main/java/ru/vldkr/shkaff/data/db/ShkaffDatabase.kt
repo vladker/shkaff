@@ -19,7 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConflictLogEntity::class,
         SchemaMetaEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -36,7 +36,7 @@ abstract class ShkaffDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "2"
+        const val SCHEMA_VERSION = "3"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -44,10 +44,16 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE storage ADD COLUMN code TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

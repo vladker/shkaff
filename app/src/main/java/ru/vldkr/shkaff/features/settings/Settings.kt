@@ -37,6 +37,13 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.di.Deps
+import kotlinx.coroutines.runBlocking
+import ru.vldkr.shkaff.domain.numbering.Numbering
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.ui.text.input.KeyboardType
 
 class SettingsVm : ViewModel() {
     val deviceId = MutableStateFlow(Deps.deviceId)
@@ -45,6 +52,13 @@ class SettingsVm : ViewModel() {
     fun setExpiryThreshold(days: Int) {
         Deps.setExpiryThresholdDays(days)
         expiryThreshold.value = days
+    }
+
+    val numberingAuto = MutableStateFlow(Deps.numberingAuto())
+
+    fun setNumberingAuto(on: Boolean) {
+        Deps.setNumberingAuto(on)
+        numberingAuto.value = on
     }
 }
 
@@ -82,6 +96,30 @@ fun SettingsScreen(nav: NavController) {
                     { showExpiryDialog = true }
                 )
             }
+            item { Section("Нумерация") }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Автогенерация кодов", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Пустое поле — код выдаётся автоматически (вещи, ящики, шкафы)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = vm.numberingAuto.value,
+                        onCheckedChange = { vm.setNumberingAuto(it) }
+                    )
+                }
+            }
+            item { NumberingRow("Коды вещей", Numbering.SCOPE_ITEM) }
+            item { NumberingRow("Коды ящиков", Numbering.SCOPE_LOCATION) }
+            item { NumberingRow("Коды шкафов", Numbering.SCOPE_STORAGE) }
+
             item { Section("Данные") }
             item {
                 SettingRow("Словарь атрибутов", "Типы и варианты полей", { nav.navigate("attrdefs") })
@@ -174,4 +212,70 @@ private fun SettingRow(title: String, subtitle: String, onClick: (() -> Unit)?) 
         }
         Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+private fun NumberingRow(label: String, scope: String) {
+    var open by remember { mutableStateOf(false) }
+    var rev by remember { mutableStateOf(0) }
+    val s = remember(scope, rev) { runBlocking { Deps.numbering.settings(scope) } }
+    SettingRow(
+        label,
+        "пример: ${Numbering.format(s.prefix, 1, s.width)}",
+        { open = true }
+    )
+    if (open) {
+        NumberingDialog(label, scope, s.prefix, s.width) {
+            open = false
+            rev++
+        }
+    }
+}
+
+@Composable
+private fun NumberingDialog(label: String, scope: String, initialPrefix: String, initialWidth: Int, onDone: () -> Unit) {
+    var prefix by remember { mutableStateOf(initialPrefix) }
+    var width by remember { mutableStateOf(initialWidth.toString()) }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Нумерация: $label") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = prefix,
+                    onValueChange = { prefix = it },
+                    label = { Text("Префикс") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = width,
+                    onValueChange = { width = it },
+                    label = { Text("Ширина номера (0 — без доводки нулями)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                val w = width.toIntOrNull()
+                if (prefix.isNotBlank() && w != null && w in 0..20) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Пример: ${Numbering.format(prefix.trim(), 1, w)}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val w = width.toIntOrNull()
+                if (prefix.isNotBlank() && w != null && w in 0..20) {
+                    runBlocking { Deps.numbering.saveSettings(scope, prefix, w) }
+                }
+                onDone()
+            }) { Text("Сохранить") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDone) { Text("Отмена") }
+        }
+    )
 }

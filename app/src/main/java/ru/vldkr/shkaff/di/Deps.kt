@@ -10,6 +10,7 @@ import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.repository.AttributeRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
+import ru.vldkr.shkaff.data.repository.NumberingService
 import ru.vldkr.shkaff.data.repository.StorageRepository
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
@@ -31,6 +32,8 @@ object Deps {
         private set
     lateinit var attributes: AttributeRepository
         private set
+    lateinit var numbering: NumberingService
+        private set
 
     private var ready = false
 
@@ -49,6 +52,7 @@ object Deps {
         locations = LocationRepository(db)
         storages = StorageRepository(db)
         attributes = AttributeRepository(db)
+        numbering = NumberingService(db)
         seedDefaultAttributes()
         seedDefaultTemplate()
         backfillExpiryDates()
@@ -60,6 +64,12 @@ object Deps {
 
     fun setExpiryThresholdDays(days: Int) {
         meta().upsert(SchemaMetaEntity("expiryThresholdDays", days.toString()))
+    }
+
+    fun numberingAuto(): Boolean = meta().get("numberingAuto") != "false"
+
+    fun setNumberingAuto(on: Boolean) {
+        meta().upsert(SchemaMetaEntity("numberingAuto", if (on) "true" else "false"))
     }
 
     private fun meta() = db.metaDao()

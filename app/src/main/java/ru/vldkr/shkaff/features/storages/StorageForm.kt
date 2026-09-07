@@ -50,6 +50,7 @@ class StorageFormVm(
 ) : ViewModel() {
 
     var name by mutableStateOf("")
+    var code by mutableStateOf("")
     var description by mutableStateOf("")
     var parentId by mutableStateOf<String?>(null)
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
@@ -76,6 +77,7 @@ class StorageFormVm(
             viewModelScope.launch {
                 Deps.storages.byId(storageId)?.let {
                     name = it.name
+                    code = it.code
                     description = it.description
                     parentId = it.parent_id
                     attrs = AttrJson.toMap(it.attributes)
@@ -108,6 +110,7 @@ class StorageFormVm(
             error.value = null
             val d = StorageData(
                 name = name,
+                code = code,
                 description = description,
                 attributes = attrs,
                 parentId = parentId
@@ -184,6 +187,16 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     onValueChange = { vm.name = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Например: Шкаф в прихожей") },
+                    singleLine = true
+                )
+            }
+            FieldRow("Код (необязательно)") {
+                OutlinedTextField(
+                    value = vm.code,
+                    onValueChange = { vm.code = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("например: S-01") },
+                    supportingText = { Text("Пусто — сгенерируется автоматически") },
                     singleLine = true
                 )
             }

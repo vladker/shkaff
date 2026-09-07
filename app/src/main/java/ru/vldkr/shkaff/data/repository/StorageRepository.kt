@@ -6,11 +6,13 @@ import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.StorageData
+import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
 
 class StorageRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId }
+    private val deviceId: () -> String = { Deps.deviceId },
+    private val numbering: () -> NumberingService = { Deps.numbering }
 ) {
     private val dao get() = db.storageDao()
 
@@ -25,6 +27,7 @@ class StorageRepository(
         val e = StorageEntity(
             id = newId(),
             name = d.name.trim(),
+            code = resolveCode(d.code.trim()),
             description = d.description.trim(),
             attributes = AttrJson.toJson(d.attributes),
             photo_path = null,
@@ -40,8 +43,12 @@ class StorageRepository(
 
     suspend fun update(id: String, d: StorageData): StorageEntity? {
         val e = dao.byId(id) ?: return null
+        val code = d.code.trim()
+        if (code.isNotEmpty() && code != e.code && dao.existsByCode(code, id) > 0)
+            throw IllegalStateException("Номер уже занят: $code")
         val u = e.copy(
             name = d.name.trim(),
+            code = code,
             description = d.description.trim(),
             attributes = AttrJson.toJson(d.attributes),
             parent_id = d.parentId,
@@ -50,6 +57,13 @@ class StorageRepository(
         )
         dao.upsert(u)
         return u
+    }
+
+    // Пустой номер → автонумерация серии; заданный номер → проверка дубля.
+    private suspend fun resolveCode(input: String): String {
+        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_STORAGE, dao.allCodes())
+        if (dao.existsByCode(input) > 0) throw IllegalStateException("Номер уже занят: $input")
+        return input
     }
 
     suspend fun setPhoto(id: String, path: String?) {

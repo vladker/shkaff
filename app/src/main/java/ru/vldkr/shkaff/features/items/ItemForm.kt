@@ -210,6 +210,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     onValueChange = { vm.code = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Например: T-001") },
+                    supportingText = { Text("Пусто — сгенерируется автоматически") },
                     singleLine = true
                 )
             }

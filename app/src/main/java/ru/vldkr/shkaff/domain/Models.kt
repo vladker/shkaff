@@ -20,6 +20,7 @@ data class LocationData(
 
 data class StorageData(
     val name: String,
+    val code: String = "",
     val description: String = "",
     val attributes: Map<String, String> = emptyMap(),
     val parentId: String? = null
