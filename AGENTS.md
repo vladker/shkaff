@@ -39,7 +39,7 @@
 
 ## Что уже есть / чего нет (не додумывать)
 
-- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, этикетки (`features/labels/LabelGenerator.kt`, ZXing, dpi по умолчанию 150), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**.
+- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки (`features/labels/LabelGenerator.kt`, ZXing, dpi по умолчанию 150), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**.
 - ⚠️ **Мёртвые роуты:** `ScannerScreen`/`AnnotationScreen` навигают на `"labels/0/0"`, `LabelsScreen` — на `"templates"`, но роуты `labels/…`, `templates`, `scan`, `annotations/…` **не зарегистрированы в `NavHost` в `MainActivity.kt`**. Навигация на них упадёт; экраны сканера и разметки сейчас недостижимы. При подключении — добавить `composable(...)` в `MainActivity.kt`.
 - `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
 - Нет: печать (ESC/POS), TFLite/u2net, ML Kit, облачная синхронизация — только план в `PLAN.md`.

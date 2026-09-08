@@ -4,5 +4,6 @@
     <cache-path name="share" path="share/"/>
     <files-path name="labels" path="labels/"/>
     <files-path name="backup" path="backup/"/>
+    <files-path name="export" path="export/"/>
     <files-path name="photos" path="photos/"/>
 </paths>

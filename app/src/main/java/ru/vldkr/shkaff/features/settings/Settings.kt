@@ -133,6 +133,13 @@ fun SettingsScreen(nav: NavController) {
             }
             item {
                 SettingRow(
+                    "Экспорт в Excel/CSV",
+                    "Списки вещей и ящиков в xlsx или csv; на устройство или через «Поделиться»",
+                    { nav.navigate("export") }
+                )
+            }
+            item {
+                SettingRow(
                     "Принтеры",
                     "58-мм ESC/POS: TCP (IP:9100) и Bluetooth; тестовая печать",
                     { nav.navigate("printers") }
