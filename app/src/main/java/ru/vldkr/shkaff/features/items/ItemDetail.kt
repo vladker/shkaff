@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff.features.items
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -18,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +46,7 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
+import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -159,6 +163,24 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.error
                         )
+                    }
+                    val itemTags = TagsJson.toList(i.tags)
+                    if (itemTags.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(top = 4.dp)
+                        ) {
+                            itemTags.forEach { t ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {},
+                                    label = { Text(t) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                            }
+                        }
                     }
                     if (i.description.isNotBlank()) {
                         Text(

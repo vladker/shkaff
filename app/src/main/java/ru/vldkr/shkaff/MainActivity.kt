@@ -5,6 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -16,9 +22,16 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.delay
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -55,7 +68,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ShkaffTheme {
-                AppRoot()
+                SplashHost()
             }
         }
     }
@@ -64,6 +77,31 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         UsbPermission.onIntent(intent)
+    }
+}
+
+private const val SPLASH_DURATION_MS = 1500L
+
+@Composable
+private fun SplashHost() {
+    var splashVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(SPLASH_DURATION_MS)
+        splashVisible = false
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        AppRoot()
+        AnimatedVisibility(
+            visible = splashVisible,
+            exit = fadeOut(tween(350))
+        ) {
+            Image(
+                painter = painterResource(R.drawable.splash_screen),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
 

@@ -7,6 +7,7 @@ import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
+import ru.vldkr.shkaff.data.db.TagEntity
 
 data class MergeInput(
     val attributeDefs: List<AttributeDefEntity> = emptyList(),
@@ -16,6 +17,7 @@ data class MergeInput(
     val annotations: List<AnnotationEntity> = emptyList(),
     val labelTemplates: List<LabelTemplateEntity> = emptyList(),
     val printers: List<PrinterProfileEntity> = emptyList(),
+    val tags: List<TagEntity> = emptyList(),
     val lastModified: Long = 0L
 )
 
@@ -185,7 +187,14 @@ object MergeEngine {
         )
         allConflicts += c7
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7)
+        // Словарь тегов неизменяем (нет updated_at) — LWW по created_at
+        val (tags, c8, s8) = mergeTable(
+            "tags", local.tags, remote.tags,
+            { it.id }, { it.created_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c8
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8)
         val total = MergeStats(
             added = all.sumOf { it.added },
             changed = all.sumOf { it.changed },
@@ -203,6 +212,7 @@ object MergeEngine {
             annotations = anns,
             labelTemplates = tpls,
             printers = printers,
+            tags = tags,
             lastModified = lastModified
         )
 

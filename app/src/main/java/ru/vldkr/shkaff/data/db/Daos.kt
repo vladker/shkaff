@@ -95,6 +95,9 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<ItemEntity>
 
+    @Query("SELECT * FROM item WHERE deleted_at IS NULL ORDER BY updated_at DESC")
+    suspend fun all(): List<ItemEntity>
+
     @Query("SELECT * FROM item WHERE location_id = :locationId AND deleted_at IS NULL ORDER BY updated_at DESC")
     fun observeByLocation(locationId: String): Flow<List<ItemEntity>>
 
@@ -256,6 +259,48 @@ interface ConflictDao {
     suspend fun upsert(c: ConflictLogEntity)
 
     @Query("DELETE FROM conflict_log")
+    suspend fun clear()
+}
+
+@Dao
+interface TagDao {
+    @Query("SELECT * FROM tag WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    fun observeAll(): Flow<List<TagEntity>>
+
+    @Query("SELECT * FROM tag WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    suspend fun all(): List<TagEntity>
+
+    @Query("SELECT * FROM tag WHERE name = :name AND deleted_at IS NULL LIMIT 1")
+    suspend fun byName(name: String): TagEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(t: TagEntity)
+
+    @Query("SELECT * FROM tag")
+    suspend fun allWithDeleted(): List<TagEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<TagEntity>)
+
+    @Query("UPDATE tag SET deleted_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("SELECT COUNT(*) FROM tag")
+    suspend fun count(): Int
+}
+
+@Dao
+interface DraftDao {
+    @Query("SELECT * FROM draft WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): DraftEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(d: DraftEntity)
+
+    @Query("DELETE FROM draft WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM draft")
     suspend fun clear()
 }
 

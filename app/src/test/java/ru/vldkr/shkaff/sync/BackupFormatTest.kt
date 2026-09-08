@@ -54,6 +54,13 @@ class BackupFormatTest {
     }
 
     @Test
+    fun tagsSurviveRoundTrip() {
+        val tagged = item.copy(tags = """["электро","срочно"]""")
+        val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(tagged))))
+        assertEquals("""["электро","срочно"]""", back.items.single().tags)
+    }
+
+    @Test
     fun zipFileRoundTrip() {
         val ctx = ApplicationProvider.getApplicationContext<Application>()
         val input = MergeInput(storages = listOf(storage), items = listOf(item))

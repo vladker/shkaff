@@ -69,7 +69,8 @@ data class ItemEntity(
     val updated_at: Long,
     val deleted_at: Long?,
     val device_last_modified: String,
-    val expiry_date: String? = null
+    val expiry_date: String? = null,
+    val tags: String = "[]"
 )
 
 @Entity(
@@ -169,4 +170,25 @@ data class ConflictLogEntity(
 data class SchemaMetaEntity(
     @PrimaryKey val key: String,
     val value: String
+)
+
+// Словарь тегов (US-I4): имена тегов хранятся в item.tags (JSON-массив),
+// словарь нужен для подсказок в форме и фильтра в списке
+@Entity(tableName = "tag", indices = [Index("name")])
+data class TagEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val created_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+// Черновик формы (US-A4): id — ключ вида "item/new" или "item/{id}"
+@Entity(tableName = "draft")
+data class DraftEntity(
+    @PrimaryKey val id: String,
+    val entity_type: String,
+    val entity_id: String? = null,
+    val form_json: String = "{}",
+    val saved_at: Long = 0L
 )

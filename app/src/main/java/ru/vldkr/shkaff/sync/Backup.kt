@@ -11,6 +11,7 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.StorageEntity
+import ru.vldkr.shkaff.data.db.TagEntity
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -29,6 +30,7 @@ object Backup {
         annotations = db.annotationDao().allWithDeleted(),
         labelTemplates = db.labelTemplateDao().allWithDeleted(),
         printers = db.printerDao().allWithDeleted(),
+        tags = db.tagDao().allWithDeleted(),
         lastModified = System.currentTimeMillis()
     )
 
@@ -95,6 +97,7 @@ object Backup {
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
         put("expiry_date", e.expiry_date ?: "")
+        put("tags", e.tags)
     }
 
     private fun item(j: JSONObject): ItemEntity = ItemEntity(
@@ -106,7 +109,8 @@ object Backup {
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", ""),
-        expiry_date = j.optString("expiry_date", "").takeIf { it.isNotBlank() }
+        expiry_date = j.optString("expiry_date", "").takeIf { it.isNotBlank() },
+        tags = j.optString("tags", "[]")
     )
 
     private fun o(e: AnnotationEntity): JSONObject = JSONObject().apply {
@@ -175,6 +179,19 @@ object Backup {
         device_last_modified = j.optString("device", "")
     )
 
+    private fun o(e: TagEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name)
+        put("created_at", e.created_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun tag(j: JSONObject): TagEntity = TagEntity(
+        id = j.getString("id"), name = j.getString("name"),
+        created_at = j.optLong("created_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
     fun toJson(input: MergeInput): String {
         val root = JSONObject()
         root.put("format", FORMAT)
@@ -187,6 +204,7 @@ object Backup {
         root.put("annotations", JSONArray().apply { input.annotations.forEach { put(o(it)) } })
         root.put("label_templates", JSONArray().apply { input.labelTemplates.forEach { put(o(it)) } })
         root.put("printers", JSONArray().apply { input.printers.forEach { put(o(it)) } })
+        root.put("tags", JSONArray().apply { input.tags.forEach { put(o(it)) } })
         return root.toString()
     }
 
@@ -207,6 +225,7 @@ object Backup {
             annotations = arr("annotations") { anno(it) },
             labelTemplates = arr("label_templates") { tpl(it) },
             printers = arr("printers") { printer(it) },
+            tags = arr("tags") { tag(it) },
             lastModified = root.optLong("exported_at", 0L)
         )
     }
@@ -256,6 +275,7 @@ object Backup {
             db.annotationDao().upsertAll(m.annotations)
             db.labelTemplateDao().upsertAll(m.labelTemplates)
             db.printerDao().upsertAll(m.printers)
+            db.tagDao().upsertAll(m.tags)
         }
     }
 }

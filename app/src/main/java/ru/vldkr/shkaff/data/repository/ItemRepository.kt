@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import ru.vldkr.shkaff.data.AttrJson
+import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
@@ -23,6 +24,8 @@ class ItemRepository(
     fun observeByLocation(locationId: String): Flow<List<ItemEntity>> = dao.observeByLocation(locationId)
 
     suspend fun recent(limit: Int): List<ItemEntity> = dao.recent(limit)
+
+    suspend fun all(): List<ItemEntity> = dao.all()
 
     suspend fun byId(id: String): ItemEntity? = dao.byId(id)
 
@@ -46,7 +49,8 @@ class ItemRepository(
             updated_at = now,
             deleted_at = null,
             device_last_modified = deviceId(),
-            expiry_date = d.expiryDate
+            expiry_date = d.expiryDate,
+            tags = TagsJson.toJson(d.tags)
         )
         dao.upsert(e)
         return e
@@ -66,7 +70,8 @@ class ItemRepository(
             location_id = d.locationId,
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId(),
-            expiry_date = d.expiryDate
+            expiry_date = d.expiryDate,
+            tags = TagsJson.toJson(d.tags)
         )
         dao.upsert(u)
         return u

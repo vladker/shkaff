@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.features.batch
 
 import android.content.Context
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -42,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -77,6 +80,7 @@ class BatchVm : ViewModel() {
         val namePattern: String = "",
         val description: String = "",
         val locationId: String? = null,
+        val tags: List<String> = emptyList(),
         val attrs: Map<String, String> = emptyMap(),
         val perItemKeys: Set<String> = emptySet(),
         val count: String = "10",
@@ -98,6 +102,7 @@ class BatchVm : ViewModel() {
     val ui = MutableStateFlow(Ui())
     val locations = MutableStateFlow<List<LocationEntity>>(emptyList())
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
+    val tagDict = MutableStateFlow<List<String>>(emptyList())
 
     private fun update(f: (Ui) -> Ui) {
         ui.value = f(ui.value)
@@ -128,6 +133,25 @@ class BatchVm : ViewModel() {
     }
 
     fun setLocation(id: String?) = update { it.copy(locationId = id) }
+
+    fun addTag(t: String) {
+        val trimmed = t.trim()
+        if (trimmed.isEmpty()) return
+        update {
+            if (it.tags.any { x -> x.equals(trimmed, ignoreCase = true) }) it
+            else it.copy(tags = it.tags + trimmed)
+        }
+        viewModelScope.launch {
+            try {
+                Deps.tags.add(trimmed)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun removeTag(t: String) = update {
+        it.copy(tags = it.tags.filterNot { x -> x.equals(t, ignoreCase = true) })
+    }
 
     fun setTemplate(id: String) = update {
         it.copy(template = it.templates.firstOrNull { t -> t.id == id })
@@ -169,7 +193,8 @@ class BatchVm : ViewModel() {
                         code = "",
                         description = u.description.trim(),
                         attributes = attrs,
-                        locationId = u.locationId
+                        locationId = u.locationId,
+                        tags = u.tags
                     )
                 )
                 val created = ui.value.created + e
@@ -258,6 +283,11 @@ class BatchVm : ViewModel() {
         viewModelScope.launch {
             Deps.locations.observeAll().collect { l ->
                 locations.value = l.sortedBy { it.label.ifEmpty { it.name } }
+            }
+        }
+        viewModelScope.launch {
+            Deps.tags.observeAll().collect { tags ->
+                tagDict.value = tags.map { e -> e.name }.distinct().sorted()
             }
         }
         viewModelScope.launch {
@@ -364,6 +394,7 @@ fun BatchEntryScreen(nav: NavController) {
 
 @Composable
 private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntity>, onPickLocation: () -> Unit) {
+    val tagDict by vm.tagDict.collectAsState()
     Column(
         Modifier
             .fillMaxSize()
@@ -403,6 +434,9 @@ private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntit
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Комментарий для всех вещей серии") }
             )
+        }
+        FieldRow("Теги (общие)") {
+            BatchTagField(vm, ui.tags, tagDict)
         }
         FieldRow("Количество") {
             OutlinedTextField(
@@ -680,6 +714,66 @@ private fun DonePhase(
         Spacer(Modifier.height(16.dp))
         Button(onClick = { vm.backToSetup() }, modifier = Modifier.fillMaxWidth()) {
             Text("Ещё одна серия")
+        }
+    }
+}
+
+@Composable
+private fun BatchTagField(vm: BatchVm, tags: List<String>, dict: List<String>) {
+    var newTag by remember { mutableStateOf("") }
+
+    fun commit() {
+        vm.addTag(newTag)
+        newTag = ""
+    }
+
+    if (tags.isNotEmpty()) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            tags.forEach { t ->
+                FilterChip(
+                    selected = true,
+                    onClick = { vm.removeTag(t) },
+                    label = { Text(t) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+    ) {
+        OutlinedTextField(
+            value = newTag,
+            onValueChange = { newTag = it },
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Новый тег") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { commit() })
+        )
+        TextButton(onClick = { commit() }, modifier = Modifier.padding(start = 4.dp)) {
+            Text("+")
+        }
+    }
+    val suggestions = dict.filter { d -> tags.none { it.equals(d, ignoreCase = true) } }.take(8)
+    if (suggestions.isNotEmpty()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 4.dp)
+        ) {
+            suggestions.forEach { s ->
+                FilterChip(
+                    selected = false,
+                    onClick = { vm.addTag(s) },
+                    label = { Text(s) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
         }
     }
 }

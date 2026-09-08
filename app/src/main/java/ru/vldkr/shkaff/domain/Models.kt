@@ -7,7 +7,8 @@ data class ItemData(
     val attributes: Map<String, String> = emptyMap(),
     val locationId: String? = null,
     val photoPath: String? = null,
-    val expiryDate: String? = null
+    val expiryDate: String? = null,
+    val tags: List<String> = emptyList()
 )
 
 data class LocationData(

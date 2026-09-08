@@ -3,15 +3,18 @@ package ru.vldkr.shkaff.di
 import android.content.Context
 import kotlinx.coroutines.runBlocking
 import ru.vldkr.shkaff.data.AttrJson
+import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.repository.AttributeRepository
+import ru.vldkr.shkaff.data.repository.DraftRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
 import ru.vldkr.shkaff.data.repository.NumberingService
 import ru.vldkr.shkaff.data.repository.StorageRepository
+import ru.vldkr.shkaff.data.repository.TagRepository
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
 import java.util.UUID
@@ -34,6 +37,10 @@ object Deps {
         private set
     lateinit var numbering: NumberingService
         private set
+    lateinit var tags: TagRepository
+        private set
+    lateinit var drafts: DraftRepository
+        private set
 
     private var ready = false
 
@@ -53,9 +60,12 @@ object Deps {
         storages = StorageRepository(db)
         attributes = AttributeRepository(db)
         numbering = NumberingService(db)
+        tags = TagRepository(db)
+        drafts = DraftRepository(db)
         seedDefaultAttributes()
         seedDefaultTemplate()
         backfillExpiryDates()
+        seedTagDictionaryOnce()
         ready = true
     }
 
@@ -73,6 +83,19 @@ object Deps {
     }
 
     private fun meta() = db.metaDao()
+
+    // Словарь тегов (US-I4) — справочник для подсказок; источник истины — item.tags,
+    // поэтому словарь досевается из вещей один раз (повторный запуск безопасен).
+    private fun seedTagDictionaryOnce() {
+        if (meta().get("tagsDictSeeded") == "1") return
+        val items = runBlocking { db.itemDao().allWithDeleted() }
+        for (i in items) {
+            for (t in TagsJson.toList(i.tags)) {
+                runBlocking { tags.add(t) }
+            }
+        }
+        meta().upsert(SchemaMetaEntity("tagsDictSeeded", "1"))
+    }
 
     private fun backfillExpiryDates() {
         if (meta().get("expiryBackfilled") == "1") return
