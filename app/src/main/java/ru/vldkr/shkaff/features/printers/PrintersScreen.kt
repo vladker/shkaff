@@ -3,6 +3,9 @@ package ru.vldkr.shkaff.features.printers
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,10 +23,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -83,7 +89,7 @@ class PrintersVm : ViewModel() {
         val message: String? = null,
         val error: String? = null,
         val permRequest: Boolean = false,
-        val permToRequest: String? = null,
+        val permToRequest: List<String> = emptyList(),
         val bonded: List<String> = emptyList(),
         val usb: List<String> = emptyList(),
         val found: List<String> = emptyList(),
@@ -129,34 +135,42 @@ class PrintersVm : ViewModel() {
 
     private var pendingScan = false
     private var scanningReceiver: BroadcastReceiver? = null
+    private var bleCallback: ScanCallback? = null
+    // MAC-адреса, найденные BLE-сканом: для них правильный транспорт — BLE GATT
+    private val bleMacs = mutableSetOf<String>()
+
+    fun bleMacsSnapshot(): Set<String> = bleMacs.toSet()
+
+    fun bleActive(): Boolean = bleCallback != null
 
     fun startBtScan(ctx: Context) {
-        val missing = if (Build.VERSION.SDK_INT >= 31) {
-            listOf(
+        val needed = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 31) {
+            for (p in listOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT
-            ).firstOrNull { ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED }
-        } else {
-            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) Manifest.permission.BLUETOOTH else null
+            )) {
+                if (ContextCompat.checkSelfPermission(ctx, p) != PackageManager.PERMISSION_GRANTED) needed.add(p)
+            }
+        } else if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.BLUETOOTH)
         }
-        if (missing != null) {
-            pendingScan = true
-            update { it.copy(permRequest = true, permToRequest = missing, error = null) }
+        // геолокация: на Android 12+ без неё BLE-скан не отдаёт MAC; на 11 и ниже нужна для классического поиска
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (needed.isEmpty()) {
+            doBtScan(ctx)
             return
         }
-        doBtScan(ctx)
+        pendingScan = true
+        update { it.copy(permRequest = true, permToRequest = needed, error = null) }
     }
 
     private fun doBtScan(ctx: Context) {
         val adapter = BluetoothAdapter.getDefaultAdapter()
         if (adapter == null || !adapter.isEnabled) {
             update { it.copy(error = "Включите Bluetooth в настройках телефона") }
-            return
-        }
-        if (Build.VERSION.SDK_INT <= 30 &&
-            ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-        ) {
-            update { it.copy(error = "На Android 10 и ниже для поиска BT нужен доступ к местоположению (разрешите в настройках приложения)") }
             return
         }
         if (scanningReceiver != null) {
@@ -195,14 +209,52 @@ class PrintersVm : ViewModel() {
             }
         scanningReceiver = receiver
         update { it.copy(discovering = true, found = emptyList(), error = null) }
+        bleMacs.clear()
         adapter.cancelDiscovery()
         adapter.startDiscovery()
+        startBleScan(adapter)
+    }
+
+    private fun startBleScan(adapter: BluetoothAdapter) {
+        val scanner = adapter.bluetoothLeScanner ?: return
+        if (bleCallback != null) return
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                onBleResult(result)
+            }
+            override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+                results?.forEach { onBleResult(it) }
+            }
+        }
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+        runCatching { scanner.startScan(null, settings, cb) }
+            .onSuccess { bleCallback = cb }
+            // без BLE или разрешения не роняем весь поиск — классический discovery продолжит
+    }
+
+    private fun onBleResult(result: ScanResult?) {
+        val dev = result?.device ?: return
+        val mac = dev.address ?: return
+        val name = result.scanRecord?.deviceName
+            ?: runCatching { dev.name }.getOrNull()
+            ?: ""
+        val label = "${name.ifBlank { "Без имени" }} — $mac"
+        if (label !in ui.value.found) {
+            bleMacs.add(mac)
+            update { it -> it.copy(found = it.found + label) }
+        }
     }
 
     fun stopBtScan(ctx: Context) {
         BluetoothAdapter.getDefaultAdapter()?.cancelDiscovery()
         scanningReceiver?.let { runCatching { ctx.unregisterReceiver(it) } }
         scanningReceiver = null
+        bleCallback?.let { cb ->
+            bleCallback = null
+            runCatching { BluetoothAdapter.getDefaultAdapter()?.bluetoothLeScanner?.stopScan(cb) }
+        }
         update { it.copy(discovering = false) }
     }
 
@@ -224,7 +276,7 @@ class PrintersVm : ViewModel() {
 
     fun test(ctx: Context, profileId: String) {
         val p = ui.value.profiles.firstOrNull { it.id == profileId } ?: return
-        if (p.transport.lowercase() == "bluetooth" && !btAllowed(ctx)) {
+        if (p.transport.lowercase() in listOf("bluetooth", "ble") && !btAllowed(ctx)) {
             pendingTestId = profileId
             update { it.copy(permRequest = true, error = null) }
             return
@@ -239,7 +291,9 @@ class PrintersVm : ViewModel() {
         pendingScan = false
         update { it.copy(permRequest = false) }
         when {
-            !granted -> update { it.copy(error = "Нет разрешения «Близкие устройства» — без него Bluetooth-печать не работает") }
+            !granted -> update {
+                it.copy(error = "Нет разрешений «Близкие устройства» и/или «Местоположение» — без них поиск и Bluetooth-печать не работают")
+            }
             id != null -> doTest(id)
             scan -> doBtScan(ctx)
         }
@@ -251,7 +305,12 @@ class PrintersVm : ViewModel() {
             update { it.copy(busy = true, busyText = "Тестовая страница…", message = null, error = null) }
             PrintManager.testPrint(p).fold(
                 onSuccess = {
-                    update { it.copy(busy = false, message = "Отправлено: ${PrintManager.describe(p)}") }
+                    val mode = when (PrintManager.lastCmdMode) {
+                        "02" -> " (TSC)"
+                        "01" -> " (ESC/POS)"
+                        else -> ""
+                    }
+                    update { it.copy(busy = false, message = "Отправлено: ${PrintManager.describe(p)}$mode") }
                 },
                 onFailure = { e ->
                     val msg = UsbPermission.failureMessage(e) { doTest(profileId) }
@@ -276,15 +335,15 @@ fun PrintersScreen(nav: NavController) {
     var toDelete by remember { mutableStateOf<PrinterProfileEntity?>(null) }
 
     val permLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> vm.onPermissionResult(granted, ctx) }
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted -> vm.onPermissionResult(granted.values.all { it }, ctx) }
     LaunchedEffect(ui.permRequest) {
         if (ui.permRequest) {
-            permLauncher.launch(
-                ui.permToRequest
-                    ?: if (Build.VERSION.SDK_INT >= 31) Manifest.permission.BLUETOOTH_CONNECT
-                    else Manifest.permission.BLUETOOTH
-            )
+            val perms = ui.permToRequest
+                .ifEmpty {
+                    listOf(if (Build.VERSION.SDK_INT >= 31) Manifest.permission.BLUETOOTH_CONNECT else Manifest.permission.BLUETOOTH)
+                }
+            permLauncher.launch(perms.toTypedArray())
         }
     }
 
@@ -320,7 +379,7 @@ fun PrintersScreen(nav: NavController) {
 
             if (ui.profiles.isEmpty()) {
                 item {
-                    EmptyState("Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — сопряжённое устройство; USB — принтер по кабелю Type-C.")
+                    EmptyState("Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — классический канал печати (RFCOMM); BLE — только для совместимых GATT-принтеров; USB — принтер по кабелю Type-C.")
                 }
             }
 
@@ -404,6 +463,8 @@ fun PrintersScreen(nav: NavController) {
             onUsbRefresh = { vm.loadUsb(ctx) },
             found = ui.found,
             discovering = ui.discovering,
+            bleActive = vm.bleActive(),
+            bleMacs = vm.bleMacsSnapshot(),
             onBtScan = { vm.startBtScan(ctx) },
             onBtScanStop = { vm.stopBtScan(ctx) },
             onSave = { p ->
@@ -440,6 +501,8 @@ fun PrinterFormDialog(
     onUsbRefresh: () -> Unit,
     found: List<String>,
     discovering: Boolean,
+    bleActive: Boolean,
+    bleMacs: Set<String>,
     onBtScan: () -> Unit,
     onBtScanStop: () -> Unit,
     onSave: (PrinterProfileEntity) -> Unit,
@@ -449,6 +512,7 @@ fun PrinterFormDialog(
     val initMode = initial?.transport?.lowercase()
     var isTcp by remember { mutableStateOf(initMode == "tcp") }
     var isUsb by remember { mutableStateOf(initMode == "usb") }
+    var isBle by remember { mutableStateOf(initMode == "ble") }
     var host by remember { mutableStateOf(initial?.host ?: "") }
     var port by remember { mutableStateOf((initial?.port ?: 9100).toString()) }
     var mac by remember { mutableStateOf(initial?.bt_mac ?: "") }
@@ -462,6 +526,7 @@ fun PrinterFormDialog(
     fun selectMode(mode: String) {
         isTcp = mode == "tcp"
         isUsb = mode == "usb"
+        isBle = mode == "ble"
     }
 
     fun submit() {
@@ -479,8 +544,13 @@ fun PrinterFormDialog(
                 onSave(
                     PrinterProfileEntity(
                         id = initial?.id ?: newId(),
-                        name = name.trim(),
-                        transport = when { isTcp -> "tcp"; isUsb -> "usb"; else -> "bluetooth" },
+            name = name.trim(),
+                    transport = when {
+                        isTcp -> "tcp"
+                        isUsb -> "usb"
+                        isBle -> "ble"
+                        else -> "bluetooth"
+                    },
                         host = when {
                             isTcp -> host.trim()
                             isUsb -> usbKey
@@ -528,9 +598,14 @@ fun PrinterFormDialog(
                         label = { Text("USB") }
                     )
                     FilterChip(
-                        selected = !isTcp && !isUsb,
+                        selected = !isTcp && !isUsb && !isBle,
                         onClick = { selectMode("bluetooth") },
-                        label = { Text("Bluetooth") }
+                        label = { Text("BT") }
+                    )
+                    FilterChip(
+                        selected = isBle,
+                        onClick = { selectMode("ble") },
+                        label = { Text("BLE") }
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -621,7 +696,12 @@ fun PrinterFormDialog(
             onDismissRequest = { usbPickOpen = false },
             title = { Text("Подключённые USB-устройства") },
             text = {
-                Column {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     usbDevices.forEach { d ->
                         Row(
                             Modifier
@@ -645,7 +725,12 @@ fun PrinterFormDialog(
             onDismissRequest = { pickOpen = false },
             title = { Text("Сопряжённые устройства") },
             text = {
-                Column {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     bonded.forEach { d ->
                         Row(
                             Modifier
@@ -667,36 +752,45 @@ fun PrinterFormDialog(
     if (scanOpen) {
         AlertDialog(
             onDismissRequest = { onBtScanStop(); scanOpen = false },
-            title = { Text("Поиск Bluetooth-устройств") },
+            title = { Text("Поиск Bluetooth-устройств (классика + BLE)") },
             text = {
+                val scanning = discovering || bleActive
                 Column {
-                    if (discovering) {
+                    if (scanning) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.width(16.dp).height(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Ищем… (найдите принтер в режиме сопряжения, обычно — удержание кнопки FEED при включении)", style = MaterialTheme.typography.bodyMedium)
+                            Text("Ищем… (классический Bluetooth — канал печати; обычно принтер входит в режим сопряжения при удержании FEED на включении)", style = MaterialTheme.typography.bodyMedium)
                         }
                         Spacer(Modifier.height(8.dp))
                     }
-                    found.forEach { d ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    mac = d.substringAfter(" — ")
-                                    onBtScanStop()
-                                    scanOpen = false
-                                }
-                                .padding(vertical = 6.dp)
-                        ) {
-                            Text(d)
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        found.forEach { d ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val m = d.substringAfter(" — ")
+                                        mac = m
+                                        onBtScanStop()
+                                        scanOpen = false
+                                    }
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Text(d)
+                            }
                         }
-                    }
-                    if (found.isEmpty() && !discovering) {
-                        Text(
-                            "Устройства не найдены. Убедитесь, что принтер включён и в режиме поиска.",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        if (found.isEmpty() && !scanning) {
+                            Text(
+                                "Устройства не найдены. Убедитесь, что принтер включён и в режиме поиска.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
             },

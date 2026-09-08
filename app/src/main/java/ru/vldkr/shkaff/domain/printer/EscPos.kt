@@ -41,10 +41,10 @@ object EscPos {
         out[1] = 0x76
         out[2] = 0x30
         out[3] = 0x00
-        out[4] = 0x01
-        out[5] = (rowBytes and 0xFF).toByte()
-        out[6] = ((rowBytes ushr 8) and 0xFF).toByte()
-        out[7] = (heightPx and 0xFF).toByte()
+        out[4] = (rowBytes and 0xFF).toByte()
+        out[5] = ((rowBytes ushr 8) and 0xFF).toByte()
+        out[6] = (heightPx and 0xFF).toByte()
+        out[7] = ((heightPx ushr 8) and 0xFF).toByte()
         System.arraycopy(bits, 0, out, 8, bits.size)
         return out
     }

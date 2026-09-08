@@ -27,7 +27,7 @@ class PrintJobTest {
         assertArrayEquals(byteArrayOf(0x1B, 0x40), job.copyOf(2))
         // GS v 0, x=58 (0x3A), y=200 (0xC8)
         assertArrayEquals(
-            byteArrayOf(0x1D.toByte(), 0x76.toByte(), 0x30, 0x00, 0x01, 0x3A.toByte(), 0x00, 0xC8.toByte()),
+            byteArrayOf(0x1D.toByte(), 0x76.toByte(), 0x30, 0x00, 0x3A.toByte(), 0x00, 0xC8.toByte(), 0x00),
             job.copyOfRange(2, 10)
         )
         assertArrayEquals(byteArrayOf(0x1B, 0x64, 0x03), job.copyOfRange(job.size - 3, job.size))
@@ -43,7 +43,7 @@ class PrintJobTest {
         assertEquals(expected, job.size)
         val second = 2 + 8 + 58 * 255
         assertArrayEquals(byteArrayOf(0x1D.toByte(), 0x76.toByte(), 0x30), job.copyOfRange(second, second + 3))
-        assertEquals(0x41, job[second + 7].toInt() and 0xFF)
+        assertEquals(0x41, job[second + 6].toInt() and 0xFF)
     }
 
     private fun containsSeq(hay: ByteArray, needle: ByteArray): Boolean {

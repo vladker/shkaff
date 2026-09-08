@@ -41,9 +41,9 @@ class EscPosTest {
         val bits = ByteArray(58 * 40)
         val cmd = EscPos.raster(464, 40, bits)
         assertEquals(8 + bits.size, cmd.size)
-        // GS v 0, m=0, fn=1, x=58 (0x3A), y=40 (0x28)
+        // GS v 0, m=0, x=58 (0x3A), y=40 (0x28)
         assertArrayEquals(
-            byteArrayOf(0x1D.toByte(), 0x76.toByte(), 0x30, 0x00, 0x01, 0x3A.toByte(), 0x00, 0x28.toByte()),
+            byteArrayOf(0x1D.toByte(), 0x76.toByte(), 0x30, 0x00, 0x3A.toByte(), 0x00, 0x28.toByte(), 0x00),
             cmd.copyOf(8)
         )
     }
