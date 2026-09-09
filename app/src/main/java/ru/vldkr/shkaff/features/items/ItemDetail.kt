@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -176,19 +178,33 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     }
                 }
                 item {
-                    Text(
-                        if (locationLabel != null) {
-                            "Хранится: ${locationLabel}${storageName?.let { " · $it" } ?: ""}"
-                        } else {
-                            "Хранится: без ящика"
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (locationLabel == null)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 8.dp)
-                    )
+                    ) {
+                        Icon(
+                            Icons.Filled.Place,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (locationLabel == null)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (locationLabel != null) {
+                                "Хранится: ${locationLabel}${storageName?.let { " · $it" } ?: ""}"
+                            } else {
+                                "Хранится: без ящика"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (locationLabel == null)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 val itemTags = TagsJson.toList(i.tags)
                 if (itemTags.isNotEmpty()) {
@@ -211,11 +227,11 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     }
                 }
                 if (i.description.isNotBlank()) {
+                    item { SectionTitle("Описание") }
                     item {
                         Text(
                             i.description,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(top = 16.dp)
+                            style = MaterialTheme.typography.bodyLarge
                         )
                     }
                 }
