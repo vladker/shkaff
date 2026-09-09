@@ -3,15 +3,21 @@ package ru.vldkr.shkaff.features.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -34,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -56,9 +63,12 @@ import ru.vldkr.shkaff.domain.ItemData
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
+import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.ScanBus
+import ru.vldkr.shkaff.util.rememberPhotoPickers
+import java.io.File
 
 class ItemFormVm(
     private val itemId: String?,
@@ -69,6 +79,7 @@ class ItemFormVm(
     var code by mutableStateOf("")
     var description by mutableStateOf("")
     var locationId by mutableStateOf<String?>(null)
+    var photoPath by mutableStateOf<String?>(null)
     var expiryDate by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     var tags by mutableStateOf<List<String>>(emptyList())
@@ -119,6 +130,7 @@ class ItemFormVm(
                     code = it.code
                     description = it.description
                     locationId = it.location_id
+                    photoPath = it.photo_path
                     expiryDate = it.expiry_date ?: ""
                     attrs = AttrJson.toMap(it.attributes)
                     tags = TagsJson.toList(it.tags)
@@ -156,6 +168,7 @@ class ItemFormVm(
                 description = description,
                 attributes = attrs,
                 locationId = locationId,
+                photoPath = photoPath,
                 expiryDate = if (rawExpiry.isEmpty()) null else Expiry.normalize(rawExpiry),
                 tags = tags
             )
@@ -175,12 +188,39 @@ class ItemFormVm(
         }
     }
 
+    // US-I5: фото вещи — копируем в storageDir/item_photos, чтобы файл не зависел
+    // от жизненного цикла Uri (документы могут быть очищены системой)
+    fun setPhoto(path: String) {
+        try {
+            val dest = File(Deps.app.filesDir, "item_photos/${itemId ?: "new"}.jpg")
+            dest.parentFile?.mkdirs()
+            val src = File(path)
+            if (src.exists()) {
+                if (dest.exists()) dest.delete()
+                src.copyTo(dest, overwrite = true)
+                photoPath = dest.absolutePath
+                src.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun removePhoto() {
+        photoPath?.let {
+            try {
+                File(it).delete()
+            } catch (_: Exception) {
+            }
+        }
+        photoPath = null
+    }
+
     // US-A4: автосохранение полного состояния формы под ключом "item/new" или "item/{id}".
     // Debounce 600 мс: отменяем предыдущий отложенный сейв, пока поля ещё меняются.
     private fun startAutosave() {
         viewModelScope.launch {
             var job: Job? = null
-            snapshotFlow { FormSnap(name, code, description, locationId, expiryDate, attrs, tags) }
+            snapshotFlow { FormSnap(name, code, description, locationId, photoPath, expiryDate, attrs, tags) }
                 .collect {
                     job?.cancel()
                     job = launch {
@@ -193,7 +233,7 @@ class ItemFormVm(
 
     private data class FormSnap(
         val name: String, val code: String, val description: String,
-        val locationId: String?, val expiryDate: String,
+        val locationId: String?, val photoPath: String?, val expiryDate: String,
         val attrs: Map<String, String>, val tags: List<String>
     )
 
@@ -201,12 +241,13 @@ class ItemFormVm(
 
     private fun hasFormContent(): Boolean =
         name.isNotBlank() || code.isNotBlank() || description.isNotBlank() ||
-            locationId != null || expiryDate.isNotBlank() || tags.isNotEmpty() || attrs.isNotEmpty()
+            locationId != null || photoPath != null || expiryDate.isNotBlank() || tags.isNotEmpty() || attrs.isNotEmpty()
 
     private fun formJson(): String {
         val o = JSONObject()
         o.put("name", name).put("code", code).put("description", description)
         o.put("locationId", locationId ?: "")
+        o.put("photoPath", photoPath ?: "")
         o.put("expiryDate", expiryDate)
         val t = JSONArray()
         tags.forEach { t.put(it) }
@@ -223,6 +264,7 @@ class ItemFormVm(
         code = o.optString("code")
         description = o.optString("description")
         locationId = o.optString("locationId").takeIf { it.isNotBlank() }
+        if (o.has("photoPath")) photoPath = o.optString("photoPath").takeIf { it.isNotBlank() }
         expiryDate = o.optString("expiryDate")
         tags = TagsJson.toList(o.optString("tags", ""))
         val a = o.optJSONObject("attrs") ?: return
@@ -284,6 +326,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
+            PhotoField(vm)
             FieldRow("Название *") {
                 OutlinedTextField(
                     value = vm.name,
@@ -423,6 +466,53 @@ private fun TagChipsField(vm: ItemFormVm) {
                         label = { Text(s) },
                         modifier = Modifier.padding(end = 8.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+// US-I5: фото вещи — как у товара в маркетплейсе: снимок камеры или файл из галереи
+@Composable
+private fun PhotoField(vm: ItemFormVm) {
+    val pickers = rememberPhotoPickers(
+        onCaptured = { f -> vm.setPhoto(f.absolutePath) },
+        onPicked = { f -> vm.setPhoto(f.absolutePath) }
+    )
+    FieldRow("Фото") {
+        val path = vm.photoPath
+        if (path == null) {
+            Row(Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { pickers.takePhoto() }) {
+                    Icon(Icons.Filled.CameraAlt, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Снять")
+                }
+                OutlinedButton(
+                    onClick = { pickers.pickFromGallery() },
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Из галереи")
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                ItemPhoto(
+                    path,
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                Row(Modifier.padding(top = 8.dp)) {
+                    TextButton(onClick = { pickers.pickFromGallery() }) {
+                        Text("Заменить")
+                    }
+                    TextButton(onClick = { vm.removePhoto() }) {
+                        Text("Удалить", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }

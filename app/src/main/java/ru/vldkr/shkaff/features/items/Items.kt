@@ -1,13 +1,16 @@
 package ru.vldkr.shkaff.features.items
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -44,10 +47,12 @@ import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.ScanBus
-import ru.vldkr.shkaff.ui.components.ItemRow
+import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.displayLabel
+import java.time.LocalDate
 
 class ItemsVm : ViewModel() {
 
@@ -119,14 +124,14 @@ fun ItemsScreen(nav: NavController) {
             }
         }
     ) { padding ->
-        Column(Modifier.padding(padding).padding(horizontal = 16.dp).fillMaxSize()) {
+        Column(Modifier.padding(padding).fillMaxSize()) {
             OutlinedTextField(
                 value = queryText,
                 onValueChange = {
                     queryText = it
                     vm.query.value = it
                 },
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 placeholder = { Text("Поиск: название, код, атрибуты…") },
                 singleLine = true
@@ -134,8 +139,8 @@ fun ItemsScreen(nav: NavController) {
             if (tagOptions.isNotEmpty()) {
                 Row(
                     Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 4.dp)
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
                         .horizontalScroll(rememberScrollState())
                 ) {
                     FilterChip(
@@ -163,9 +168,25 @@ fun ItemsScreen(nav: NavController) {
                     if (queryText.isBlank()) "Список пуст. Добавьте первую вещь." else "Ничего не найдено по «$queryText»."
                 )
             } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(list, key = { it.id }) { it ->
-                        ItemRow(it, locations[it.location_id]?.displayLabel(), { nav.navigate("item/${it.id}") })
+                        val date = Expiry.parse(it.expiry_date)
+                        val today = LocalDate.now()
+                        ItemCard(
+                            it,
+                            locations[it.location_id]?.displayLabel(),
+                            { nav.navigate("item/${it.id}") },
+                            expiryText = date?.let { d -> Expiry.label(d, today) },
+                            expiryColor = if (date != null && Expiry.daysUntil(date, today) < 0)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
