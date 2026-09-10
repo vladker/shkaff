@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -99,6 +102,12 @@ class ItemFormVm(
     val error = MutableStateFlow<String?>(null)
     val saving = MutableStateFlow(false)
     val loaded = MutableStateFlow(false)
+
+    // US-B1: поиск по штрихкоду в интернете
+    data class EanRow(val key: String, val value: String, val checked: Boolean)
+    val eanLookupBusy = MutableStateFlow(false)
+    val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
+    val eanLookupError = MutableStateFlow<String?>(null)
 
     class Factory(private val itemId: String, private val preselectLocationId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -197,6 +206,105 @@ class ItemFormVm(
             }
             recommendations.value = Recommend.rank(candidates, category, volume, weight)
         }
+    }
+
+    // US-B1: скан/ручной ввод EAN → данные из интернета (OpenFoodFacts, при неудаче — LLM).
+    // В карточку попадают только подтверждённые пользователем поля.
+    fun lookupEan() {
+        val code = ean.trim()
+        if (code.length < 8) {
+            eanLookupError.value = "Штрихкод слишком короткий (нужен EAN-8/13 или UPC)"
+            return
+        }
+        viewModelScope.launch {
+            eanLookupBusy.value = true
+            eanLookupError.value = null
+            eanLookupResult.value = null
+            val provider = ru.vldkr.shkaff.domain.ean.EanLookupFallback(
+                llm = ru.vldkr.shkaff.domain.ean.EanLlm { Deps.agentSettings() }
+            )
+            val p = try {
+                provider.lookup(code)
+            } catch (e: Exception) {
+                eanLookupError.value = "Не получилось: ${e.message}"
+                null
+            } finally {
+                eanLookupBusy.value = false
+            }
+            if (p == null) {
+                if (eanLookupError.value == null) {
+                    eanLookupError.value = "Ничего не нашлось по штрихкоду $code"
+                }
+                return@launch
+            }
+            val rows = mutableListOf<EanRow>()
+            if (p.name.isNotBlank()) rows += EanRow("Название", p.name, true)
+            if (p.brand.isNotBlank()) rows += EanRow("Бренд", p.brand, true)
+            if (p.categories.isNotBlank()) rows += EanRow("Категория", p.categories, true)
+            if (p.quantity.isNotBlank()) rows += EanRow("Количество", p.quantity, true)
+            p.extra.forEach { (k, v) -> if (v.isNotBlank()) rows += EanRow(k, v, true) }
+            eanLookupResult.value = rows.takeIf { it.isNotEmpty() }
+                ?: run {
+                    eanLookupError.value = "Нашёлся товар, но без полезных полей"
+                    null
+                }
+        }
+    }
+
+    fun toggleEanRow(key: String) {
+        eanLookupResult.value = eanLookupResult.value?.map {
+            if (it.key == key) it.copy(checked = !it.checked) else it
+        }
+    }
+
+    // Перенос подтверждённых полей в форму; неизвестная категория дописывается в словарь.
+    fun applyEan() {
+        val rows = eanLookupResult.value ?: return
+        val checked = rows.filter { it.checked && it.value.isNotBlank() }
+        if (checked.isEmpty()) {
+            eanLookupResult.value = null
+            return
+        }
+        val byKey = checked.associate { it.key to it.value.trim() }
+        byKey["Название"]?.let { name = it }
+        val descriptionParts = mutableListOf<String>()
+        if (description.isNotBlank()) descriptionParts += description
+        byKey["Бренд"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Бренд: $v"
+        }
+        byKey["Количество"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Количество: $v"
+        }
+        byKey["Общее название"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += v
+        }
+        byKey["Ингредиенты"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Состав: $v"
+        }
+        description = descriptionParts.joinToString("\n")
+        byKey["Категория"]?.let { v ->
+            val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
+            attrs = attrs + (categoryKey to v)
+            // US-B1: недостающие значения справочника добавляются в словарь
+            val def = attrDefs.value.firstOrNull { it.label == "Категория" }
+            if (def != null) {
+                val opts = runCatching { org.json.JSONArray(def.options) }.getOrNull() ?: org.json.JSONArray()
+                if ((0 until opts.length()).none { opts.optString(it).equals(v, ignoreCase = true) }) {
+                    viewModelScope.launch {
+                        try {
+                            Deps.attributes.addOption(def.id, v, Deps.deviceId)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            }
+        }
+        eanLookupResult.value = null
+    }
+
+    fun dismissEan() {
+        eanLookupResult.value = null
+        eanLookupError.value = null
     }
 
     fun save(onDone: (String) -> Unit) {
@@ -411,14 +519,28 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 )
             }
             FieldRow("Штрихкод (EAN)") {
-                OutlinedTextField(
-                    value = vm.ean,
-                    onValueChange = { vm.ean = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Оригинальный штрихкод товара") },
-                    supportingText = { Text("Например: 4607001234567") },
-                    singleLine = true
-                )
+                Column {
+                    OutlinedTextField(
+                        value = vm.ean,
+                        onValueChange = { vm.ean = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Оригинальный штрихкод товара") },
+                        supportingText = { Text("Например: 4607001234567") },
+                        singleLine = true
+                    )
+                    if (vm.ean.trim().length >= 8) {
+                        if (vm.eanLookupBusy.collectAsState().value) {
+                            Text("Ищем по штрихкоду…", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            TextButton(onClick = { vm.lookupEan() }, modifier = Modifier.align(Alignment.End)) {
+                                Text("Найти по штрихкоду в интернете")
+                            }
+                        }
+                    }
+                    vm.eanLookupError.collectAsState().value?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
             FieldRow("Описание") {
                 OutlinedTextField(
@@ -526,7 +648,45 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 onDismiss = { showLocationPicker = false }
             )
         }
+        EanLookupDialog(vm)
     }
+}
+
+// US-B1: подтверждение полей, найденных по штрихкоду в интернете.
+// В форму попадают только отмеченные значения.
+@Composable
+private fun EanLookupDialog(vm: ItemFormVm) {
+    val rows by vm.eanLookupResult.collectAsState()
+    if (rows == null) return
+    AlertDialog(
+        onDismissRequest = { vm.dismissEan() },
+        title = { Text("Найдено по штрихкоду") },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Text("Отметьте поля, которые перенести в карточку.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                rows.orEmpty().forEach { row ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = row.checked, onCheckedChange = { vm.toggleEanRow(row.key) })
+                        Column(Modifier.weight(1f).clickable { vm.toggleEanRow(row.key) }) {
+                            Text(row.key, style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                row.value,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.applyEan() }) { Text("Перенести выбранные") }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.dismissEan() }) { Text("Отмена") }
+        }
+    )
 }
 
 @Composable

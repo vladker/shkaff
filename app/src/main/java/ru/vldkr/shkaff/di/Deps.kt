@@ -97,6 +97,27 @@ object Deps {
         meta().upsert(SchemaMetaEntity("numberingAuto", if (on) "true" else "false"))
     }
 
+    // LLM-агент (US-B3): облако / локаль (Ollama), OpenAI-совместимый API.
+    fun agentSettings(): ru.vldkr.shkaff.domain.agent.AgentSettings {
+        val m = meta()
+        return ru.vldkr.shkaff.domain.agent.AgentSettings(
+            enabled = m.get("agentEnabled") == "1",
+            provider = m.get("agentProvider") ?: "cloud",
+            baseUrl = m.get("agentBaseUrl").orEmpty(),
+            apiKey = m.get("agentApiKey").orEmpty(),
+            model = m.get("agentModel").orEmpty()
+        )
+    }
+
+    fun saveAgentSettings(s: ru.vldkr.shkaff.domain.agent.AgentSettings) {
+        val m = meta()
+        m.upsert(SchemaMetaEntity("agentEnabled", if (s.enabled && !s.model.isBlank()) "1" else "0"))
+        m.upsert(SchemaMetaEntity("agentProvider", s.provider))
+        m.upsert(SchemaMetaEntity("agentBaseUrl", s.baseUrl))
+        m.upsert(SchemaMetaEntity("agentApiKey", s.apiKey))
+        m.upsert(SchemaMetaEntity("agentModel", s.model))
+    }
+
     // Профиль (US-G1): при первом запуске заводим «Админ», чтобы было с кого начать.
     private fun seedDefaultProfile() {
         if (db.userDao().count() > 0) return
