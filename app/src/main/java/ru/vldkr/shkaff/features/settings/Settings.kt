@@ -145,6 +145,35 @@ fun SettingsScreen(nav: NavController) {
                     { nav.navigate("printers") }
                 )
             }
+            item { Section("Люди и аудит") }
+            item {
+                SettingRow(
+                    "Профили и роли",
+                    "Кто работает, и какие действия разрешены (админ / добавление / перекладка / просмотр)",
+                    { nav.navigate("profiles") }
+                )
+            }
+            item {
+                SettingRow(
+                    "Выдано временно",
+                    "Активные выдачи вещей и хранилищ; просроченные — первыми",
+                    { nav.navigate("loans") }
+                )
+            }
+            item {
+                SettingRow(
+                    "Журнал действий",
+                    "Кто, что и когда менял; фильтр и экспорт",
+                    { nav.navigate("journal") }
+                )
+            }
+            item {
+                SettingRow(
+                    "Служебные QR",
+                    "QR-действия для печати рядом с хранилищами; ссылка для установки",
+                    { nav.navigate("actions") }
+                )
+            }
             item {
                 SettingRow("Облако (Yandex/Dropbox/Drive)", "Автоматическая синхронизация — в планах (M11)", null)
             }

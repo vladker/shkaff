@@ -207,3 +207,48 @@ data class DraftEntity(
     val form_json: String = "{}",
     val saved_at: Long = 0L
 )
+
+// Профиль пользователя (US-G1): роль ограничивает действия в приложении.
+@Entity(tableName = "user")
+data class UserEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    // admin (полный доступ) | add (только добавление) | move (перекладка) | view (только просмотр)
+    val role: String = "view",
+    // Расширяемый состав прав (JSON-массив строк), пока — зачаток под план.
+    val permissions: String = "[]",
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+// Временная выдача (US-D3): вещь или целое хранилище «выдано» с возможным сроком возврата.
+@Entity(tableName = "loan", indices = [Index("entity_id"), Index("returned_at"), Index("due_at")])
+data class LoanEntity(
+    @PrimaryKey val id: String,
+    val entity_type: String, // item | storage
+    val entity_id: String,
+    val borrower: String,
+    val note: String = "",
+    val lent_at: Long,
+    val due_at: Long? = null,
+    val returned_at: Long? = null,
+    val created_at: Long,
+    val updated_at: Long,
+    val device_last_modified: String = ""
+)
+
+// Журнал действий (US-F2): кто (профиль), что (действие), над чем, когда, с какого устройства.
+@Entity(tableName = "action_log", indices = [Index("action"), Index("at")])
+data class ActionLogEntity(
+    @PrimaryKey val id: String,
+    val user_id: String? = null,
+    val user_name: String = "",
+    val action: String, // add|update|delete|move|lend|return|export|import|print|profile|service
+    val entity_type: String = "",
+    val entity_id: String = "",
+    val detail: String = "{}",
+    val at: Long,
+    val device_id: String = ""
+)

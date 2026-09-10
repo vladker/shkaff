@@ -40,6 +40,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import ru.vldkr.shkaff.features.annotations.AnnotationScreen
+import ru.vldkr.shkaff.features.actions.ActionsScreen
 import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
@@ -48,9 +49,12 @@ import ru.vldkr.shkaff.features.batch.BatchEntryScreen
 import ru.vldkr.shkaff.features.backup.BackupScreen
 import ru.vldkr.shkaff.features.export.ExportScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
+import ru.vldkr.shkaff.features.journal.JournalScreen
 import ru.vldkr.shkaff.features.labels.LabelsScreen
+import ru.vldkr.shkaff.features.loans.LoansScreen
 import ru.vldkr.shkaff.features.merge.ConflictsScreen
 import ru.vldkr.shkaff.features.printers.PrintersScreen
+import ru.vldkr.shkaff.features.profiles.ProfilesScreen
 import ru.vldkr.shkaff.features.labels.TemplatesScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
 import ru.vldkr.shkaff.features.locations.LocationFormScreen
@@ -210,6 +214,10 @@ fun AppRoot() {
 
             composable("attrdefs") { AttrDefsScreen(navController) }
             composable("settings") { SettingsScreen(navController) }
+            composable("profiles") { ProfilesScreen(navController) }
+            composable("loans") { LoansScreen(navController) }
+            composable("journal") { JournalScreen(navController) }
+            composable("actions") { ActionsScreen(navController) }
         }
     }
 }

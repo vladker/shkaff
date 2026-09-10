@@ -4,10 +4,12 @@ import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.data.db.TagEntity
+import ru.vldkr.shkaff.data.db.UserEntity
 
 data class MergeInput(
     val attributeDefs: List<AttributeDefEntity> = emptyList(),
@@ -18,6 +20,8 @@ data class MergeInput(
     val labelTemplates: List<LabelTemplateEntity> = emptyList(),
     val printers: List<PrinterProfileEntity> = emptyList(),
     val tags: List<TagEntity> = emptyList(),
+    val users: List<UserEntity> = emptyList(),
+    val loans: List<LoanEntity> = emptyList(),
     val lastModified: Long = 0L
 )
 
@@ -194,7 +198,20 @@ object MergeEngine {
         )
         allConflicts += c8
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8)
+        val (users, c9, s9) = mergeTable(
+            "users", local.users, remote.users,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c9
+
+        // Выдачи живут по updated_at; удаление — через возврат (returned_at), поэтому deleted_at отсутствует.
+        val (loans, c10, s10) = mergeTable(
+            "loans", local.loans, remote.loans,
+            { it.id }, { it.updated_at }, { _ -> null }, { "${it.entity_type}:${it.entity_id}" }, remoteWins
+        )
+        allConflicts += c10
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10)
         val total = MergeStats(
             added = all.sumOf { it.added },
             changed = all.sumOf { it.changed },
@@ -213,6 +230,8 @@ object MergeEngine {
             labelTemplates = tpls,
             printers = printers,
             tags = tags,
+            users = users,
+            loans = loans,
             lastModified = lastModified
         )
 

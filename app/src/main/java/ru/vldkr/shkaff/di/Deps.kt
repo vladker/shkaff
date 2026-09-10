@@ -8,13 +8,17 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
+import ru.vldkr.shkaff.data.repository.ActionLogRepository
 import ru.vldkr.shkaff.data.repository.AttributeRepository
 import ru.vldkr.shkaff.data.repository.DraftRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
+import ru.vldkr.shkaff.data.repository.LoansRepository
 import ru.vldkr.shkaff.data.repository.NumberingService
 import ru.vldkr.shkaff.data.repository.StorageRepository
 import ru.vldkr.shkaff.data.repository.TagRepository
+import ru.vldkr.shkaff.data.repository.UsersRepository
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
 import java.util.UUID
@@ -41,6 +45,12 @@ object Deps {
         private set
     lateinit var drafts: DraftRepository
         private set
+    lateinit var users: UsersRepository
+        private set
+    lateinit var loans: LoansRepository
+        private set
+    lateinit var actionLog: ActionLogRepository
+        private set
 
     private var ready = false
 
@@ -62,10 +72,15 @@ object Deps {
         numbering = NumberingService(db)
         tags = TagRepository(db)
         drafts = DraftRepository(db)
+        users = UsersRepository(db)
+        loans = LoansRepository(db)
+        actionLog = ActionLogRepository(db)
         seedDefaultAttributes()
         seedDefaultTemplate()
         backfillExpiryDates()
         seedTagDictionaryOnce()
+        seedDefaultProfile()
+        pruneJournal()
         ready = true
     }
 
@@ -80,6 +95,16 @@ object Deps {
 
     fun setNumberingAuto(on: Boolean) {
         meta().upsert(SchemaMetaEntity("numberingAuto", if (on) "true" else "false"))
+    }
+
+    // Профиль (US-G1): при первом запуске заводим «Админ», чтобы было с кого начать.
+    private fun seedDefaultProfile() {
+        if (db.userDao().count() > 0) return
+        runBlocking { users.create("Админ", Role.ADMIN) }
+    }
+
+    private fun pruneJournal() {
+        runBlocking { actionLog.prune() }
     }
 
     private fun meta() = db.metaDao()

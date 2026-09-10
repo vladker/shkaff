@@ -62,6 +62,8 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.recommend.Recommend
 import ru.vldkr.shkaff.domain.recommend.RecommendCandidate
 import ru.vldkr.shkaff.domain.recommend.StorageSuggestion
@@ -208,6 +210,13 @@ class ItemFormVm(
         viewModelScope.launch {
             saving.value = true
             error.value = null
+            val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+            val need = if (itemId == null) Access.CREATE else Access.EDIT
+            if (!Access.can(role, need)) {
+                error.value = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})"
+                saving.value = false
+                return@launch
+            }
             val d = ItemData(
                 name = name,
                 code = code,

@@ -1,10 +1,12 @@
 package ru.vldkr.shkaff.features.scan
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +67,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.actions.ActionCode
 import ru.vldkr.shkaff.util.ScanBus
 import java.util.concurrent.Executors
 
@@ -191,34 +197,125 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                             Spacer(Modifier.height(4.dp))
                             Text(code, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(12.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = {
-                                        ScanBus.lastCode = code
-                                        nav.navigate("items") { popUpTo("dashboard") }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Найти") }
-                                Button(
-                                    onClick = {
-                                        ScanBus.lastCode = code
-                                        nav.navigate("item-form/0/0") { popUpTo("dashboard") }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Новая вещь") }
-                                Button(
-                                    onClick = {
-                                        ScanBus.lastCode = code
-                                        nav.navigate("labels/0/0") { popUpTo("dashboard") }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Этикетка") }
+                            if (ActionCode.isServiceCode(code)) {
+                                ServiceCodeCard(nav, parsed = ActionCode.parse(code), onDone = { detected = null })
+                            } else if (code.startsWith("https://") || code.startsWith("http://")) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            runCatching {
+                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(code)))
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Открыть ссылку") }
+                                    OutlinedButton(onClick = { detected = null }, modifier = Modifier.weight(1f)) { Text("Сканировать ещё") }
+                                }
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            ScanBus.lastCode = code
+                                            nav.navigate("items") { popUpTo("dashboard") }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Найти") }
+                                    Button(
+                                        onClick = {
+                                            ScanBus.lastCode = code
+                                            nav.navigate("item-form/0/0") { popUpTo("dashboard") }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Новая вещь") }
+                                    Button(
+                                        onClick = {
+                                            ScanBus.lastCode = code
+                                            nav.navigate("labels/0/0") { popUpTo("dashboard") }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Этикетка") }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ServiceCodeCard(
+    nav: androidx.navigation.NavController,
+    parsed: ActionCode.Parsed,
+    onDone: () -> Unit
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var denied by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val verbLabel = when (parsed.verb) {
+        ActionCode.Verb.ADD -> "Добавить"
+        ActionCode.Verb.MOVE -> "Переложить"
+        ActionCode.Verb.DELETE -> "Удалить"
+        ActionCode.Verb.LEND -> "Выдать временно"
+        ActionCode.Verb.EXPORT -> "Экспорт базы"
+        ActionCode.Verb.JOURNAL -> "Журнал действий"
+        else -> parsed.verb
+    }
+    fun verbAction(): String = when (parsed.verb) {
+        ActionCode.Verb.ADD -> Access.CREATE
+        ActionCode.Verb.MOVE -> Access.MOVE
+        ActionCode.Verb.DELETE -> Access.EDIT
+        ActionCode.Verb.LEND -> Access.LEND
+        ActionCode.Verb.EXPORT, ActionCode.Verb.JOURNAL -> Access.EXPORT
+        else -> Access.VIEW
+    }
+    fun runAction() {
+        when (parsed.verb) {
+            ActionCode.Verb.ADD -> when (parsed.entityType) {
+                "item" -> nav.navigate("item-form/0/0")
+                "storage" -> nav.navigate("storage-form/0")
+                "location" -> nav.navigate("location-form/0/0")
+            }
+            ActionCode.Verb.EXPORT -> nav.navigate("export")
+            ActionCode.Verb.JOURNAL -> nav.navigate("journal")
+            ActionCode.Verb.MOVE, ActionCode.Verb.LEND, ActionCode.Verb.DELETE -> {
+                if (parsed.entityId.isNotBlank()) {
+                    when (parsed.entityType) {
+                        "item" -> nav.navigate("item/${parsed.entityId}")
+                        "storage" -> nav.navigate("storage/${parsed.entityId}")
+                        "location" -> nav.navigate("location/${parsed.entityId}")
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+    if (denied) {
+        Text(
+            "Профиль без прав на «$verbLabel»",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(Modifier.height(8.dp))
+    } else {
+        Text(
+            "Служебный QR · $verbLabel",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = {
+                scope.launch {
+                    val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+                    if (Access.can(role, verbAction())) runAction() else denied = true
+                }
+            },
+            modifier = Modifier.weight(1f)
+        ) { Text("Выполнить") }
+        OutlinedButton(onClick = onDone, modifier = Modifier.weight(1f)) { Text("Отмена") }
     }
 }
 

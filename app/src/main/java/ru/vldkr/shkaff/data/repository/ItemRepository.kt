@@ -55,6 +55,7 @@ class ItemRepository(
             weight_kg = d.weightKg
         )
         dao.upsert(e)
+        Deps.actionLog.log("create", "item", e.id, mapOf("name" to e.name))
         return e
     }
 
@@ -78,6 +79,11 @@ class ItemRepository(
             weight_kg = d.weightKg
         )
         dao.upsert(u)
+        if (u.location_id != e.location_id) {
+            Deps.actionLog.log("move", "item", u.id, mapOf("name" to u.name, "to" to (u.location_id ?: "no-location")))
+        } else {
+            Deps.actionLog.log("update", "item", u.id, mapOf("name" to u.name))
+        }
         return u
     }
 
@@ -101,7 +107,9 @@ class ItemRepository(
     }
 
     suspend fun softDelete(id: String) {
+        val e = dao.byId(id)
         dao.softDelete(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("delete", "item", id, mapOf("name" to it.name)) }
     }
 
     suspend fun hardDelete(id: String) {

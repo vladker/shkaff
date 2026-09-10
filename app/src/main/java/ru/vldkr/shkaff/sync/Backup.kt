@@ -7,11 +7,13 @@ import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.data.db.TagEntity
+import ru.vldkr.shkaff.data.db.UserEntity
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -31,6 +33,8 @@ object Backup {
         labelTemplates = db.labelTemplateDao().allWithDeleted(),
         printers = db.printerDao().allWithDeleted(),
         tags = db.tagDao().allWithDeleted(),
+        users = db.userDao().allWithDeleted(),
+        loans = db.loanDao().allWithDeleted(),
         lastModified = System.currentTimeMillis()
     )
 
@@ -212,6 +216,40 @@ object Backup {
         device_last_modified = j.optString("device", "")
     )
 
+    private fun o(e: UserEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name); put("role", e.role); put("permissions", e.permissions)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun user(j: JSONObject): UserEntity = UserEntity(
+        id = j.getString("id"), name = j.getString("name"),
+        role = j.optString("role", "view"),
+        permissions = j.optString("permissions", "[]"),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
+    private fun o(e: LoanEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("entity_type", e.entity_type); put("entity_id", e.entity_id)
+        put("borrower", e.borrower); put("note", e.note)
+        put("lent_at", e.lent_at); put("due_at", e.due_at ?: 0); put("returned_at", e.returned_at ?: 0)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("device", e.device_last_modified)
+    }
+
+    private fun loan(j: JSONObject): LoanEntity = LoanEntity(
+        id = j.getString("id"), entity_type = j.optString("entity_type", "item"),
+        entity_id = j.optString("entity_id", ""),
+        borrower = j.optString("borrower", ""), note = j.optString("note", ""),
+        lent_at = j.optLong("lent_at", 0L),
+        due_at = j.optLong("due_at", 0L).takeIf { it > 0 },
+        returned_at = j.optLong("returned_at", 0L).takeIf { it > 0 },
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        device_last_modified = j.optString("device", "")
+    )
+
     fun toJson(input: MergeInput): String {
         val root = JSONObject()
         root.put("format", FORMAT)
@@ -225,6 +263,8 @@ object Backup {
         root.put("label_templates", JSONArray().apply { input.labelTemplates.forEach { put(o(it)) } })
         root.put("printers", JSONArray().apply { input.printers.forEach { put(o(it)) } })
         root.put("tags", JSONArray().apply { input.tags.forEach { put(o(it)) } })
+        root.put("users", JSONArray().apply { input.users.forEach { put(o(it)) } })
+        root.put("loans", JSONArray().apply { input.loans.forEach { put(o(it)) } })
         return root.toString()
     }
 
@@ -246,6 +286,8 @@ object Backup {
             labelTemplates = arr("label_templates") { tpl(it) },
             printers = arr("printers") { printer(it) },
             tags = arr("tags") { tag(it) },
+            users = arr("users") { user(it) },
+            loans = arr("loans") { loan(it) },
             lastModified = root.optLong("exported_at", 0L)
         )
     }
@@ -296,6 +338,8 @@ object Backup {
             db.labelTemplateDao().upsertAll(m.labelTemplates)
             db.printerDao().upsertAll(m.printers)
             db.tagDao().upsertAll(m.tags)
+            db.userDao().upsertAll(m.users)
+            db.loanDao().upsertAll(m.loans)
         }
     }
 }

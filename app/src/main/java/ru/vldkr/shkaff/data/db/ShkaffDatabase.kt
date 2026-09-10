@@ -19,9 +19,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConflictLogEntity::class,
         SchemaMetaEntity::class,
         TagEntity::class,
-        DraftEntity::class
+        DraftEntity::class,
+        UserEntity::class,
+        LoanEntity::class,
+        ActionLogEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -37,10 +40,13 @@ abstract class ShkaffDatabase : RoomDatabase() {
     abstract fun metaDao(): MetaDao
     abstract fun tagDao(): TagDao
     abstract fun draftDao(): DraftDao
+    abstract fun userDao(): UserDao
+    abstract fun loanDao(): LoanDao
+    abstract fun actionLogDao(): ActionLogDao
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "5"
+        const val SCHEMA_VERSION = "6"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -130,10 +136,40 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v6 (M10 — «Люди и аудит»): профили, выдачи, журнал действий.
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `user` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `role` TEXT NOT NULL, " +
+                        "`permissions` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, " +
+                        "`deleted_at` INTEGER, `device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan` (" +
+                        "`id` TEXT NOT NULL, `entity_type` TEXT NOT NULL, `entity_id` TEXT NOT NULL, " +
+                        "`borrower` TEXT NOT NULL, `note` TEXT NOT NULL, `lent_at` INTEGER NOT NULL, " +
+                        "`due_at` INTEGER, `returned_at` INTEGER, `created_at` INTEGER NOT NULL, " +
+                        "`updated_at` INTEGER NOT NULL, `device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `action_log` (" +
+                        "`id` TEXT NOT NULL, `user_id` TEXT, `user_name` TEXT NOT NULL, `action` TEXT NOT NULL, " +
+                        "`entity_type` TEXT NOT NULL, `entity_id` TEXT NOT NULL, `detail` TEXT NOT NULL, " +
+                        "`at` INTEGER NOT NULL, `device_id` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_entity_id` ON `loan` (`entity_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_returned_at` ON `loan` (`returned_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_due_at` ON `loan` (`due_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_action_log_action` ON `action_log` (`action`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_action_log_at` ON `action_log` (`at`)")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

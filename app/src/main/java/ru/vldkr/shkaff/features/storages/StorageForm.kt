@@ -44,6 +44,8 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.StorageData
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -123,6 +125,13 @@ class StorageFormVm(
         viewModelScope.launch {
             saving.value = true
             error.value = null
+            val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+            val need = if (storageId == null) Access.CREATE else Access.EDIT
+            if (!Access.can(role, need)) {
+                error.value = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})"
+                saving.value = false
+                return@launch
+            }
             val d = StorageData(
                 name = name,
                 code = code,

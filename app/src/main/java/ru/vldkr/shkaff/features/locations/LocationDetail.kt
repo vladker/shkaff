@@ -49,12 +49,14 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.util.FormBus
 
 class LocationDetailVm(val locationId: String) : ViewModel() {
@@ -106,6 +108,7 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
     val usage by vm.usage.collectAsState()
     val locations = LocationMap()
     var showDelete by remember { mutableStateOf(false) }
+    val role = rememberRole()
 
     val l = location
     Scaffold(
@@ -125,18 +128,22 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { nav.navigate("location-form/${l?.storage_id ?: "0"}/$locationId") }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Изменить")
-                    }
-                    IconButton(onClick = { showDelete = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                    if (Access.can(role, Access.EDIT)) {
+                        IconButton(onClick = { nav.navigate("location-form/${l?.storage_id ?: "0"}/$locationId") }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Изменить")
+                        }
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                        }
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nav.navigate("item-form/0/$locationId") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+            if (Access.can(role, Access.CREATE)) {
+                FloatingActionButton(onClick = { nav.navigate("item-form/0/$locationId") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+                }
             }
         }
     ) { padding ->
@@ -181,10 +188,12 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                 item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Вложенные ящики (${nested.size})", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = {
-                            FormBus.locationParentPreset = locationId
-                            nav.navigate("location-form/${l.storage_id}/0")
-                        }) { Text("Добавить") }
+                        if (Access.can(role, Access.CREATE)) {
+                            TextButton(onClick = {
+                                FormBus.locationParentPreset = locationId
+                                nav.navigate("location-form/${l.storage_id}/0")
+                            }) { Text("Добавить") }
+                        }
                     }
                 }
                 if (nested.isEmpty()) {

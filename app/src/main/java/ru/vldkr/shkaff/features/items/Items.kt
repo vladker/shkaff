@@ -46,7 +46,9 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.ui.components.ItemCard
@@ -99,6 +101,7 @@ fun ItemsScreen(nav: NavController) {
     val locations = LocationMap()
     var queryText by remember { mutableStateOf(vm.query.value) }
     var activeTag by remember { mutableStateOf(vm.tagFilter.value) }
+    val role = rememberRole()
     LaunchedEffect(Unit) {
         ScanBus.lastCode?.let { code ->
             queryText = code
@@ -112,15 +115,19 @@ fun ItemsScreen(nav: NavController) {
             TopAppBar(
                 title = { Text("Вещи") },
                 actions = {
-                    IconButton(onClick = { nav.navigate("batch") }) {
-                        Icon(Icons.Filled.Numbers, contentDescription = "Серия вещей")
+                    if (Access.can(role, Access.CREATE)) {
+                        IconButton(onClick = { nav.navigate("batch") }) {
+                            Icon(Icons.Filled.Numbers, contentDescription = "Серия вещей")
+                        }
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+            if (Access.can(role, Access.CREATE)) {
+                FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+                }
             }
         }
     ) { padding ->

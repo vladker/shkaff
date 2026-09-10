@@ -32,7 +32,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.rememberRole
 
 class StoragesVm : ViewModel() {
 
@@ -81,12 +83,15 @@ fun StoragesScreen(nav: NavController) {
     val vm: StoragesVm = viewModel()
     val rows by vm.rows.collectAsState()
     val counts by vm.locationsCount.collectAsState()
+    val role = rememberRole()
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Хранилища") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nav.navigate("storage-form/0") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Новое хранилище")
+            if (Access.can(role, Access.CREATE)) {
+                FloatingActionButton(onClick = { nav.navigate("storage-form/0") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Новое хранилище")
+                }
             }
         }
     ) { padding ->

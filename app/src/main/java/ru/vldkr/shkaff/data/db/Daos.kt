@@ -322,3 +322,73 @@ interface MetaDao {
     @Query("SELECT * FROM schema_meta ORDER BY key")
     suspend fun all(): List<SchemaMetaEntity>
 }
+
+@Dao
+interface UserDao {
+    @Query("SELECT * FROM \"user\" WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    fun observeAll(): Flow<List<UserEntity>>
+
+    @Query("SELECT * FROM \"user\" WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    suspend fun all(): List<UserEntity>
+
+    @Query("SELECT * FROM \"user\" WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): UserEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(u: UserEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<UserEntity>)
+
+    @Query("SELECT * FROM \"user\"")
+    suspend fun allWithDeleted(): List<UserEntity>
+
+    @Query("UPDATE \"user\" SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("SELECT COUNT(*) FROM \"user\" WHERE deleted_at IS NULL")
+    fun count(): Int
+}
+
+@Dao
+interface LoanDao {
+    // Активные (не возвращённые) выдачи, просроченные — первыми.
+    @Query("SELECT * FROM loan WHERE returned_at IS NULL ORDER BY (due_at IS NOT NULL AND due_at < :now) DESC, due_at IS NULL, due_at ASC, lent_at DESC")
+    fun observeActive(now: Long): Flow<List<LoanEntity>>
+
+    @Query("SELECT * FROM loan ORDER BY lent_at DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<LoanEntity>
+
+    @Query("SELECT * FROM loan WHERE entity_type = :entityType AND entity_id = :entityId AND returned_at IS NULL LIMIT 1")
+    suspend fun activeForEntity(entityType: String, entityId: String): LoanEntity?
+
+    @Query("SELECT * FROM loan WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): LoanEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(l: LoanEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<LoanEntity>)
+
+    @Query("SELECT * FROM loan")
+    suspend fun allWithDeleted(): List<LoanEntity>
+
+    @Query("UPDATE loan SET returned_at = :returnedAt, updated_at = :updatedAt, device_last_modified = :dev WHERE id = :id")
+    suspend fun markReturned(id: String, returnedAt: Long, updatedAt: Long, dev: String)
+}
+
+@Dao
+interface ActionLogDao {
+    @Query("SELECT * FROM action_log ORDER BY at DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<ActionLogEntity>>
+
+    @Query("SELECT * FROM action_log WHERE (:action IS NULL OR action = :action) AND (:from IS NULL OR at >= :from) AND (:to IS NULL OR at <= :to) ORDER BY at DESC LIMIT :limit")
+    fun observeFiltered(action: String?, from: Long?, to: Long?, limit: Int): Flow<List<ActionLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(l: ActionLogEntity)
+
+    @Query("DELETE FROM action_log WHERE at < :before")
+    suspend fun deleteOlderThan(before: Long)
+}

@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,10 +43,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.util.Expiry
 import java.time.LocalDate
 import ru.vldkr.shkaff.ui.components.EmptyState
@@ -62,7 +66,11 @@ class DashboardVm : ViewModel() {
         val storagesCount: Int = 0,
         val recent: List<ItemEntity> = emptyList(),
         val expiringSoon: List<ItemEntity> = emptyList(),
-        val tagDist: List<Pair<String, Int>> = emptyList()
+        val tagDist: List<Pair<String, Int>> = emptyList(),
+        val activeLoans: Int = 0,
+        val overdueLoans: Int = 0,
+        val canCreate: Boolean = true,
+        val activeProfile: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
@@ -76,13 +84,20 @@ class DashboardVm : ViewModel() {
                 for (t in TagsJson.toList(i.tags)) tagMap[t] = (tagMap[t] ?: 0) + 1
             }
             val tagDist = tagMap.entries.sortedByDescending { it.value }.take(5).map { it.key to it.value }
+            val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+            val now = System.currentTimeMillis()
+            val loans = Deps.loans.observeActive().first()
             ui.value = Ui(
                 itemsCount = items.size,
                 locationsCount = Deps.locations.count(),
                 storagesCount = Deps.storages.count(),
                 recent = items.take(5),
                 expiringSoon = Deps.items.expiringSoon(Deps.expiryThresholdDays()),
-                tagDist = tagDist
+                tagDist = tagDist,
+                activeLoans = loans.size,
+                overdueLoans = loans.count { it.due_at != null && it.due_at < now },
+                canCreate = Access.can(role, Access.CREATE),
+                activeProfile = Deps.users.activeUser()?.name
             )
         }
     }
@@ -99,17 +114,33 @@ fun DashboardScreen(nav: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Шкаф") },
+                title = {
+                    Column {
+                        Text("Шкаф")
+                        ui.activeProfile?.let {
+                            Text(
+                                "Профиль: $it",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = { nav.navigate("scan") }) {
                         Icon(Icons.Filled.QrCodeScanner, contentDescription = "Сканер")
+                    }
+                    IconButton(onClick = { nav.navigate("settings") }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Настройки")
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+            if (ui.canCreate) {
+                FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+                }
             }
         }
     ) { padding ->
@@ -130,26 +161,49 @@ fun DashboardScreen(nav: NavController) {
                     StatCard(ui.storagesCount, "Хранилища", Modifier.weight(1f)) { nav.navigate("storages") }
                 }
             }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { nav.navigate("storage-form/0") }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.Storage, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Хранилище")
-                    }
-                    OutlinedButton(onClick = { nav.navigate("storages") }, modifier = Modifier.weight(1f)) {
-                        Text("Новый ящик")
+            if (ui.activeLoans > 0) {
+                item {
+                    Card(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { nav.navigate("loans") }
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                if (ui.overdueLoans > 0)
+                                    "Выдано: ${ui.activeLoans} · просрочено: ${ui.overdueLoans}"
+                                else
+                                    "Выдано временно: ${ui.activeLoans}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (ui.overdueLoans > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }
-            item {
-                OutlinedButton(
-                    onClick = { nav.navigate("batch") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    Text("Серия однотипных вещей (массовый ввод)")
+            if (ui.canCreate) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { nav.navigate("storage-form/0") }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.Storage, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Хранилище")
+                        }
+                        OutlinedButton(onClick = { nav.navigate("storages") }, modifier = Modifier.weight(1f)) {
+                            Text("Новый ящик")
+                        }
+                    }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = { nav.navigate("batch") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text("Серия однотипных вещей (массовый ввод)")
+                    }
                 }
             }
             if (ui.tagDist.isNotEmpty()) {

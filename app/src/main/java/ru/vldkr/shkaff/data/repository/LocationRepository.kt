@@ -53,6 +53,7 @@ class LocationRepository(
             device_last_modified = deviceId()
         )
         dao.upsert(e)
+        Deps.actionLog.log("create", "location", e.id, mapOf("name" to e.label.ifBlank { e.name }))
         return e
     }
 
@@ -74,6 +75,7 @@ class LocationRepository(
             device_last_modified = deviceId()
         )
         dao.upsert(u)
+        Deps.actionLog.log("update", "location", u.id, mapOf("name" to u.label.ifBlank { u.name }))
         return u
     }
 
@@ -85,7 +87,9 @@ class LocationRepository(
     }
 
     suspend fun softDelete(id: String) {
+        val e = dao.byId(id)
         dao.softDelete(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("delete", "location", id, mapOf("name" to it.label.ifBlank { it.name })) }
     }
 
     suspend fun hardDelete(id: String) {

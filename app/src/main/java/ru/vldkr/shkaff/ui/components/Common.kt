@@ -39,6 +39,7 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 
 @Composable
@@ -417,3 +418,13 @@ fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier) {
 }
 
 private fun fmt1(v: Double): String = if (v >= 100) v.toInt().toString() else "%.1f".format(v)
+
+// Роль активного профиля (US-G1); обновляется после старта скрина.
+@Composable
+fun rememberRole(): Role {
+    var role by remember { mutableStateOf(Role.VIEW) }
+    LaunchedEffect(Unit) {
+        role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+    }
+    return role
+}

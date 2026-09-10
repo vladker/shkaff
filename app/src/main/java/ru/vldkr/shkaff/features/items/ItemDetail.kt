@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,10 +60,15 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.Expiry
+import ru.vldkr.shkaff.util.formatDate
 import java.time.LocalDate
 
 class ItemDetailVm(val itemId: String) : ViewModel() {
@@ -69,6 +76,8 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
     val item = MutableStateFlow<ItemEntity?>(null)
     val locationLabel = MutableStateFlow<String?>(null)
     val storageName = MutableStateFlow<String?>(null)
+    val activeLoan = MutableStateFlow<LoanEntity?>(null)
+    val role = MutableStateFlow(Role.VIEW)
 
     class Factory(private val itemId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -88,6 +97,24 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
                 }
             }
         }
+        viewModelScope.launch {
+            role.value = Role.parse(Deps.users.activeUser()?.role ?: "view")
+        }
+        viewModelScope.launch {
+            activeLoan.value = Deps.loans.activeForEntity("item", itemId)
+        }
+    }
+
+    fun lend(borrower: String, note: String, dueAt: Long?) {
+        viewModelScope.launch { Deps.loans.lend("item", itemId, borrower, note, dueAt) }
+    }
+
+    fun returnActiveLoan() {
+        val id = activeLoan.value?.id ?: return
+        viewModelScope.launch {
+            Deps.loans.returnLoan(id)
+            activeLoan.value = null
+        }
     }
 
     fun softDelete() {
@@ -103,6 +130,9 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     val locationLabel by vm.locationLabel.collectAsState()
     val storageName by vm.storageName.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
+    val role by vm.role.collectAsState()
+    val loan by vm.activeLoan.collectAsState()
+    var showLend by remember { mutableStateOf(false) }
 
     val i = item
     Scaffold(
@@ -115,11 +145,13 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { nav.navigate("item-form/$itemId/0") }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Изменить")
-                    }
-                    IconButton(onClick = { showDelete = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                    if (Access.can(role, Access.EDIT)) {
+                        IconButton(onClick = { nav.navigate("item-form/$itemId/0") }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Изменить")
+                        }
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                        }
                     }
                 }
             )
@@ -274,6 +306,29 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             Spacer(Modifier.width(8.dp))
                             Text("Этикетка: QR / штрихкод")
                         }
+                        if (Access.can(role, Access.LEND)) {
+                            Spacer(Modifier.height(4.dp))
+                            val l = loan
+                            if (l != null) {
+                                val due = l.due_at
+                                val overdue = due != null && due < System.currentTimeMillis()
+                                Text(
+                                    "Выдано: ${l.borrower}${due?.let { " · возврат до ${formatDate(it)}" } ?: ""}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                OutlinedButton(
+                                    onClick = { vm.returnActiveLoan() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Вернуть") }
+                            } else {
+                                Button(
+                                    onClick = { showLend = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Выдать временно") }
+                            }
+                        }
                         ActionStub("Фотография и удаление фона", "M5")
                         ActionStub("Отсканировать код этой вещи", "M3")
                     }
@@ -295,6 +350,17 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                 },
                 dismissButton = {
                     TextButton(onClick = { showDelete = false }) { Text("Отмена") }
+                }
+            )
+        }
+
+        if (showLend) {
+            LendDialog(
+                title = "Выдать вещь",
+                onDismiss = { showLend = false },
+                onConfirm = { b, n, d ->
+                    showLend = false
+                    vm.lend(b, n, d)
                 }
             )
         }

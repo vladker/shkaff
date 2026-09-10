@@ -28,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,13 +52,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.FormBus
+import ru.vldkr.shkaff.util.formatDate
 
 class StorageDetailVm(val storageId: String) : ViewModel() {
 
@@ -68,6 +74,8 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     val locRows = MutableStateFlow<List<LocRow>>(emptyList())
     val itemCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val usage = MutableStateFlow<CapacityUsage?>(null)
+    val activeLoan = MutableStateFlow<LoanEntity?>(null)
+    val role = MutableStateFlow(Role.VIEW)
 
     class Factory(private val storageId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -117,6 +125,27 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     fun softDelete() {
         viewModelScope.launch { Deps.storages.softDelete(storageId) }
     }
+
+    init {
+        viewModelScope.launch {
+            role.value = Role.parse(Deps.users.activeUser()?.role ?: "view")
+        }
+        viewModelScope.launch {
+            activeLoan.value = Deps.loans.activeForEntity("storage", storageId)
+        }
+    }
+
+    fun lend(borrower: String, note: String, dueAt: Long?) {
+        viewModelScope.launch { Deps.loans.lend("storage", storageId, borrower, note, dueAt) }
+    }
+
+    fun returnActiveLoan() {
+        val id = activeLoan.value?.id ?: return
+        viewModelScope.launch {
+            Deps.loans.returnLoan(id)
+            activeLoan.value = null
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,6 +158,9 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
     val itemCounts by vm.itemCounts.collectAsState()
     val usage by vm.usage.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
+    val role by vm.role.collectAsState()
+    val loan by vm.activeLoan.collectAsState()
+    var showLend by remember { mutableStateOf(false) }
 
     val s = storage
     Scaffold(
@@ -141,18 +173,22 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { nav.navigate("storage-form/$storageId") }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Изменить")
-                    }
-                    IconButton(onClick = { showDelete = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                    if (Access.can(role, Access.EDIT)) {
+                        IconButton(onClick = { nav.navigate("storage-form/$storageId") }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Изменить")
+                        }
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                        }
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nav.navigate("location-form/$storageId/0") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Новый ящик")
+            if (Access.can(role, Access.CREATE)) {
+                FloatingActionButton(onClick = { nav.navigate("location-form/$storageId/0") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Новый ящик")
+                }
             }
         }
     ) { padding ->
@@ -225,6 +261,30 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                 }
             }
             item { SectionTitle("Ящики (${locRows.size})") }
+            if (Access.can(role, Access.LEND)) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        val l = loan
+                        if (l != null) {
+                            val due = l.due_at
+                            val overdue = due != null && due < System.currentTimeMillis()
+                            Text(
+                                "Выдано: ${l.borrower}${due?.let { " · возврат до ${formatDate(it)}" } ?: ""}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            OutlinedButton(onClick = { vm.returnActiveLoan() }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Вернуть")
+                            }
+                        } else {
+                            Button(onClick = { showLend = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Выдать хранилище временно")
+                            }
+                        }
+                    }
+                }
+            }
             if (locRows.isEmpty()) {
                 item { EmptyState("Ящиков пока нет.\nНажмите «+», чтобы добавить первый ящик. Ящики можно вкладывать друг в друга.") }
             } else {
@@ -251,11 +311,13 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            IconButton(onClick = {
-                                FormBus.locationParentPreset = l.id
-                                nav.navigate("location-form/$storageId/0")
-                            }) {
-                                Icon(Icons.Filled.AddCircle, contentDescription = "Вложенный ящик в «$label»")
+                            if (Access.can(role, Access.CREATE)) {
+                                IconButton(onClick = {
+                                    FormBus.locationParentPreset = l.id
+                                    nav.navigate("location-form/$storageId/0")
+                                }) {
+                                    Icon(Icons.Filled.AddCircle, contentDescription = "Вложенный ящик в «$label»")
+                                }
                             }
                         }
                         Spacer(Modifier.height(6.dp))
@@ -279,6 +341,17 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                 },
                 dismissButton = {
                     TextButton(onClick = { showDelete = false }) { Text("Отмена") }
+                }
+            )
+        }
+
+        if (showLend) {
+            LendDialog(
+                title = "Выдать хранилище",
+                onDismiss = { showLend = false },
+                onConfirm = { b, n, d ->
+                    showLend = false
+                    vm.lend(b, n, d)
                 }
             )
         }

@@ -43,6 +43,7 @@ class StorageRepository(
             device_last_modified = deviceId()
         )
         dao.upsert(e)
+        Deps.actionLog.log("create", "storage", e.id, mapOf("name" to e.name))
         return e
     }
 
@@ -65,6 +66,7 @@ class StorageRepository(
             device_last_modified = deviceId()
         )
         dao.upsert(u)
+        Deps.actionLog.log("update", "storage", u.id, mapOf("name" to u.name))
         return u
     }
 
@@ -85,7 +87,9 @@ class StorageRepository(
     }
 
     suspend fun softDelete(id: String) {
+        val e = dao.byId(id)
         dao.softDelete(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("delete", "storage", id, mapOf("name" to it.name)) }
     }
 
     suspend fun hardDelete(id: String) {
