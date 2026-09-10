@@ -49,6 +49,8 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
@@ -61,6 +63,7 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
     val storage = MutableStateFlow<StorageEntity?>(null)
     val nested = MutableStateFlow<List<LocationEntity>>(emptyList())
     val items = MutableStateFlow<List<ItemEntity>>(emptyList())
+    val usage = MutableStateFlow<CapacityUsage?>(null)
 
     class Factory(private val locationId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -71,6 +74,9 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
     init {
         viewModelScope.launch {
             location.value = Deps.locations.byId(locationId)
+        }
+        viewModelScope.launch {
+            usage.value = Deps.locations.usage(locationId)
         }
         viewModelScope.launch {
             val loc = Deps.locations.byId(locationId)
@@ -97,6 +103,7 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
     val storage by vm.storage.collectAsState()
     val nested by vm.nested.collectAsState()
     val items by vm.items.collectAsState()
+    val usage by vm.usage.collectAsState()
     val locations = LocationMap()
     var showDelete by remember { mutableStateOf(false) }
 
@@ -162,6 +169,10 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                                     Text(v, style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
+                        }
+                        val u = usage
+                        if (u != null) {
+                            CapacitySection(u, Modifier.padding(top = 8.dp))
                         }
                     }
                 }

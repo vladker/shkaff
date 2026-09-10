@@ -1,10 +1,12 @@
 package ru.vldkr.shkaff.features.storages
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -25,7 +28,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -54,6 +59,10 @@ class StorageFormVm(
     var description by mutableStateOf("")
     var parentId by mutableStateOf<String?>(null)
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
+    var capacityVolume by mutableStateOf("")
+    var capacityWeight by mutableStateOf("")
+    var dontFillToBrim by mutableStateOf(false)
+    var isFull by mutableStateOf(false)
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
     val allStorages = MutableStateFlow<List<StorageEntity>>(emptyList())
     val error = MutableStateFlow<String?>(null)
@@ -83,6 +92,10 @@ class StorageFormVm(
                     description = it.description
                     parentId = it.parent_id
                     attrs = AttrJson.toMap(it.attributes)
+                    capacityVolume = it.capacity_volume?.takeIf { v -> v > 0 }?.let { v -> v.toString() } ?: ""
+                    capacityWeight = it.capacity_weight?.takeIf { v -> v > 0 }?.let { v -> v.toString() } ?: ""
+                    dontFillToBrim = it.dont_fill_to_brim
+                    isFull = it.is_full
                 }
                 loaded.value = true
             }
@@ -115,7 +128,11 @@ class StorageFormVm(
                 code = code,
                 description = description,
                 attributes = attrs,
-                parentId = parentId
+                parentId = parentId,
+                capacityVolumeLiters = capacityVolume.toDoubleOrNull()?.takeIf { it > 0 },
+                capacityWeightKg = capacityWeight.toDoubleOrNull()?.takeIf { it > 0 },
+                dontFillToBrim = dontFillToBrim,
+                isFull = isFull
             )
             try {
                 val id = if (storageId == null) {
@@ -213,6 +230,40 @@ fun StorageFormScreen(nav: NavController, id: String) {
                         }
                     }
                 }
+            }
+            FieldRow("Ёмкость (л) — например, пакет 60 л") {
+                OutlinedTextField(
+                    value = vm.capacityVolume,
+                    onValueChange = { vm.capacityVolume = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Например: 60") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+            }
+            FieldRow("Грузоподъёмность (кг) — необязательно") {
+                OutlinedTextField(
+                    value = vm.capacityWeight,
+                    onValueChange = { vm.capacityWeight = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Например: 25") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Text("Не набивать до упора (резерв места)", modifier = Modifier.weight(1f))
+                Switch(checked = vm.dontFillToBrim, onCheckedChange = { vm.dontFillToBrim = it })
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Text("Считать «полным» — блокировать добавление", modifier = Modifier.weight(1f))
+                Switch(checked = vm.isFull, onCheckedChange = { vm.isFull = it })
             }
             FieldRow("Описание") {
                 OutlinedTextField(

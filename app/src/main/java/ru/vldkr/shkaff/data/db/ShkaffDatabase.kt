@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TagEntity::class,
         DraftEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -40,7 +40,7 @@ abstract class ShkaffDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "4"
+        const val SCHEMA_VERSION = "5"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -115,10 +115,25 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE storage ADD COLUMN capacity_volume REAL")
+                db.execSQL("ALTER TABLE storage ADD COLUMN capacity_weight REAL")
+                db.execSQL("ALTER TABLE storage ADD COLUMN dont_fill_to_brim INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE storage ADD COLUMN is_full INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE location ADD COLUMN capacity_volume REAL")
+                db.execSQL("ALTER TABLE location ADD COLUMN capacity_weight REAL")
+                db.execSQL("ALTER TABLE location ADD COLUMN dont_fill_to_brim INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE location ADD COLUMN is_full INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE item ADD COLUMN volume_liters REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE item ADD COLUMN weight_kg REAL NOT NULL DEFAULT 0")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

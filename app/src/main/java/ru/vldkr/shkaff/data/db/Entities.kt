@@ -22,6 +22,13 @@ data class StorageEntity(
     val attributes: String = "{}",
     val photo_path: String? = null,
     val parent_id: String? = null,
+    // Ёмкость, л; грузоподъёмность, кг. null = не задано (ограничений нет).
+    val capacity_volume: Double? = null,
+    val capacity_weight: Double? = null,
+    // «Не набивать под завязку» — резервируем часть объёма/массы.
+    val dont_fill_to_brim: Boolean = false,
+    // Принудительно «полное» — блокирует добавление независимо от расчёта.
+    val is_full: Boolean = false,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -44,6 +51,11 @@ data class LocationEntity(
     val name: String = "",
     val attributes: String = "{}",
     val photo_path: String? = null,
+    // Ёмкость, л; грузоподъёмность, кг. null = не задано (ограничений нет).
+    val capacity_volume: Double? = null,
+    val capacity_weight: Double? = null,
+    val dont_fill_to_brim: Boolean = false,
+    val is_full: Boolean = false,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -65,6 +77,9 @@ data class ItemEntity(
     val attributes: String,
     val photo_path: String?,
     val location_id: String?,
+    // Габариты вещи: объём, л; масса, кг — для расчёта занятости ёмкости.
+    val volume_liters: Double = 0.0,
+    val weight_kg: Double = 0.0,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long?,

@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff.features.items
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,8 +59,12 @@ import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.domain.recommend.Recommend
+import ru.vldkr.shkaff.domain.recommend.RecommendCandidate
+import ru.vldkr.shkaff.domain.recommend.StorageSuggestion
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
@@ -83,6 +88,8 @@ class ItemFormVm(
     var expiryDate by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     var tags by mutableStateOf<List<String>>(emptyList())
+    var volumeLiters by mutableStateOf("")
+    var weightKg by mutableStateOf("")
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
     val locations = MutableStateFlow<List<LocationEntity>>(emptyList())
     val tagDict = MutableStateFlow<List<String>>(emptyList())
@@ -111,6 +118,11 @@ class ItemFormVm(
             }
         }
         viewModelScope.launch {
+            Deps.storages.observeAll().collect { s ->
+                storages.value = s
+            }
+        }
+        viewModelScope.launch {
             Deps.tags.observeAll().collect { t ->
                 tagDict.value = t.map { it.name }.distinct().sorted()
             }
@@ -134,6 +146,8 @@ class ItemFormVm(
                     expiryDate = it.expiry_date ?: ""
                     attrs = AttrJson.toMap(it.attributes)
                     tags = TagsJson.toList(it.tags)
+                    volumeLiters = it.volume_liters.let { v -> if (v > 0) v.toString() else "" }
+                    weightKg = it.weight_kg.let { v -> if (v > 0) v.toString() else "" }
                 }
             }
             // US-A4: черновик формы, если есть — поверх загруженных значений
@@ -147,6 +161,38 @@ class ItemFormVm(
     fun locationName(): String? {
         val id = locationId ?: return null
         return locations.value.firstOrNull { it.id == id }?.let { it.label.ifBlank { it.name } }
+    }
+
+    // US-C6: топ-подсказки, куда положить вещь. Пересчитывается по кнопке.
+    val recommendations = MutableStateFlow<List<StorageSuggestion>>(emptyList())
+    val storages = MutableStateFlow<List<StorageEntity>>(emptyList())
+
+    fun refreshRecommendations() {
+        viewModelScope.launch {
+            val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
+            val category = attrs[categoryKey]?.trim()?.takeIf { it.isNotEmpty() }
+            val volume = volumeLiters.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
+            val weight = weightKg.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
+            // Категории уже лежащих вещей по ящикам.
+            val categoriesByLoc = HashMap<String, Set<String>>()
+            Deps.items.all().forEach { it ->
+                val cat = AttrJson.toMap(it.attributes)[categoryKey]?.trim()?.takeIf { c -> c.isNotEmpty() } ?: return@forEach
+                val prev = categoriesByLoc[it.location_id ?: ""] ?: emptySet()
+                categoriesByLoc[it.location_id ?: ""] = prev + cat
+            }
+            val storagesById = storages.value.associateBy { it.id }
+            val candidates = locations.value.map { loc ->
+                RecommendCandidate(
+                    id = loc.id,
+                    name = loc.label.ifBlank { loc.name }.ifBlank { "Ящик" },
+                    usage = Deps.locations.usage(loc.id),
+                    itemCount = Deps.items.countByLocation(loc.id),
+                    presentCategories = categoriesByLoc[loc.id] ?: emptySet(),
+                    pathPrefix = storagesById[loc.storage_id]?.name.orEmpty()
+                )
+            }
+            recommendations.value = Recommend.rank(candidates, category, volume, weight)
+        }
     }
 
     fun save(onDone: (String) -> Unit) {
@@ -170,7 +216,9 @@ class ItemFormVm(
                 locationId = locationId,
                 photoPath = photoPath,
                 expiryDate = if (rawExpiry.isEmpty()) null else Expiry.normalize(rawExpiry),
-                tags = tags
+                tags = tags,
+                volumeLiters = volumeLiters.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0,
+                weightKg = weightKg.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
             )
             try {
                 val id = if (itemId == null) {
@@ -287,6 +335,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
     val defs by vm.attrDefs.collectAsState()
     val loaded by vm.loaded.collectAsState()
     val locations by vm.locations.collectAsState()
+    val recommendations by vm.recommendations.collectAsState()
     var showLocationPicker by remember { mutableStateOf(false) }
 
     val locName = vm.locationName()
@@ -366,12 +415,69 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     }
                 }
             }
+            FieldRow("Куда положить — подсказка") {
+                Column {
+                    OutlinedButton(onClick = { vm.refreshRecommendations() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Подобрать место")
+                    }
+                    val recs = recommendations
+                    if (recs.isNotEmpty()) {
+                        recs.forEach { r ->
+                            val selected = r.id == vm.locationId
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { vm.locationId = r.id }
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Text(
+                                    if (selected) "✓ " else "＋ ",
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                                    val notes = (r.pros + r.cons).distinct()
+                                    if (notes.isNotEmpty()) {
+                                        Text(
+                                            notes.joinToString(" · "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             FieldRow("Срок годности") {
                 OutlinedTextField(
                     value = vm.expiryDate,
                     onValueChange = { vm.expiryDate = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("ДД.ММ.ГГГГ") },
+                    singleLine = true
+                )
+            }
+            FieldRow("Объём (л)") {
+                OutlinedTextField(
+                    value = vm.volumeLiters,
+                    onValueChange = { vm.volumeLiters = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Например: 2.5") },
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    singleLine = true
+                )
+            }
+            FieldRow("Масса (кг)") {
+                OutlinedTextField(
+                    value = vm.weightKg,
+                    onValueChange = { vm.weightKg = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Например: 1.2") },
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     singleLine = true
                 )
             }

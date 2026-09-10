@@ -8,7 +8,9 @@ data class ItemData(
     val locationId: String? = null,
     val photoPath: String? = null,
     val expiryDate: String? = null,
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val volumeLiters: Double = 0.0,
+    val weightKg: Double = 0.0
 )
 
 data class LocationData(
@@ -16,7 +18,11 @@ data class LocationData(
     val parentId: String? = null,
     val label: String = "",
     val name: String = "",
-    val attributes: Map<String, String> = emptyMap()
+    val attributes: Map<String, String> = emptyMap(),
+    val capacityVolumeLiters: Double? = null,
+    val capacityWeightKg: Double? = null,
+    val dontFillToBrim: Boolean = false,
+    val isFull: Boolean = false
 )
 
 data class StorageData(
@@ -24,5 +30,9 @@ data class StorageData(
     val code: String = "",
     val description: String = "",
     val attributes: Map<String, String> = emptyMap(),
-    val parentId: String? = null
+    val parentId: String? = null,
+    val capacityVolumeLiters: Double? = null,
+    val capacityWeightKg: Double? = null,
+    val dontFillToBrim: Boolean = false,
+    val isFull: Boolean = false
 )

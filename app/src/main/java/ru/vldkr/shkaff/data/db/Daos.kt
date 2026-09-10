@@ -138,6 +138,13 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE deleted_at IS NULL AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1000")
     suspend fun withExpiry(): List<ItemEntity>
 
+    // Суммы объёма/массы по вещам внутри указанных локаций (включая все потомки).
+    @Query("SELECT COALESCE(SUM(volume_liters), 0) FROM item WHERE location_id IN (:ids) AND deleted_at IS NULL")
+    suspend fun sumVolume(ids: List<String>): Double
+
+    @Query("SELECT COALESCE(SUM(weight_kg), 0) FROM item WHERE location_id IN (:ids) AND deleted_at IS NULL")
+    suspend fun sumWeight(ids: List<String>): Double
+
     @Query("SELECT * FROM item")
     suspend fun allWithDeleted(): List<ItemEntity>
 

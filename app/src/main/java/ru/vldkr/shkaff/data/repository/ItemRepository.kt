@@ -50,7 +50,9 @@ class ItemRepository(
             deleted_at = null,
             device_last_modified = deviceId(),
             expiry_date = d.expiryDate,
-            tags = TagsJson.toJson(d.tags)
+            tags = TagsJson.toJson(d.tags),
+            volume_liters = d.volumeLiters,
+            weight_kg = d.weightKg
         )
         dao.upsert(e)
         return e
@@ -71,7 +73,9 @@ class ItemRepository(
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId(),
             expiry_date = d.expiryDate,
-            tags = TagsJson.toJson(d.tags)
+            tags = TagsJson.toJson(d.tags),
+            volume_liters = d.volumeLiters,
+            weight_kg = d.weightKg
         )
         dao.upsert(u)
         return u

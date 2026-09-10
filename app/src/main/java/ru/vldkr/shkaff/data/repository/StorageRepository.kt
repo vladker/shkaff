@@ -6,6 +6,7 @@ import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.StorageData
+import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
 
@@ -32,6 +33,10 @@ class StorageRepository(
             attributes = AttrJson.toJson(d.attributes),
             photo_path = null,
             parent_id = d.parentId,
+            capacity_volume = d.capacityVolumeLiters,
+            capacity_weight = d.capacityWeightKg,
+            dont_fill_to_brim = d.dontFillToBrim,
+            is_full = d.isFull,
             created_at = now,
             updated_at = now,
             deleted_at = null,
@@ -52,6 +57,10 @@ class StorageRepository(
             description = d.description.trim(),
             attributes = AttrJson.toJson(d.attributes),
             parent_id = d.parentId,
+            capacity_volume = d.capacityVolumeLiters,
+            capacity_weight = d.capacityWeightKg,
+            dont_fill_to_brim = d.dontFillToBrim,
+            is_full = d.isFull,
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId()
         )
@@ -81,5 +90,20 @@ class StorageRepository(
 
     suspend fun hardDelete(id: String) {
         dao.hardDelete(id)
+    }
+
+    // Текущая заполненность хранилища: сумма объёма/массы вещей во всех его ящиках
+    // (включая вложенные) и самого хранилища.
+    suspend fun usage(id: String): CapacityUsage {
+        val e = dao.byId(id) ?: return CapacityUsage(0.0, 0.0)
+        val locIds = db.locationDao().allByStorage(id).map { it.id }
+        return CapacityUsage(
+            volumeLiters = db.itemDao().sumVolume(locIds),
+            weightKg = db.itemDao().sumWeight(locIds),
+            capacityVolumeLiters = e.capacity_volume,
+            capacityWeightKg = e.capacity_weight,
+            dontFillToBrim = e.dont_fill_to_brim,
+            isFull = e.is_full
+        )
     }
 }

@@ -56,6 +56,10 @@ object Backup {
         put("id", e.id); put("name", e.name); put("description", e.description)
         put("attributes", e.attributes); put("parent_id", e.parent_id ?: "")
         put("photo_path", e.photo_path ?: "")
+        put("capacity_volume", e.capacity_volume ?: 0.0)
+        put("capacity_weight", e.capacity_weight ?: 0.0)
+        put("dont_fill_to_brim", e.dont_fill_to_brim)
+        put("is_full", e.is_full)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -66,6 +70,10 @@ object Backup {
         attributes = j.optString("attributes", "{}"),
         parent_id = j.optString("parent_id", "").takeIf { it.isNotBlank() },
         photo_path = j.optString("photo_path", "").takeIf { it.isNotBlank() },
+        capacity_volume = j.optDouble("capacity_volume", 0.0).takeIf { it > 0 },
+        capacity_weight = j.optDouble("capacity_weight", 0.0).takeIf { it > 0 },
+        dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
+        is_full = j.optBoolean("is_full", false),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -75,6 +83,10 @@ object Backup {
         put("id", e.id); put("storage_id", e.storage_id); put("parent_id", e.parent_id ?: "")
         put("label", e.label); put("name", e.name); put("attributes", e.attributes)
         put("photo_path", e.photo_path ?: "")
+        put("capacity_volume", e.capacity_volume ?: 0.0)
+        put("capacity_weight", e.capacity_weight ?: 0.0)
+        put("dont_fill_to_brim", e.dont_fill_to_brim)
+        put("is_full", e.is_full)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -85,6 +97,10 @@ object Backup {
         label = j.optString("label", ""), name = j.optString("name", ""),
         attributes = j.optString("attributes", "{}"),
         photo_path = j.optString("photo_path", "").takeIf { it.isNotBlank() },
+        capacity_volume = j.optDouble("capacity_volume", 0.0).takeIf { it > 0 },
+        capacity_weight = j.optDouble("capacity_weight", 0.0).takeIf { it > 0 },
+        dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
+        is_full = j.optBoolean("is_full", false),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -94,6 +110,8 @@ object Backup {
         put("id", e.id); put("name", e.name); put("code", e.code)
         put("description", e.description); put("attributes", e.attributes)
         put("location_id", e.location_id ?: ""); put("photo_path", e.photo_path ?: "")
+        put("volume_liters", e.volume_liters)
+        put("weight_kg", e.weight_kg)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
         put("expiry_date", e.expiry_date ?: "")
@@ -106,6 +124,8 @@ object Backup {
         attributes = j.optString("attributes", "{}"),
         location_id = j.optString("location_id", "").takeIf { it.isNotBlank() },
         photo_path = j.optString("photo_path", "").takeIf { it.isNotBlank() },
+        volume_liters = j.optDouble("volume_liters", 0.0),
+        weight_kg = j.optDouble("weight_kg", 0.0),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", ""),

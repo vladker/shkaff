@@ -53,6 +53,8 @@ import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.FormBus
@@ -65,6 +67,7 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     val parentName = MutableStateFlow<String?>(null)
     val locRows = MutableStateFlow<List<LocRow>>(emptyList())
     val itemCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val usage = MutableStateFlow<CapacityUsage?>(null)
 
     class Factory(private val storageId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -79,6 +82,9 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
             s?.parent_id?.let { pid ->
                 parentName.value = Deps.storages.byId(pid)?.name
             }
+        }
+        viewModelScope.launch {
+            usage.value = Deps.storages.usage(storageId)
         }
         viewModelScope.launch {
             Deps.locations.observeByStorage(storageId).collect { locs ->
@@ -121,6 +127,7 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
     val parentName by vm.parentName.collectAsState()
     val locRows by vm.locRows.collectAsState()
     val itemCounts by vm.itemCounts.collectAsState()
+    val usage by vm.usage.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
 
     val s = storage
@@ -185,6 +192,10 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                                 }
                             }
                         }
+                    }
+                    val u = usage
+                    if (u != null) {
+                        CapacitySection(u, Modifier.padding(top = 8.dp))
                     }
                 }
             }

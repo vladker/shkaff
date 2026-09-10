@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -38,6 +39,7 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 
 @Composable
 fun SectionTitle(text: String) {
@@ -372,3 +374,46 @@ fun LocationMap(): Map<String, LocationEntity> {
     }
     return map.value
 }
+
+// Заполненность хранилища/ящика (US-C3/C4): полосы объёма и массы + статус.
+@Composable
+fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        val volText = usage.capacityVolumeLiters?.let {
+            "Объём: ${fmt1(usage.volumeLiters)} / ${fmt1(it)} л"
+        } ?: "Объём: ${fmt1(usage.volumeLiters)} л (ёмкость не задана)"
+        val wtText = usage.capacityWeightKg?.let {
+            "Масса: ${fmt1(usage.weightKg)} / ${fmt1(it)} кг"
+        } ?: "Масса: ${fmt1(usage.weightKg)} кг (грузоподъёмность не задана)"
+
+        val over = usage.overLimit()
+        val overColor = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        val labelStyle = MaterialTheme.typography.bodyMedium.copy(color = overColor)
+
+        Text(volText, style = labelStyle)
+        usage.volumeRatio()?.let { ratio ->
+            LinearProgressIndicator(
+                progress = { ratio.toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                color = if (ratio >= 1.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+        Text(wtText, style = labelStyle, modifier = Modifier.padding(top = 4.dp))
+        usage.weightRatio()?.let { ratio ->
+            LinearProgressIndicator(
+                progress = { ratio.toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                color = if (ratio >= 1.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+        if (usage.isFull) {
+            Text("Помечено «полным» — добавление блокировано", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+        } else if (usage.dontFillToBrim) {
+            Text("«Не набивать до упора» — резерв места", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun fmt1(v: Double): String = if (v >= 100) v.toInt().toString() else "%.1f".format(v)

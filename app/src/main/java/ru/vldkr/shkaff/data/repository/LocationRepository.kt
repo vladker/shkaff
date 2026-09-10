@@ -6,6 +6,7 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.LocationData
+import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
 
@@ -42,6 +43,10 @@ class LocationRepository(
             name = d.name.trim(),
             attributes = AttrJson.toJson(d.attributes),
             photo_path = null,
+            capacity_volume = d.capacityVolumeLiters,
+            capacity_weight = d.capacityWeightKg,
+            dont_fill_to_brim = d.dontFillToBrim,
+            is_full = d.isFull,
             created_at = now,
             updated_at = now,
             deleted_at = null,
@@ -61,6 +66,10 @@ class LocationRepository(
             label = label,
             name = d.name.trim(),
             attributes = AttrJson.toJson(d.attributes),
+            capacity_volume = d.capacityVolumeLiters,
+            capacity_weight = d.capacityWeightKg,
+            dont_fill_to_brim = d.dontFillToBrim,
+            is_full = d.isFull,
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId()
         )
@@ -81,5 +90,35 @@ class LocationRepository(
 
     suspend fun hardDelete(id: String) {
         dao.hardDelete(id)
+    }
+
+    // Заполненность ящика: сумма объёма/массы вещей в нём и во всех вложенных ящиках.
+    suspend fun usage(id: String): CapacityUsage {
+        val e = dao.byId(id) ?: return CapacityUsage(0.0, 0.0)
+        val ids = subtreeIds(id)
+        return CapacityUsage(
+            volumeLiters = db.itemDao().sumVolume(ids),
+            weightKg = db.itemDao().sumWeight(ids),
+            capacityVolumeLiters = e.capacity_volume,
+            capacityWeightKg = e.capacity_weight,
+            dontFillToBrim = e.dont_fill_to_brim,
+            isFull = e.is_full
+        )
+    }
+
+    // ids самого ящика и всех его потомков (по дереву parent_id).
+    suspend fun subtreeIds(rootId: String): List<String> {
+        val storageId = dao.byId(rootId)?.storage_id ?: return listOf(rootId)
+        val all = dao.allByStorage(storageId)
+        val byParent = all.groupBy { it.parent_id ?: "" }
+        val out = mutableListOf(rootId)
+        val queue = ArrayDeque(listOf(rootId))
+        while (queue.isNotEmpty()) {
+            byParent[queue.removeFirst()]?.forEach { c ->
+                out += c.id
+                queue.add(c.id)
+            }
+        }
+        return out
     }
 }
