@@ -189,6 +189,15 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
+                    if (!i.ean.isNullOrBlank()) {
+                        Text(
+                            "EAN ${i.ean}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
                 val expDate = i.expiry_date?.let { Expiry.parse(it) }
                 if (expDate != null) {

@@ -88,6 +88,7 @@ class ItemFormVm(
     var locationId by mutableStateOf<String?>(null)
     var photoPath by mutableStateOf<String?>(null)
     var expiryDate by mutableStateOf("")
+    var ean by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     var tags by mutableStateOf<List<String>>(emptyList())
     var volumeLiters by mutableStateOf("")
@@ -146,6 +147,7 @@ class ItemFormVm(
                     locationId = it.location_id
                     photoPath = it.photo_path
                     expiryDate = it.expiry_date ?: ""
+                    ean = it.ean ?: ""
                     attrs = AttrJson.toMap(it.attributes)
                     tags = TagsJson.toList(it.tags)
                     volumeLiters = it.volume_liters.let { v -> if (v > 0) v.toString() else "" }
@@ -225,6 +227,7 @@ class ItemFormVm(
                 locationId = locationId,
                 photoPath = photoPath,
                 expiryDate = if (rawExpiry.isEmpty()) null else Expiry.normalize(rawExpiry),
+                ean = ean.trim().takeIf { it.isNotBlank() },
                 tags = tags,
                 volumeLiters = volumeLiters.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0,
                 weightKg = weightKg.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
@@ -277,7 +280,7 @@ class ItemFormVm(
     private fun startAutosave() {
         viewModelScope.launch {
             var job: Job? = null
-            snapshotFlow { FormSnap(name, code, description, locationId, photoPath, expiryDate, attrs, tags) }
+            snapshotFlow { FormSnap(name, code, description, locationId, photoPath, expiryDate, ean, attrs, tags) }
                 .collect {
                     job?.cancel()
                     job = launch {
@@ -290,7 +293,7 @@ class ItemFormVm(
 
     private data class FormSnap(
         val name: String, val code: String, val description: String,
-        val locationId: String?, val photoPath: String?, val expiryDate: String,
+        val locationId: String?, val photoPath: String?, val expiryDate: String, val ean: String,
         val attrs: Map<String, String>, val tags: List<String>
     )
 
@@ -298,7 +301,8 @@ class ItemFormVm(
 
     private fun hasFormContent(): Boolean =
         name.isNotBlank() || code.isNotBlank() || description.isNotBlank() ||
-            locationId != null || photoPath != null || expiryDate.isNotBlank() || tags.isNotEmpty() || attrs.isNotEmpty()
+            locationId != null || photoPath != null || expiryDate.isNotBlank() || ean.isNotBlank() ||
+            tags.isNotEmpty() || attrs.isNotEmpty()
 
     private fun formJson(): String {
         val o = JSONObject()
@@ -306,6 +310,7 @@ class ItemFormVm(
         o.put("locationId", locationId ?: "")
         o.put("photoPath", photoPath ?: "")
         o.put("expiryDate", expiryDate)
+        o.put("ean", ean)
         val t = JSONArray()
         tags.forEach { t.put(it) }
         o.put("tags", t)
@@ -323,6 +328,7 @@ class ItemFormVm(
         locationId = o.optString("locationId").takeIf { it.isNotBlank() }
         if (o.has("photoPath")) photoPath = o.optString("photoPath").takeIf { it.isNotBlank() }
         expiryDate = o.optString("expiryDate")
+        ean = o.optString("ean")
         tags = TagsJson.toList(o.optString("tags", ""))
         val a = o.optJSONObject("attrs") ?: return
         val m = mutableMapOf<String, String>()
@@ -401,6 +407,16 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Например: T-001") },
                     supportingText = { Text("Пусто — сгенерируется автоматически") },
+                    singleLine = true
+                )
+            }
+            FieldRow("Штрихкод (EAN)") {
+                OutlinedTextField(
+                    value = vm.ean,
+                    onValueChange = { vm.ean = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Оригинальный штрихкод товара") },
+                    supportingText = { Text("Например: 4607001234567") },
                     singleLine = true
                 )
             }

@@ -50,6 +50,7 @@ class ItemRepository(
             deleted_at = null,
             device_last_modified = deviceId(),
             expiry_date = d.expiryDate,
+            ean = d.ean,
             tags = TagsJson.toJson(d.tags),
             volume_liters = d.volumeLiters,
             weight_kg = d.weightKg
@@ -74,6 +75,7 @@ class ItemRepository(
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId(),
             expiry_date = d.expiryDate,
+            ean = d.ean,
             tags = TagsJson.toJson(d.tags),
             volume_liters = d.volumeLiters,
             weight_kg = d.weightKg

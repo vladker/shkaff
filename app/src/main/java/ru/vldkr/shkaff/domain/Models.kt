@@ -8,6 +8,7 @@ data class ItemData(
     val locationId: String? = null,
     val photoPath: String? = null,
     val expiryDate: String? = null,
+    val ean: String? = null,
     val tags: List<String> = emptyList(),
     val volumeLiters: Double = 0.0,
     val weightKg: Double = 0.0

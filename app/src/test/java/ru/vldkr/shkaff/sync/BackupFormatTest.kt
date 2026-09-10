@@ -47,6 +47,16 @@ class BackupFormatTest {
     }
 
     @Test
+    fun eanSurvivesRoundTrip() {
+        val withEan = item.copy(ean = "4607001234567")
+        val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(withEan))))
+        assertEquals("4607001234567", back.items.single().ean)
+        val without = item.copy(ean = null)
+        val back2 = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(without))))
+        assertEquals("", back2.items.single().ean ?: "")
+    }
+
+    @Test
     fun deletedRowSurvivesRoundTrip() {
         val gone = item.copy(deleted_at = 500L)
         val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(gone))))

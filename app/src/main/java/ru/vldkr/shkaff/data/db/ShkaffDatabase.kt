@@ -24,7 +24,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LoanEntity::class,
         ActionLogEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -46,7 +46,7 @@ abstract class ShkaffDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "6"
+        const val SCHEMA_VERSION = "7"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -166,10 +166,17 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v7 (M11 — «Умный ввод»): поле ean у вещи (US-B2).
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE item ADD COLUMN ean TEXT")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

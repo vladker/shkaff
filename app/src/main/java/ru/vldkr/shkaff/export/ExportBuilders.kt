@@ -18,7 +18,7 @@ object ExportBuilders {
     ): Sheet {
         val locById = locations.associateBy { it.id }
         val storById = storages.associateBy { it.id }
-        val headers = listOf("Название", "Код", "Описание", "Шкаф", "Ящик", "Теги", "Срок годности", "Создана", "Изменена")
+        val headers = listOf("Название", "Код", "Штрихкод (EAN)", "Описание", "Шкаф", "Ящик", "Теги", "Срок годности", "Создана", "Изменена")
         val rows = items
             .filter { it.deleted_at == null }
             .sortedWith(compareBy({ it.name }, { it.code }))
@@ -27,6 +27,7 @@ object ExportBuilders {
                 listOf(
                     i.name,
                     i.code,
+                    i.ean.orEmpty(),
                     i.description,
                     storagePath(loc?.storage_id, storById),
                     locationChain(loc, locById),

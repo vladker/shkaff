@@ -85,6 +85,9 @@ data class ItemEntity(
     val deleted_at: Long?,
     val device_last_modified: String,
     val expiry_date: String? = null,
+    // US-B2: оригинальный рыночный штрихкод вещи (EAN-8/EAN-13/UPC), заполняется
+    // сканом или вручную; виден в карточке и в экспорте.
+    val ean: String? = null,
     val tags: String = "[]"
 )
 

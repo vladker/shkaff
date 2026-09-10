@@ -87,14 +87,15 @@ class ExportTest {
         val i = item("i1", "Дрель", "DR-1", locationId = "l1")
 
         val sheet = ExportBuilders.items(listOf(i), listOf(l0, l1), listOf(s0, s1))
-        assertEquals(listOf("Название", "Код", "Описание", "Шкаф", "Ящик", "Теги", "Срок годности", "Создана", "Изменена"), sheet.headers)
+        assertEquals(listOf("Название", "Код", "Штрихкод (EAN)", "Описание", "Шкаф", "Ящик", "Теги", "Срок годности", "Создана", "Изменена"), sheet.headers)
         val row = sheet.rows.single()
         assertEquals("Дрель", row[0])
         assertEquals("DR-1", row[1])
-        assertEquals("Дом › Гараж", row[3])
-        assertEquals("A › A1", row[4])
-        assertEquals("мастерская; гараж", row[5])
-        assertEquals("01.01.2027", row[6])
+        assertEquals("", row[2])
+        assertEquals("Дом › Гараж", row[4])
+        assertEquals("A › A1", row[5])
+        assertEquals("мастерская; гараж", row[6])
+        assertEquals("01.01.2027", row[7])
     }
 
     @Test
