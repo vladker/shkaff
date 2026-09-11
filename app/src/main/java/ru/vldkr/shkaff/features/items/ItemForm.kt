@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +78,7 @@ import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.util.ImageDownload
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.util.rememberPhotoPickers
 import java.io.File
@@ -108,6 +111,11 @@ class ItemFormVm(
     val eanLookupBusy = MutableStateFlow(false)
     val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
     val eanLookupError = MutableStateFlow<String?>(null)
+
+    // US-I5: «ссылка — сохранить как картинку в базу» — после успеха диалог сам закроется
+    val linkPhotoBusy = MutableStateFlow(false)
+    val linkPhotoError = MutableStateFlow<String?>(null)
+    val linkPhotoDone = MutableStateFlow(false)
 
     class Factory(private val itemId: String, private val preselectLocationId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -371,6 +379,31 @@ class ItemFormVm(
             }
         } catch (_: Exception) {
         }
+    }
+
+    fun downloadLinkPhoto(url: String) {
+        if (linkPhotoBusy.value) return
+        if (url.isBlank()) {
+            linkPhotoError.value = "Вставьте ссылку на картинку"
+            return
+        }
+        linkPhotoError.value = null
+        linkPhotoBusy.value = true
+        viewModelScope.launch {
+            try {
+                val f = ImageDownload.download(Deps.app, url)
+                setPhoto(f.absolutePath)
+                linkPhotoDone.value = true
+            } catch (e: Exception) {
+                linkPhotoError.value = e.message ?: "Не удалось скачать картинку"
+            } finally {
+                linkPhotoBusy.value = false
+            }
+        }
+    }
+
+    fun clearLinkPhotoError() {
+        linkPhotoError.value = null
     }
 
     fun removePhoto() {
@@ -763,29 +796,43 @@ private fun TagChipsField(vm: ItemFormVm) {
     }
 }
 
-// US-I5: фото вещи — как у товара в маркетплейсе: снимок камеры или файл из галереи
+// US-I5: фото вещи — как у товара в маркетплейсе: снимок камеры, файл из галереи
+// или картинка по ссылке (скачивается в базу, в поле остаётся файл, а не ссылка)
 @Composable
 private fun PhotoField(vm: ItemFormVm) {
     val pickers = rememberPhotoPickers(
         onCaptured = { f -> vm.setPhoto(f.absolutePath) },
         onPicked = { f -> vm.setPhoto(f.absolutePath) }
     )
+    var showLinkDialog by remember { mutableStateOf(false) }
     FieldRow("Фото") {
         val path = vm.photoPath
         if (path == null) {
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { pickers.takePhoto() }) {
-                    Icon(Icons.Filled.CameraAlt, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Снять")
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { pickers.takePhoto() }) {
+                        Icon(Icons.Filled.CameraAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Снять")
+                    }
+                    OutlinedButton(
+                        onClick = { pickers.pickFromGallery() },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Из галереи")
+                    }
                 }
                 OutlinedButton(
-                    onClick = { pickers.pickFromGallery() },
-                    modifier = Modifier.padding(start = 8.dp)
+                    onClick = { showLinkDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
                 ) {
-                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                    Icon(Icons.Filled.Link, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Из галереи")
+                    Text("Из ссылки")
                 }
             }
         } else {
@@ -801,11 +848,61 @@ private fun PhotoField(vm: ItemFormVm) {
                     TextButton(onClick = { pickers.pickFromGallery() }) {
                         Text("Заменить")
                     }
+                    TextButton(onClick = { showLinkDialog = true }) {
+                        Text("Из ссылки")
+                    }
                     TextButton(onClick = { vm.removePhoto() }) {
                         Text("Удалить", color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
+        if (showLinkDialog) {
+            LinkPhotoDialog(vm, onDismiss = { showLinkDialog = false })
+        }
     }
+}
+
+@Composable
+private fun LinkPhotoDialog(vm: ItemFormVm, onDismiss: () -> Unit) {
+    var url by remember { mutableStateOf("") }
+    val busy by vm.linkPhotoBusy.collectAsState()
+    val err by vm.linkPhotoError.collectAsState()
+    LaunchedEffect(vm.linkPhotoDone) {
+        if (vm.linkPhotoDone.value) {
+            vm.linkPhotoDone.value = false
+            onDismiss()
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Фото из ссылки") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "Вставьте прямую ссылку на картинку (jpg/png/webp). Она скачается и сохранится в базе — в карточке останется файл, а не ссылка.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Ссылка на картинку") },
+                    singleLine = true,
+                    isError = err != null,
+                    supportingText = err?.let { e -> { Text(e) } }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { vm.downloadLinkPhoto(url) },
+                enabled = !busy && url.isNotBlank()
+            ) { Text(if (busy) "Скачиваем…" else "Скачать") }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDismiss() }, enabled = !busy) { Text("Отмена") }
+        }
+    )
 }

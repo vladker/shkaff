@@ -1,5 +1,8 @@
 package ru.vldkr.shkaff.features.items
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -22,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -45,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +74,7 @@ import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.formatDate
+import java.io.File
 import java.time.LocalDate
 
 class ItemDetailVm(val itemId: String) : ViewModel() {
@@ -133,6 +139,7 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     val role by vm.role.collectAsState()
     val loan by vm.activeLoan.collectAsState()
     var showLend by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
 
     val i = item
     Scaffold(
@@ -174,6 +181,30 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             .clip(RoundedCornerShape(16.dp))
                             .padding(top = 8.dp)
                     )
+                }
+                // US-B4: «поиск в сети» — открыть фото в системном просмотрщике и
+                // запустить там обратный поиск (Яндекс/Google Lens), найти характеристики и вернуться
+                if (!i.photo_path.isNullOrBlank() && File(i.photo_path).exists()) {
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                runCatching { openImageSearch(ctx, File(i.photo_path)) }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Filled.Public, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Поиск в сети")
+                        }
+                        Text(
+                            "Откроем фото в просмотрщике: оттуда можно запустить обратный поиск картинки (Яндекс, Google Lens) и занести найденные характеристики в карточку.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
                 item {
                     Text(
@@ -406,4 +437,16 @@ private fun OzonBadge(text: String, color: Color, modifier: Modifier = Modifier)
             maxLines = 2
         )
     }
+}
+
+// US-B4: открыть фото вещи в системном просмотрщике (ACTION_VIEW + FileProvider),
+// откуда пользователь запускает обратный поиск картинки.
+private fun openImageSearch(ctx: Context, photo: File) {
+    val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", photo)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "image/*")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addCategory(Intent.CATEGORY_DEFAULT)
+    }
+    ctx.startActivity(Intent.createChooser(intent, "Открыть картинку"))
 }

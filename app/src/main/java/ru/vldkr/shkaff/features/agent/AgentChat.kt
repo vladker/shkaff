@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -26,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -222,6 +224,18 @@ fun AgentScreen(nav: NavController) {
 Помогает по вашей базе: «где лежит мука», «что скоро истечёт», «куда положить банку 2 л». 
 Агент видит вещи, шкафы и ящики. Настройки провайдера — по шестерёнке.
 """.trimIndent(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                OutlinedButton(
+                    onClick = { nav.navigate("agent-volumes") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                ) {
+                    Icon(Icons.Filled.Inventory2, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Оценить объёмы вещей")
+                }
+            }
             items(messages) { m -> Bubble(m) }
             if (busy) {
                 item {

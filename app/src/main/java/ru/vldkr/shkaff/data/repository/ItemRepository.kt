@@ -108,6 +108,24 @@ class ItemRepository(
             .map { it.second }
     }
 
+    // US-I1: оценка объёма/массы от агента — пишется только после подтверждения пользователем.
+    suspend fun applyVolume(id: String, volumeLiters: Double, weightKg: Double): Boolean {
+        val e = dao.byId(id) ?: return false
+        dao.upsert(
+            e.copy(
+                volume_liters = volumeLiters.coerceAtLeast(0.0),
+                weight_kg = weightKg.coerceAtLeast(0.0),
+                updated_at = System.currentTimeMillis(),
+                device_last_modified = deviceId()
+            )
+        )
+        Deps.actionLog.log(
+            "volume", "item", id,
+            mapOf("name" to e.name, "volume_liters" to volumeLiters.toString(), "weight_kg" to weightKg.toString())
+        )
+        return true
+    }
+
     suspend fun softDelete(id: String) {
         val e = dao.byId(id)
         dao.softDelete(id, System.currentTimeMillis(), deviceId())

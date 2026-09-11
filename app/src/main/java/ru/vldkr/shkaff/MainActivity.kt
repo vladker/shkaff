@@ -40,6 +40,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import ru.vldkr.shkaff.features.agent.AgentScreen
+import ru.vldkr.shkaff.features.agent.VolumeEstimateScreen
 import ru.vldkr.shkaff.features.annotations.AnnotationScreen
 import ru.vldkr.shkaff.features.actions.ActionsScreen
 import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
@@ -213,6 +214,7 @@ fun AppRoot() {
             composable("conflicts") { ConflictsScreen(navController) }
             composable("printers") { PrintersScreen(navController) }
             composable("agent") { AgentScreen(navController) }
+            composable("agent-volumes") { VolumeEstimateScreen(navController) }
 
             composable("attrdefs") { AttrDefsScreen(navController) }
             composable("settings") { SettingsScreen(navController) }
