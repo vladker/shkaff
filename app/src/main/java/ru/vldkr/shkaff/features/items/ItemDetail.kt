@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,9 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -40,12 +44,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,12 +83,15 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.features.loans.LendDialog
+import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.SectionTitle
-import ru.vldkr.shkaff.util.Expiry
+import ru.vldkr.shkaff.ui.components.StatusBadge
+import ru.vldkr.shkaff.ui.components.itemStatus
+import ru.vldkr.shkaff.ui.components.itemStatuses
+import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.formatDate
 import java.io.File
-import java.time.LocalDate
 
 class ItemDetailVm(val itemId: String) : ViewModel() {
 
@@ -88,6 +99,7 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
     val locationLabel = MutableStateFlow<String?>(null)
     val storageName = MutableStateFlow<String?>(null)
     val activeLoan = MutableStateFlow<LoanEntity?>(null)
+    val similar = MutableStateFlow<List<ItemEntity>>(emptyList())
     val role = MutableStateFlow(Role.VIEW)
 
     class Factory(private val itemId: String) : ViewModelProvider.Factory {
@@ -106,6 +118,16 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
                     locationLabel.value = loc.label.ifBlank { loc.name }.ifBlank { "Ящик" }
                     storageName.value = Deps.storages.byId(loc.storage_id)?.name
                 }
+            }
+            // «Похожие вещи»: общие теги с текущей, самые близкие — первыми.
+            if (it != null) {
+                val myTags = TagsJson.toList(it.tags).map { t -> t.lowercase() }.toSet()
+                val scored = Deps.items.all()
+                    .filter { o -> o.id != itemId }
+                    .map { o -> o to myTags.intersect(TagsJson.toList(o.tags).map { t -> t.lowercase() }.toSet()).size }
+                    .filter { e -> e.second > 0 }
+                    .sortedByDescending { e -> e.second }
+                similar.value = scored.take(8).map { e -> e.first }
             }
         }
         viewModelScope.launch {
@@ -140,11 +162,13 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     val item by vm.item.collectAsState()
     val locationLabel by vm.locationLabel.collectAsState()
     val storageName by vm.storageName.collectAsState()
+    val similar by vm.similar.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
     val role by vm.role.collectAsState()
     val loan by vm.activeLoan.collectAsState()
     var showLend by remember { mutableStateOf(false) }
     var showBasket by remember { mutableStateOf(false) }
+    var tab by remember { mutableIntStateOf(0) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -169,276 +193,338 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     }
                 }
             )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp)
-        ) {
+        },
+        bottomBar = {
             if (i != null) {
-                item {
-                    ItemPhoto(
-                        i.photo_path,
+                Column {
+                    HorizontalDivider(color = Ozon.Card, thickness = 1.dp)
+                    Row(
                         Modifier
                             .fillMaxWidth()
-                            .aspectRatio(4f / 3f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .padding(top = 8.dp)
-                    )
-                }
-                // US-B4: «поиск в сети» — открыть фото в системном просмотрщике и
-                // запустить там обратный поиск (Яндекс/Google Lens), найти характеристики и вернуться
-                if (!i.photo_path.isNullOrBlank() && File(i.photo_path).exists()) {
-                    item {
-                        OutlinedButton(
-                            onClick = {
-                                runCatching { openImageSearch(ctx, File(i.photo_path)) }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Icon(Icons.Filled.Public, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Поиск в сети")
-                        }
-                        Text(
-                            "Откроем фото в просмотрщике: оттуда можно запустить обратный поиск картинки (Яндекс, Google Lens) и занести найденные характеристики в карточку.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-                item {
-                    Text(
-                        i.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                    if (i.code.isNotBlank()) {
-                        Text(
-                            i.code,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    if (!i.ean.isNullOrBlank()) {
-                        Text(
-                            "EAN ${i.ean}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-                val expDate = i.expiry_date?.let { Expiry.parse(it) }
-                if (expDate != null) {
-                    val days = Expiry.daysUntil(expDate, LocalDate.now())
-                    item {
-                        OzonBadge(
-                            text = Expiry.label(expDate, LocalDate.now()) ?: i.expiry_date!!,
-                            color = if (days < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-                } else if (!i.expiry_date.isNullOrBlank()) {
-                    item {
-                        OzonBadge(
-                            text = "Срок: ${i.expiry_date} (не распознано)",
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-                }
-                item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 8.dp)
+                            .background(Ozon.Bg)
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Place,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (locationLabel == null)
-                                MaterialTheme.colorScheme.error
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (locationLabel != null) {
-                                "Хранится: ${locationLabel}${storageName?.let { " · $it" } ?: ""}"
-                            } else {
-                                "Хранится: без ящика"
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (locationLabel == null)
-                                MaterialTheme.colorScheme.error
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                val itemTags = TagsJson.toList(i.tags)
-                if (itemTags.isNotEmpty()) {
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(top = 12.dp)
+                        Button(
+                            onClick = { nav.navigate("labels/$itemId/0") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ozon.Blue)
                         ) {
-                            itemTags.forEach { t ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = {},
-                                    label = { Text(t) },
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-                if (i.description.isNotBlank()) {
-                    item { SectionTitle("Описание") }
-                    item {
-                        Text(
-                            i.description,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-                val attrs = AttrJson.toMap(i.attributes)
-                if (attrs.isNotEmpty()) {
-                    item { SectionTitle("Характеристики") }
-                    item {
-                        Column(Modifier.fillMaxWidth()) {
-                            attrs.forEach { (k, v) ->
-                                if (v.isNotBlank()) {
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                                        verticalAlignment = Alignment.Top
-                                    ) {
-                                        Text(
-                                            k,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.weight(0.55f)
-                                        )
-                                        Text(
-                                            v,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium,
-                                            textAlign = TextAlign.End,
-                                            modifier = Modifier.weight(0.45f)
-                                        )
-                                    }
-                                    HorizontalDivider()
-                                }
-                            }
-                        }
-                    }
-                }
-                item { SectionTitle("Действия") }
-                item {
-                    Column(Modifier.fillMaxWidth()) {
-                        Button(onClick = { nav.navigate("labels/$itemId/0") }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Этикетка: QR / штрихкод")
+                            Text("Этикетка: QR / штрихкод", fontWeight = FontWeight.Bold)
                         }
-                        if (Access.can(role, Access.LEND)) {
-                            Spacer(Modifier.height(4.dp))
-                            val l = loan
-                            if (l != null) {
-                                val due = l.due_at
-                                val overdue = due != null && due < System.currentTimeMillis()
-                                Text(
-                                    "Выдано: ${l.borrower}${due?.let { " · возврат до ${formatDate(it)}" } ?: ""}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
-                                OutlinedButton(
-                                    onClick = { vm.returnActiveLoan() },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("Вернуть") }
-                            } else {
-                                Button(
-                                    onClick = { showLend = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("Выдать временно") }
-                            }
-                        }
-                        ActionStub("Фотография и удаление фона", "M5")
-                        ActionStub("Отсканировать код этой вещи", "M3")
-                    }
-                }
-                item {
-                    OutlinedButton(
-                        onClick = { showBasket = true },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("В корзину извлечения")
                     }
                 }
             }
         }
+    ) { padding ->
+        Column(
+            Modifier
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (i == null) return@Column
 
-        if (showDelete) {
-            AlertDialog(
-                onDismissRequest = { showDelete = false },
-                title = { Text("Удалить вещь?") },
-                text = { Text("«${i?.name ?: ""}» будет скрыта из списков.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showDelete = false
-                        vm.softDelete()
-                        nav.popBackStack()
-                    }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDelete = false }) { Text("Отмена") }
-                }
+            ItemPhoto(
+                i.photo_path,
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .padding(top = 8.dp)
             )
-        }
-
-        if (showLend) {
-            LendDialog(
-                title = "Выдать вещь",
-                onDismiss = { showLend = false },
-                onConfirm = { b, n, d ->
-                    showLend = false
-                    vm.lend(b, n, d)
+            // US-B4: «поиск в сети» — открыть фото в системном просмотрщике и
+            // запустить там обратный поиск (Яндекс/Google Lens), найти характеристики и вернуться
+            if (!i.photo_path.isNullOrBlank() && File(i.photo_path).exists()) {
+                OutlinedButton(
+                    onClick = {
+                        runCatching { openImageSearch(ctx, File(i.photo_path)) }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Public, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Поиск в сети")
                 }
-            )
-        }
+                Text(
+                    "Откроем фото в просмотрщике: оттуда можно запустить обратный поиск картинки (Яндекс, Google Lens) и занести найденные характеристики в карточку.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
-        if (showBasket) {
-            AddToBasketDialog(
-                onDismiss = { showBasket = false },
-                onConfirm = { basketId, newName ->
-                    showBasket = false
-                    scope.launch {
-                        when {
-                            newName.isNotBlank() -> {
-                                val b = Deps.baskets.create(newName)
-                                Deps.baskets.addItem(b.id, itemId)
+            // Статусы вещи: выдана, срок, место — цветные бейджи как наличие в Ozon
+            val statuses = itemStatuses(i, hasLocation = i.location_id != null, loan = loan)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 14.dp)
+            ) {
+                statuses.forEach { s ->
+                    StatusBadge(s.label, s.color)
+                }
+            }
+
+            Text(
+                i.name,
+                style = MaterialTheme.typography.titleLarge,
+                color = Ozon.TextPrimary,
+                modifier = Modifier.padding(top = 14.dp)
+            )
+            if (i.code.isNotBlank()) {
+                Text(
+                    i.code,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Ozon.Pink,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            if (!i.ean.isNullOrBlank()) {
+                Text(
+                    "EAN ${i.ean}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 10.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Place,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = if (locationLabel == null) Ozon.Pink else Ozon.TextSecondary
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (locationLabel != null) {
+                        "Хранится: ${locationLabel}${storageName?.let { " · $it" } ?: ""}"
+                    } else {
+                        "Хранится: без места"
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (locationLabel == null) Ozon.Pink else Ozon.TextSecondary
+                )
+            }
+
+            val itemTags = TagsJson.toList(i.tags)
+            if (itemTags.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 12.dp)
+                ) {
+                    itemTags.forEach { t ->
+                        FilterChip(
+                            selected = false,
+                            onClick = {},
+                            label = { Text(t) },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // Табы «Описание» / «Характеристики» — как на странице товара
+            val titleAttr = i.description.isNotBlank()
+            val hasAttr = AttrJson.toMap(i.attributes).isNotEmpty()
+            Spacer(Modifier.height(18.dp))
+                TabRow(
+                    selectedTabIndex = tab,
+                    containerColor = Ozon.Bg,
+                    contentColor = Ozon.Blue,
+                    divider = { HorizontalDivider(color = Ozon.Card, thickness = 1.dp) },
+                    indicator = { TabRowDefaults.SecondaryIndicator(color = Ozon.Blue) }
+                ) {
+                    listOf("Описание", "Характеристики").forEachIndexed { idx, label ->
+                        Tab(
+                            selected = tab == idx,
+                            onClick = { tab = idx },
+                            text = {
+                                Text(
+                                    label,
+                                    color = if (tab == idx) Ozon.Blue else Ozon.TextSecondary,
+                                    fontWeight = if (tab == idx) FontWeight.Bold else FontWeight.Normal
+                                )
                             }
-                            basketId != null -> Deps.baskets.addItem(basketId, itemId)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                when (tab) {
+                    0 -> {
+                        if (titleAttr) {
+                            Text(i.description, style = MaterialTheme.typography.bodyLarge, color = Ozon.TextPrimary)
+                        } else {
+                            Text(
+                                "Описания нет",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Ozon.TextMuted
+                            )
+                        }
+                    }
+                    else -> {
+                        if (hasAttr) {
+                            Column(Modifier.fillMaxWidth()) {
+                                AttrJson.toMap(i.attributes).forEach { (k, v) ->
+                                    if (v.isNotBlank()) {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Text(
+                                                k,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Ozon.TextSecondary,
+                                                modifier = Modifier.weight(0.55f)
+                                            )
+                                            Text(
+                                                v,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Ozon.TextPrimary,
+                                                textAlign = TextAlign.End,
+                                                modifier = Modifier.weight(0.45f)
+                                            )
+                                        }
+                                        HorizontalDivider(color = Ozon.Card)
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                "Характеристик нет",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Ozon.TextMuted
+                            )
                         }
                     }
                 }
-            )
+
+            if (similar.isNotEmpty()) {
+                SectionTitle("Похожие вещи")
+                Text(
+                    "Найдено ${similar.size} вещей с такими же тегами",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ozon.TextSecondary
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    items(similar, key = { it.id }) { s ->
+                        ItemCard(
+                            s,
+                            null,
+                            { nav.navigate("item/${s.id}") },
+                            status = itemStatus(s, hasLocation = s.location_id != null),
+                            modifier = Modifier.width(160.dp)
+                        )
+                    }
+                }
+            }
+
+            SectionTitle("Действия")
+            Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                if (Access.can(role, Access.LEND)) {
+                    val l = loan
+                    if (l != null) {
+                        val due = l.due_at
+                        val overdue = due != null && due < System.currentTimeMillis()
+                        Text(
+                            "Выдано: ${l.borrower}${due?.let { " · возврат до ${formatDate(it)}" } ?: ""}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (overdue) Ozon.Pink else Ozon.TextSecondary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        OutlinedButton(
+                            onClick = { vm.returnActiveLoan() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Вернуть") }
+                    } else {
+                        Button(
+                            onClick = { showLend = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ozon.Blue)
+                        ) { Text("Выдать временно") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                ActionStub("Фотография и удаление фона", "M5")
+                ActionStub("Отсканировать код этой вещи", "M3")
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = { showBasket = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("В корзину извлечения")
+                }
+            }
         }
+    }
+
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            title = { Text("Удалить вещь?") },
+            text = { Text("«${i?.name ?: ""}» будет скрыта из списков.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDelete = false
+                    vm.softDelete()
+                    nav.popBackStack()
+                }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDelete = false }) { Text("Отмена") }
+            }
+        )
+    }
+
+    if (showLend) {
+        LendDialog(
+            title = "Выдать вещь",
+            onDismiss = { showLend = false },
+            onConfirm = { b, n, d ->
+                showLend = false
+                vm.lend(b, n, d)
+            }
+        )
+    }
+
+    if (showBasket) {
+        AddToBasketDialog(
+            onDismiss = { showBasket = false },
+            onConfirm = { basketId, newName ->
+                showBasket = false
+                scope.launch {
+                    when {
+                        newName.isNotBlank() -> {
+                            val b = Deps.baskets.create(newName)
+                            Deps.baskets.addItem(b.id, itemId)
+                        }
+                        basketId != null -> Deps.baskets.addItem(basketId, itemId)
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -450,27 +536,8 @@ private fun ActionStub(text: String, stage: String) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Text(stage, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-// Бейдж в стиле маркетплейса: цветная плашка с текстом (срок, статус)
-@Composable
-private fun OzonBadge(text: String, color: Color, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color.copy(alpha = 0.12f))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelLarge,
-            color = color,
-            maxLines = 2
-        )
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = Ozon.TextPrimary, modifier = Modifier.weight(1f))
+        Text(stage, style = MaterialTheme.typography.labelLarge, color = Ozon.TextSecondary)
     }
 }
 

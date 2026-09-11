@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.ui.theme.Ozon
 import java.io.File
 
 // Фото вещи или нейтральный плейсхолдер (карточки каталога не должны «плыть» без фото)
@@ -42,13 +43,14 @@ fun ItemPhoto(path: String?, modifier: Modifier = Modifier) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(Ozon.Bg),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Filled.Photo,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    tint = Ozon.TextSecondary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(40.dp)
                 )
             }
         } else {
@@ -62,13 +64,13 @@ fun ItemPhoto(path: String?, modifier: Modifier = Modifier) {
     }
 }
 
-// Бейдж-плашка в стиле маркетплейса (срок, статус) — цветной фон под текст
+// Бейдж-плашка как «осталось N шт» у Ozon — цветной фон под текст
 @Composable
 fun PillBadge(text: String, color: Color, modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = 0.12f))
+            .background(color.copy(alpha = 0.14f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
@@ -81,28 +83,34 @@ fun PillBadge(text: String, color: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Карточка «товар» в стиле маркетплейса: фото 1:1, название, код как «цена», бейдж срока, ящик
+// Карточка «товара» в стиле Ozon: фото, статус, код-«цена» (розовый), срок, название, ящик.
 @Composable
 fun ItemCard(
     item: ItemEntity,
     locationLabel: String?,
     onClick: () -> Unit,
     expiryText: String? = null,
-    expiryColor: Color = MaterialTheme.colorScheme.primary
+    expiryColor: Color = MaterialTheme.colorScheme.primary,
+    status: ItemStatus? = null,
+    modifier: Modifier = Modifier
 ) {
     Card(
         onClick = onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        colors = CardDefaults.cardColors(containerColor = Ozon.Card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
             ItemPhoto(item.photo_path, Modifier.fillMaxWidth().aspectRatio(1f))
             Column(Modifier.padding(10.dp)) {
+                if (status != null && status.showOnCard()) {
+                    StatusBadge(status.label, status.color, Modifier.padding(bottom = 6.dp))
+                }
                 Text(
                     item.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Ozon.TextPrimary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -111,7 +119,7 @@ fun ItemCard(
                         item.code,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = Ozon.Pink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 4.dp)
@@ -127,19 +135,19 @@ fun ItemCard(
                 if (locationLabel != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 6.dp)
+                        modifier = Modifier.padding(top = 8.dp)
                     ) {
                         Icon(
                             Icons.Filled.Place,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = Ozon.TextSecondary
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             locationLabel,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Ozon.TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)

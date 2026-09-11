@@ -173,6 +173,7 @@ private fun qrTemplate(): LabelTemplateEntity {
         margin_mm = 2.0,
         show_text = false,
         text_content = "",
+        show_number = false,
         font_size = 10.0,
         created_at = now,
         updated_at = now,

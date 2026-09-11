@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.ui.theme.Ozon
 
 fun LocationEntity.displayLabel(): String = label.ifBlank { name }.ifBlank { "Ящик" }
 
@@ -40,6 +41,7 @@ fun ItemRow(
             Text(
                 item.name,
                 style = MaterialTheme.typography.titleMedium,
+                color = Ozon.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
             if (item.code.isNotBlank()) {
@@ -47,7 +49,7 @@ fun ItemRow(
                     item.code,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = Ozon.Pink
                 )
             }
             if (expiryText != null) {
@@ -65,9 +67,9 @@ fun ItemRow(
         }.joinToString(" · ")
         if (sub.isNotEmpty()) {
             Spacer(Modifier.height(2.dp))
-            Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(sub, style = MaterialTheme.typography.bodyMedium, color = Ozon.TextSecondary)
         }
         Spacer(Modifier.height(8.dp))
-        HorizontalDivider()
+        HorizontalDivider(color = Ozon.Card)
     }
 }

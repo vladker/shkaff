@@ -28,7 +28,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BasketEntity::class,
         BasketItemEntity::class
     ],
-    version = 10,
+    version = 12,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -54,7 +54,7 @@ abstract class ShkaffDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "10"
+        const val SCHEMA_VERSION = "12"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -233,10 +233,25 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v11 (метки): расположение текста над/под кодом, вывод номера объекта.
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE label_template ADD COLUMN text_position TEXT NOT NULL DEFAULT 'bottom'")
+                db.execSQL("ALTER TABLE label_template ADD COLUMN show_number INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        // v12 (метки): QR/штрихкод может кодировать ссылку приложения (US-I3).
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE label_template ADD COLUMN app_link INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

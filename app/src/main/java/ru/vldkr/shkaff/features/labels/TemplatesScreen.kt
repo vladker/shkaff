@@ -62,7 +62,10 @@ class TemplatesVm : ViewModel() {
         var heightMm: String = "40",
         var marginMm: String = "3",
         var showText: Boolean = true,
-        var textContent: String = "{name} {code}",
+        var textContent: String = "{name}",
+        var textPosition: String = "bottom",
+        var showNumber: Boolean = true,
+        var appLink: Boolean = false,
         var fontSize: String = "12",
         var textColor: String = "#000000",
         var bgColor: String = "#FFFFFF",
@@ -95,6 +98,9 @@ class TemplatesVm : ViewModel() {
             marginMm = t.margin_mm.toString(),
             showText = t.show_text,
             textContent = t.text_content,
+            textPosition = t.text_position,
+            showNumber = t.show_number,
+            appLink = t.app_link,
             fontSize = t.font_size.toString(),
             textColor = t.text_color,
             bgColor = t.bg_color,
@@ -116,6 +122,7 @@ class TemplatesVm : ViewModel() {
         if (m == null || m < 0) { error.value = "Поля — число от 0 мм"; return }
         if (fs == null || fs < 6) { error.value = "Размер шрифта — число от 6"; return }
         if (f.bgColor.isBlank() || f.textColor.isBlank()) { error.value = "Укажите цвета"; return }
+        if (f.textPosition != "top" && f.textPosition != "bottom") { error.value = "Выберите расположение текста"; return }
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val dev = Deps.deviceId
@@ -129,6 +136,9 @@ class TemplatesVm : ViewModel() {
                 margin_mm = m,
                 show_text = f.showText,
                 text_content = f.textContent,
+                text_position = f.textPosition,
+                show_number = f.showNumber,
+                app_link = f.appLink,
                 font_size = fs,
                 text_color = f.textColor,
                 bg_color = f.bgColor,
@@ -202,7 +212,7 @@ fun TemplatesScreen(nav: NavController) {
                         Column(Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "${t.format} · ${t.width_mm.toInt()}×${t.height_mm.toInt()} мм · ${if (t.show_text) "с текстом" else "без текста"}",
+                                "${t.format} · ${t.width_mm.toInt()}×${t.height_mm.toInt()} мм · ${if (t.show_text) "с текстом" else "без текста"} · ${if (t.text_position == "top") "текст сверху" else "текст снизу"} · ${if (t.app_link) "ссылка" else "код"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -291,7 +301,26 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = f.showText, onCheckedChange = { f.showText = it })
-            Text("Текст под кодом", style = MaterialTheme.typography.bodyMedium)
+            Text("Текст на этикетке", style = MaterialTheme.typography.bodyMedium)
+        }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Checkbox(checked = f.showNumber, onCheckedChange = { f.showNumber = it })
+            Text("Номер объекта (код) вместе с кодом", style = MaterialTheme.typography.bodyMedium)
+        }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Checkbox(checked = f.appLink, onCheckedChange = { f.appLink = it })
+            Text("QR — ссылка на приложение (открывает «Шкаф» по скану)", style = MaterialTheme.typography.bodyMedium)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text("Расположение надписей", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { f.textPosition = "top" }, modifier = Modifier.weight(1f)) {
+                Text("Над кодом", style = MaterialTheme.typography.labelLarge)
+            }
+            OutlinedButton(onClick = { f.textPosition = "bottom" }, modifier = Modifier.weight(1f)) {
+                Text("Под кодом", style = MaterialTheme.typography.labelLarge)
+            }
         }
         if (f.showText) {
             OutlinedTextField(

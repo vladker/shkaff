@@ -248,6 +248,10 @@ fun BackupScreen(nav: NavController) {
                 Text("Поделиться файлом")
             }
             Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { nav.navigate("fragment") }, enabled = !ui.busy, modifier = Modifier.fillMaxWidth()) {
+                Text("Фрагмент базы… (выбрать ящики/период)")
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
                 "Один ZIP-файл со всей базой (без фото). Место выбираете сами: локальная папка, сетевая папка, облако. «Поделиться» — в мессенджер, на другой телефон и т.п.",
                 style = MaterialTheme.typography.bodySmall,

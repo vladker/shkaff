@@ -22,7 +22,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -49,16 +48,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.rememberRole
-import ru.vldkr.shkaff.util.Expiry
+import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.displayLabel
-import java.time.LocalDate
+import ru.vldkr.shkaff.ui.theme.Ozon
 
 class ItemsVm : ViewModel() {
 
@@ -66,6 +66,7 @@ class ItemsVm : ViewModel() {
     val query = MutableStateFlow("")
     val tagFilter = MutableStateFlow("")
     val tagOptions = MutableStateFlow<List<String>>(emptyList())
+    val loansByItem = MutableStateFlow<Map<String, LoanEntity>>(emptyMap())
 
     val list = combine(allItems, query, tagFilter) { all, q, tag ->
         val t = q.trim()
@@ -93,26 +94,36 @@ class ItemsVm : ViewModel() {
                 tagOptions.value = tags.map { e -> e.name }.distinct().sorted()
             }
         }
+        viewModelScope.launch {
+            Deps.loans.observeActive().collect { loans ->
+                loansByItem.value = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id }
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemsScreen(nav: NavController) {
+fun ItemsScreen(nav: NavController, tag: String = "") {
     val vm: ItemsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val list by vm.list.collectAsState()
     val tagOptions by vm.tagOptions.collectAsState()
+    val loans by vm.loansByItem.collectAsState()
     val locations = LocationMap()
+    // «0» — служебное значение для роута items/{tag}, когда тега нет
+    val effectiveTag = if (tag.isEmpty() || tag == "0") "" else tag
     var queryText by remember { mutableStateOf(vm.query.value) }
-    var activeTag by remember { mutableStateOf(vm.tagFilter.value) }
+    var activeTag by remember { mutableStateOf(effectiveTag) }
     val role = rememberRole()
     LaunchedEffect(Unit) {
+        if (effectiveTag.isNotEmpty()) vm.tagFilter.value = effectiveTag
         ScanBus.lastCode?.let { code ->
             queryText = code
             vm.query.value = code
             ScanBus.lastCode = null
         }
     }
+    LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.tagFilter.value = effectiveTag }
 
     Scaffold(
         topBar = {
@@ -129,7 +140,11 @@ fun ItemsScreen(nav: NavController) {
         },
         floatingActionButton = {
             if (Access.can(role, Access.CREATE)) {
-                FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
+                FloatingActionButton(
+                    onClick = { nav.navigate("item-form/0/0") },
+                    containerColor = Ozon.Blue,
+                    contentColor = Ozon.TextPrimary
+                ) {
                     Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
                 }
             }
@@ -145,14 +160,17 @@ fun ItemsScreen(nav: NavController) {
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp)),
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                placeholder = { Text("Поиск: название, код, атрибуты…") },
+                    .clip(RoundedCornerShape(12.dp)),
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
+                placeholder = { Text("Поиск: название, код, атрибуты…", color = Ozon.TextSecondary) },
                 singleLine = true,
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = Ozon.Search,
+                    unfocusedContainerColor = Ozon.Search,
+                    disabledContainerColor = Ozon.Search,
+                    focusedTextColor = Ozon.TextPrimary,
+                    unfocusedTextColor = Ozon.TextPrimary,
+                    cursorColor = Ozon.Blue,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent
@@ -197,17 +215,12 @@ fun ItemsScreen(nav: NavController) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(list, key = { it.id }) { it ->
-                        val date = Expiry.parse(it.expiry_date)
-                        val today = LocalDate.now()
+                        val status = itemStatus(it, hasLocation = it.location_id != null, loan = loans[it.id])
                         ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),
                             { nav.navigate("item/${it.id}") },
-                            expiryText = date?.let { d -> Expiry.label(d, today) },
-                            expiryColor = if (date != null && Expiry.daysUntil(date, today) < 0)
-                                MaterialTheme.colorScheme.error
-                            else
-                                MaterialTheme.colorScheme.primary
+                            status = status
                         )
                     }
                 }

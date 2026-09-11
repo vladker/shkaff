@@ -176,6 +176,8 @@ object Backup {
         put("show_text", e.show_text); put("text_content", e.text_content)
         put("font_size", e.font_size); put("text_color", e.text_color); put("bg_color", e.bg_color)
         put("invert", e.invert); put("logo_path", e.logo_path ?: ""); put("quiet_zone", e.quiet_zone)
+        put("text_position", e.text_position); put("show_number", e.show_number)
+        put("app_link", e.app_link)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -184,12 +186,15 @@ object Backup {
         id = j.getString("id"), name = j.getString("name"), format = j.optString("format", "QR"),
         width_mm = j.optDouble("width_mm", 58.0), height_mm = j.optDouble("height_mm", 40.0),
         margin_mm = j.optDouble("margin_mm", 3.0),
-        show_text = j.optBoolean("show_text", true), text_content = j.optString("text_content", "{name} {code}"),
+        show_text = j.optBoolean("show_text", true), text_content = j.optString("text_content", "{name}"),
         font_size = j.optDouble("font_size", 12.0),
         text_color = j.optString("text_color", "#000000"), bg_color = j.optString("bg_color", "#FFFFFF"),
         invert = j.optBoolean("invert", false),
         logo_path = j.optString("logo_path", "").takeIf { it.isNotBlank() },
         quiet_zone = j.optBoolean("quiet_zone", true),
+        text_position = j.optString("text_position", "bottom"),
+        show_number = j.optBoolean("show_number", true),
+        app_link = j.optBoolean("app_link", false),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")

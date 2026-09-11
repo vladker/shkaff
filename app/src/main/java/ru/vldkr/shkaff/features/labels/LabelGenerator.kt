@@ -13,6 +13,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.domain.links.AppLink
 import java.io.File
 import java.io.FileOutputStream
 
@@ -37,6 +38,9 @@ object LabelGenerator {
             .replace("{code}", code)
             .replace("{id}", template.id)
 
+    fun encodeContent(template: LabelTemplateEntity, code: String): String =
+        if (template.app_link) AppLink.urlFor(code) else code
+
     fun generate(
         template: LabelTemplateEntity,
         code: String,
@@ -45,6 +49,7 @@ object LabelGenerator {
     ): Bitmap? {
         if (code.isBlank()) return null
         val fmt = barcodeFormat(template.format) ?: return null
+        val payload = encodeContent(template, code)
         val pxPerMm = dpi / 25.4f
         val W = ((template.width_mm * pxPerMm).toInt()).coerceAtLeast(16)
         val H = ((template.height_mm * pxPerMm).toInt()).coerceAtLeast(16)
@@ -56,8 +61,16 @@ object LabelGenerator {
 
         val text = renderText(template, name, code)
         val showText = template.show_text && text.isNotBlank()
+        val baseLines = if (showText)
+            text.split('\n').map { it.trim() }.filter { it.isNotBlank() }
+        else emptyList()
+        // Номер объекта («code») печатается отдельной строкой, если текст шаблона его уже не содержит.
+        val showNumber = template.show_number && code.isNotBlank() && !template.text_content.contains("{code}")
+        val lines = if (showNumber && baseLines.none { it == code }) baseLines + code else baseLines
         val fontSizePx = ((template.font_size * 25.4f / 72f) * pxPerMm).toInt().coerceIn(8, 800)
-        val textBlockH = if (showText) ((fontSizePx * 1.7f).toInt()) else 0
+        val lineH = (fontSizePx * 1.7f).toInt()
+        val textBlockH = if (lines.isNotEmpty()) lineH * lines.size else 0
+        val textOnTop = template.text_position.equals("top", ignoreCase = true)
 
         val areaW = (W - margin * 2).coerceAtLeast(4)
         val areaH = (H - margin * 2 - textBlockH).coerceAtLeast(4)
@@ -66,7 +79,7 @@ object LabelGenerator {
         val codeH = if (isSquare) minOf(areaW, areaH) else areaH
 
         val matrix = try {
-            MultiFormatWriter().encode(code, fmt, codeW, codeH)
+            MultiFormatWriter().encode(payload, fmt, codeW, codeH)
         } catch (e: Exception) {
             return null
         }
@@ -75,15 +88,21 @@ object LabelGenerator {
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         canvas.drawColor(bg)
-        val cx = (W - codeW) / 2f
-        canvas.drawBitmap(codeBmp, cx, margin.toFloat(), null)
-        if (showText) {
+        // Код центрируется в своей области (после блока текста, если текст сверху).
+        val codeShift = if (textOnTop) textBlockH else 0
+        val codeY = margin + codeShift + ((areaH - codeH) / 2).coerceAtLeast(0)
+        canvas.drawBitmap(codeBmp, (W - codeW) / 2f, codeY.toFloat(), null)
+        if (lines.isNotEmpty()) {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             paint.color = fg
             paint.textSize = fontSizePx.toFloat()
             paint.textAlign = Paint.Align.CENTER
-            val baseline = H - margin / 2f - (textBlockH - fontSizePx) / 2f
-            canvas.drawText(text, W / 2f, baseline, paint)
+            val blockTop = if (textOnTop) margin else H - margin - textBlockH
+            var y = blockTop + lineH
+            lines.forEach {
+                canvas.drawText(it, W / 2f, y.toFloat(), paint)
+                y += lineH
+            }
         }
         return out
     }

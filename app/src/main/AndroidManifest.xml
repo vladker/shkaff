@@ -32,6 +32,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- US-I3: QR с HTTPS-ссылкой github.com/vldkr/shkaff/… открывает «Шкаф»
+                 (deep-link); без приложения — браузер покажет страницу релиза. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="github.com" android:pathPrefix="/vldkr/shkaff/" />
+            </intent-filter>
         </activity>
 
         <provider

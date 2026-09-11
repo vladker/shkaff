@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -77,7 +79,13 @@ class LabelsVm(
         val profiles: List<PrinterProfileEntity> = emptyList(),
         val printBusy: Boolean = false,
         val printMsg: String? = null,
-        val printError: String? = null
+        val printError: String? = null,
+        // Быстрые настройки печати (оверрайды в текущей сессии; пусто — значение из шаблона).
+        val sizeW: String = "",
+        val sizeH: String = "",
+        val textPosition: String = "bottom",
+        val showText: Boolean = true,
+        val showNumber: Boolean = true
     )
 
     val ui = MutableStateFlow(Ui())
@@ -94,18 +102,68 @@ class LabelsVm(
         ui.value = f(ui.value)
     }
 
-    fun setCode(c: String) {
-        update { it.copy(code = c, bitmap = null, savedMsg = null) }
-        regenerate()
-    }
-
     fun setTemplate(id: String) {
         update { it.copy(template = ui.value.templates.firstOrNull { t -> t.id == id }) }
         regenerate()
     }
 
-    fun regenerate() {
+    fun setCode(c: String) {
+        update { it.copy(code = c, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun setSize(w: String, h: String) {
+        update { it.copy(sizeW = w, sizeH = h, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun setTextPosition(p: String) {
+        if (p != "top" && p != "bottom") return
+        update { it.copy(textPosition = p, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun setShowText(v: Boolean) {
+        update { it.copy(showText = v, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun setShowNumber(v: Boolean) {
+        update { it.copy(showNumber = v, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    fun resetOverrides() {
         val t = ui.value.template ?: return
+        update {
+            it.copy(
+                sizeW = t.width_mm.toInt().toString(),
+                sizeH = t.height_mm.toInt().toString(),
+                textPosition = t.text_position,
+                showText = t.show_text,
+                showNumber = t.show_number,
+                bitmap = null,
+                savedMsg = null
+            )
+        }
+        regenerate()
+    }
+
+    fun effectiveTemplate(): LabelTemplateEntity? {
+        val t = ui.value.template ?: return null
+        val w = ui.value.sizeW.toDoubleOrNull()?.takeIf { it >= 10.0 } ?: t.width_mm
+        val h = ui.value.sizeH.toDoubleOrNull()?.takeIf { it >= 10.0 } ?: t.height_mm
+        return t.copy(
+            width_mm = w,
+            height_mm = h,
+            text_position = ui.value.textPosition,
+            show_text = ui.value.showText,
+            show_number = ui.value.showNumber
+        )
+    }
+
+    fun regenerate() {
+        val t = effectiveTemplate() ?: return
         val bmp = LabelGenerator.generate(t, ui.value.code, ui.value.name)
         update { it.copy(bitmap = bmp, savedMsg = null) }
     }
@@ -131,7 +189,7 @@ class LabelsVm(
     }
 
     fun print(profile: PrinterProfileEntity) {
-        val t = ui.value.template ?: return
+        val t = effectiveTemplate() ?: return
         val code = ui.value.code
         if (code.isBlank()) {
             update { it.copy(printError = "Пустой код — нечего печатать") }
@@ -166,7 +224,26 @@ class LabelsVm(
             Deps.db.labelTemplateDao().observeAll().collect { list ->
                 val cur = ui.value
                 val t = list.firstOrNull { it.id == (templateId ?: cur.template?.id) } ?: list.firstOrNull()
-                update { it.copy(templates = list, template = t) }
+                if (t == null) {
+                    update { it.copy(templates = list, template = null) }
+                    return@collect
+                }
+                update { cur ->
+                    // Оверрайды инициализируем из шаблона один раз, при первом выборе.
+                    if (cur.sizeW.isEmpty()) {
+                        cur.copy(
+                            templates = list,
+                            template = t,
+                            sizeW = t.width_mm.toInt().toString(),
+                            sizeH = t.height_mm.toInt().toString(),
+                            textPosition = t.text_position,
+                            showText = t.show_text,
+                            showNumber = t.show_number
+                        )
+                    } else {
+                        cur.copy(templates = list, template = t)
+                    }
+                }
                 regenerate()
             }
         }
@@ -236,6 +313,50 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+            Spacer(Modifier.height(16.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Настройки печати", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = ui.sizeW,
+                            onValueChange = { vm.setSize(it, ui.sizeH) },
+                            label = { Text("Ширина, мм") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = ui.sizeH,
+                            onValueChange = { vm.setSize(ui.sizeW, it) },
+                            label = { Text("Высота, мм") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.setTextPosition("top") }, modifier = Modifier.weight(1f)) {
+                            Text("Над кодом", style = MaterialTheme.typography.labelLarge)
+                        }
+                        OutlinedButton(onClick = { vm.setTextPosition("bottom") }, modifier = Modifier.weight(1f)) {
+                            Text("Под кодом", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Checkbox(checked = ui.showText, onCheckedChange = vm::setShowText)
+                        Text("Надписи на этикетке", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Checkbox(checked = ui.showNumber, onCheckedChange = vm::setShowNumber)
+                        Text("Номер объекта (код)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    TextButton(onClick = { vm.resetOverrides() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Сбросить к шаблону")
+                    }
+                }
+            }
             Spacer(Modifier.height(16.dp))
             SectionTitle("Предпросмотр")
             ui.bitmap?.let { bmp ->

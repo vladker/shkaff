@@ -133,6 +133,12 @@ data class LabelTemplateEntity(
     val invert: Boolean = false,
     val logo_path: String? = null,
     val quiet_zone: Boolean = true,
+    // Расположение текста относительно кода: "bottom" (внизу) или "top" (сверху).
+    val text_position: String = "bottom",
+    // Печатать номер объекта (code) текстом вместе с кодом.
+    val show_number: Boolean = true,
+    // US-I3: QR/штрихкод кодирует HTTPS-ссылку приложения (deep-link), а не просто код.
+    val app_link: Boolean = false,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,

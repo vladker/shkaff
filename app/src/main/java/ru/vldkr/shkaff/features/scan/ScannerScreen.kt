@@ -71,6 +71,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.actions.ActionCode
+import ru.vldkr.shkaff.domain.links.AppLink
 import ru.vldkr.shkaff.util.ScanBus
 import java.util.concurrent.Executors
 
@@ -199,6 +200,33 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                             Spacer(Modifier.height(12.dp))
                             if (ActionCode.isServiceCode(code)) {
                                 ServiceCodeCard(nav, parsed = ActionCode.parse(code), onDone = { detected = null })
+                            } else if (AppLink.parse(code) != null) {
+                                // QR «Шкаф» (US-I3): внутри приложения ссылку не открываем —
+                                // сразу ищем вещь по коду.
+                                val itemCode = AppLink.parse(code)!!
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            ScanBus.lastCode = itemCode
+                                            nav.navigate("items/0") { popUpTo("dashboard") }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("В приложении") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            runCatching {
+                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(code)))
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Открыть ссылку") }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Код: $itemCode",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             } else if (code.startsWith("https://") || code.startsWith("http://")) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
@@ -216,7 +244,7 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                                     OutlinedButton(
                                         onClick = {
                                             ScanBus.lastCode = code
-                                            nav.navigate("items") { popUpTo("dashboard") }
+                                            nav.navigate("items/0") { popUpTo("dashboard") }
                                         },
                                         modifier = Modifier.weight(1f)
                                     ) { Text("Найти") }

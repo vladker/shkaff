@@ -84,6 +84,7 @@ object Deps {
         stacks = StacksRepository(db)
         baskets = BasketRepository(db)
         seedDefaultAttributes()
+        seedClimateAttributeDefs()
         seedDefaultTemplate()
         backfillExpiryDates()
         seedTagDictionaryOnce()
@@ -190,6 +191,20 @@ object Deps {
         for (d in defs) db.attributeDao().upsert(d)
     }
 
+    // US-C5: атрибуты климата хранилища спорятся один раз (и для пустой, и для
+    // существующей базы); источник копируется также, как и в пустую базу — не из сида.
+    private fun seedClimateAttributeDefs() {
+        if (meta().get("climateDefsSeeded") == "1") return
+        val now = System.currentTimeMillis()
+        val dev = deviceId
+        val defs = listOf(
+            AttributeDefEntity(newId(), "storage", "temperature_c", "Температура, °C", "number", "[]", 2, false, now, now, null, dev),
+            AttributeDefEntity(newId(), "storage", "humidity_pct", "Влажность, %", "number", "[]", 3, false, now, now, null, dev)
+        )
+        for (d in defs) db.attributeDao().upsert(d)
+        meta().upsert(SchemaMetaEntity("climateDefsSeeded", "1"))
+    }
+
     private fun seedDefaultTemplate() {
         if (db.labelTemplateDao().count() > 0) return
         val now = System.currentTimeMillis()
@@ -201,7 +216,7 @@ object Deps {
             height_mm = 40.0,
             margin_mm = 3.0,
             show_text = true,
-            text_content = "{name} {code}",
+            text_content = "{name}",
             font_size = 12.0,
             text_color = "#000000",
             bg_color = "#FFFFFF",

@@ -225,8 +225,14 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                             attrs.forEach { (k, v) ->
                                 if (v.isNotBlank()) {
                                     Row(Modifier.padding(vertical = 2.dp)) {
-                                        Text("$k: ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(v, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            when (k) {
+                                                "temperature_c" -> "Температура: $v°C"
+                                                "humidity_pct" -> "Влажность: $v%"
+                                                else -> "$k: $v"
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
                                 }
                             }
