@@ -80,6 +80,7 @@ import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.ImageDownload
 import ru.vldkr.shkaff.util.ScanBus
+import ru.vldkr.shkaff.util.newId
 import ru.vldkr.shkaff.util.rememberPhotoPickers
 import java.io.File
 
@@ -368,7 +369,9 @@ class ItemFormVm(
     // от жизненного цикла Uri (документы могут быть очищены системой)
     fun setPhoto(path: String) {
         try {
-            val dest = File(Deps.app.filesDir, "item_photos/${itemId ?: "new"}.jpg")
+            // Имя файла уникально (UUID): у новой вещи ещё нет id, а общий «new.jpg»
+            // перезаписывался бы другими несозданными вещами.
+            val dest = File(Deps.app.filesDir, "item_photos/${newId()}.jpg")
             dest.parentFile?.mkdirs()
             val src = File(path)
             if (src.exists()) {

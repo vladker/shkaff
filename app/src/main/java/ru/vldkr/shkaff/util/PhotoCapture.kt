@@ -75,7 +75,7 @@ fun rememberPhotoPickers(
         ActivityResultContracts.TakePicture()
     ) { ok: Boolean ->
         if (ok) {
-            val f = File(tmpDir, "capture_${System.currentTimeMillis()}.jpg")
+            val f = File(tmpDir, "pending_capture.jpg")
             if (f.exists()) onCaptured(PhotoCapture.copyToInternal(ctx, f))
         }
     }
