@@ -1,8 +1,11 @@
 package ru.vldkr.shkaff.features.dashboard
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,32 +13,39 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingBasket
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -103,7 +113,6 @@ class DashboardVm : ViewModel() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(nav: NavController) {
     val vm: DashboardVm = viewModel()
@@ -112,30 +121,6 @@ fun DashboardScreen(nav: NavController) {
     val locations = LocationMap()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Шкаф")
-                        ui.activeProfile?.let {
-                            Text(
-                                "Профиль: $it",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { nav.navigate("scan") }) {
-                        Icon(Icons.Filled.QrCodeScanner, contentDescription = "Сканер")
-                    }
-                    IconButton(onClick = { nav.navigate("settings") }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Настройки")
-                    }
-                }
-            )
-        },
         floatingActionButton = {
             if (ui.canCreate) {
                 FloatingActionButton(onClick = { nav.navigate("item-form/0/0") }) {
@@ -147,72 +132,75 @@ fun DashboardScreen(nav: NavController) {
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
-                .padding(horizontal = 16.dp)
                 .fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 96.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
         ) {
             item {
+                DashboardHeader(ui.activeProfile, onScan = { nav.navigate("scan") }, onSettings = { nav.navigate("settings") })
+            }
+            item {
+                OzonSearch(nav)
+            }
+            item {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(vertical = 12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 4.dp)
                 ) {
-                    StatCard(ui.itemsCount, "Вещи", Modifier.weight(1f)) { nav.navigate("items") }
-                    StatCard(ui.locationsCount, "Ящики", Modifier.weight(1f)) { nav.navigate("storages") }
-                    StatCard(ui.storagesCount, "Хранилища", Modifier.weight(1f)) { nav.navigate("storages") }
+                    StatCard(ui.itemsCount, "вещей", Modifier.weight(1f)) { nav.navigate("items") }
+                    StatCard(ui.locationsCount, "ящиков", Modifier.weight(1f)) { nav.navigate("storages") }
+                    StatCard(ui.storagesCount, "хранилищ", Modifier.weight(1f)) { nav.navigate("storages") }
                 }
             }
             if (ui.activeLoans > 0) {
                 item {
                     Card(
-                        Modifier
+                        modifier = Modifier
                             .fillMaxWidth()
                             .clickable { nav.navigate("loans") }
-                            .padding(bottom = 8.dp)
+                            .padding(top = 10.dp)
                     ) {
-                        Column(Modifier.padding(14.dp)) {
+                        Row(
+                            Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
                                 if (ui.overdueLoans > 0)
                                     "Выдано: ${ui.activeLoans} · просрочено: ${ui.overdueLoans}"
                                 else
                                     "Выдано временно: ${ui.activeLoans}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (ui.overdueLoans > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (ui.overdueLoans > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
                             )
+                            Text("Подробнее", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
             }
             if (ui.canCreate) {
+                item { SectionTitle("Быстрые действия") }
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { nav.navigate("storage-form/0") }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Storage, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Хранилище")
-                        }
-                        OutlinedButton(onClick = { nav.navigate("storages") }, modifier = Modifier.weight(1f)) {
-                            Text("Новый ящик")
-                        }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuickAction("Добавить вещь", Icons.Filled.Add, Modifier.weight(1f)) { nav.navigate("item-form/0/0") }
+                        QuickAction("Хранилище", Icons.Filled.Storage, Modifier.weight(1f)) { nav.navigate("storage-form/0") }
                     }
                 }
                 item {
-                    OutlinedButton(onClick = { nav.navigate("stacks") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        Text("Стеки (группы)")
-                    }
-                }
-                item {
-                    OutlinedButton(onClick = { nav.navigate("basket") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        Text("Корзина извлечения")
-                    }
-                }
-                item {
-                    OutlinedButton(
-                        onClick = { nav.navigate("batch") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 10.dp)
                     ) {
-                        Text("Серия однотипных вещей (массовый ввод)")
+                        QuickAction("Ящик", Icons.Filled.Inventory2, Modifier.weight(1f)) { nav.navigate("storages") }
+                        QuickAction("Стеки", Icons.Filled.Layers, Modifier.weight(1f)) { nav.navigate("stacks") }
+                    }
+                }
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        QuickAction("Корзина извлечения", Icons.Filled.ShoppingBasket, Modifier.weight(1f)) { nav.navigate("basket") }
+                        QuickAction("Серия вещей", Icons.Filled.PlaylistAdd, Modifier.weight(1f)) { nav.navigate("batch") }
                     }
                 }
             }
@@ -255,25 +243,126 @@ fun DashboardScreen(nav: NavController) {
             if (ui.recent.isEmpty()) {
                 item { EmptyState("Пока нет вещей.\nДобавьте первую — с номером, фото и ящиком хранения.") }
             } else {
-                    items(ui.recent, key = { it.id }) { it ->
-                        ItemRow(it, locations[it.location_id]?.displayLabel(), { nav.navigate("item/${it.id}") })
-                    }
+                items(ui.recent, key = { it.id }) { it ->
+                    ItemRow(it, locations[it.location_id]?.displayLabel(), { nav.navigate("item/${it.id}") })
+                }
             }
         }
     }
 }
 
 @Composable
+private fun DashboardHeader(profile: String?, onScan: () -> Unit, onSettings: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Шкаф", style = MaterialTheme.typography.headlineMedium)
+            if (profile != null) {
+                Text(
+                    "Профиль: $profile",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        IconButton(onClick = onScan) {
+            Icon(Icons.Filled.QrCodeScanner, contentDescription = "Сканер", tint = MaterialTheme.colorScheme.primary)
+        }
+        IconButton(onClick = onSettings) {
+            Icon(Icons.Filled.Settings, contentDescription = "Настройки")
+        }
+    }
+}
+
+// Поле поиска в стиле Ozon: белая «пилюля» с синим увеличительным стеклом — ведёт на каталог вещей.
+@Composable
+private fun OzonSearch(nav: NavController) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .clickable { nav.navigate("items") }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.Search,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Найти вещь, код или ящик…",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 private fun StatCard(value: Int, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Card(modifier = modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
         Column(
             Modifier
-                .clickable { onClick() }
-                .padding(14.dp),
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("$value", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// Плитка быстрых действий: синяя иконка в светлом квадрате + подпись, как «категории» в Ozon.
+@Composable
+private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }
