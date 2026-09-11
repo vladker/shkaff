@@ -145,6 +145,14 @@ fun SettingsScreen(nav: NavController) {
                     { nav.navigate("printers") }
                 )
             }
+            item { Section("ИИ-агент") }
+            item {
+                SettingRow(
+                    "LLM-чат",
+                    "Агент по вашей базе: поиск, сводки, подсказки; провайдер — в настройках чата",
+                    { nav.navigate("agent") }
+                )
+            }
             item { Section("Люди и аудит") }
             item {
                 SettingRow(
