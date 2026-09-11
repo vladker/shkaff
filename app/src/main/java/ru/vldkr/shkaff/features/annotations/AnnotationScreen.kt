@@ -30,6 +30,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,9 +77,11 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.LocationData
+import ru.vldkr.shkaff.domain.visual.SchematicLayout
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.PhotoCapture
 import ru.vldkr.shkaff.util.PhotoPickers
+import ru.vldkr.shkaff.util.SchematicRenderer
 import ru.vldkr.shkaff.util.rememberPhotoPickers
 import ru.vldkr.shkaff.util.newId
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -102,9 +105,14 @@ class AnnotationVm(val storageId: String) : ViewModel() {
         val photoUri: String? = null,
         val aspectRatio: Float = 4f / 3f,
         val anns: List<Ann> = emptyList(),
+        val locations: List<LocationEntity> = emptyList(),
         val drawingMode: Boolean = false,
+        val schematicMode: Boolean = false,
         val selectedAnnId: String? = null
     )
+
+    // режим рисования: схема используется, пока фото нет или выбрана вручную
+    val schematic: Boolean get() = ui.value.schematicMode || ui.value.photoUri == null
 
     val ui = MutableStateFlow(Ui())
 
@@ -132,6 +140,11 @@ class AnnotationVm(val storageId: String) : ViewModel() {
                 update { it.copy(anns = list.map { a -> a.toAnn() }) }
             }
         }
+        viewModelScope.launch {
+            Deps.locations.observeByStorage(storageId).collect { list ->
+                update { it.copy(locations = list) }
+            }
+        }
     }
 
     private fun photoAspect(path: String?): Float {
@@ -155,6 +168,10 @@ class AnnotationVm(val storageId: String) : ViewModel() {
 
     fun toggleDrawing() {
         update { it.copy(drawingMode = !it.drawingMode, selectedAnnId = null) }
+    }
+
+    fun toggleView() {
+        update { it.copy(schematicMode = !it.schematicMode, drawingMode = false, selectedAnnId = null) }
     }
 
     fun select(id: String?) {
@@ -303,7 +320,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                         Text("Сфотографируйте шкаф, полку или стол", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Потом рисуйте прямоугольники по ящикам — они станут «кнопками».",
+                            "Пока фото нет, ящики отрисовываются стандартными блоками — разметку можно рисовать и на схеме.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -315,13 +332,20 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                 }
             }
 
+            if (ui.photoUri != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+                    FilterChip(selected = !ui.schematicMode, onClick = { if (ui.schematicMode) vm.toggleView() }, label = { Text("Фото") })
+                    FilterChip(selected = ui.schematicMode, onClick = { if (!ui.schematicMode) vm.toggleView() }, label = { Text("Схема") })
+                }
+            }
+
             AnnotationPhotoArea(vm, ui, onAction = { actionAnn = it })
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = { vm.toggleDrawing() },
                     modifier = Modifier.weight(1f),
-                    enabled = ui.photoUri != null
+                    enabled = ui.photoUri != null || ui.locations.isNotEmpty()
                 ) {
                     Text(if (ui.drawingMode) "Готово" else "Нарисовать ящик")
                 }
@@ -334,7 +358,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
 
             if (ui.anns.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                SectionTitle("Ящики на фото")
+                SectionTitle("Ящики в разметке")
                 ui.anns.forEach { a ->
                     val selected = a.id == ui.selectedAnnId
                     Card(
@@ -369,7 +393,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
             }
 
             Text(
-                "Подсказка: коснитесь ящика на фото — откроются действия: добавить вещь, открыть ящик, этикетка.",
+                "Подсказка: коснитесь ящика на фото или схеме — откроются действия: добавить вещь, открыть ящик, этикетка.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp)
@@ -412,25 +436,35 @@ fun AnnotationPhotoArea(
     ui: AnnotationVm.Ui,
     onAction: (AnnotationVm.Ann) -> Unit
 ) {
-    val photoPath = ui.photoUri ?: return
     val anns = ui.anns
     val drawingMode = ui.drawingMode
     val selectedId = ui.selectedAnnId
+    val showSchema = ui.schematicMode || ui.photoUri == null
+    val key = "${ui.photoUri}|${ui.schematicMode}|${ui.locations.joinToString { l -> l.id } }"
 
-    var bmp by remember(photoPath) { mutableStateOf<Bitmap?>(null) }
-    if (bmp == null) {
-        LaunchedEffect(photoPath) {
-            bmp = withContext(Dispatchers.IO) {
-                try {
-                    PhotoCapture.maxBmp(BitmapFactory.decodeFile(photoPath))
-                } catch (e: Exception) {
-                    null
+    var bmp by remember(key) { mutableStateOf<Bitmap?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(key) {
+        bmp = withContext(Dispatchers.IO) {
+            try {
+                if (showSchema) {
+                    val blocks = SchematicLayout.layout(
+                        ui.locations.map { l -> l.id to (l.label.ifBlank { l.name }.ifBlank { "Ящик" }) }
+                    )
+                    SchematicRenderer.render(blocks, 1080, 810)
+                } else {
+                    val path = ui.photoUri ?: return@withContext null
+                    PhotoCapture.maxBmp(BitmapFactory.decodeFile(path))
                 }
+            } catch (e: Exception) {
+                err = e.message
+                null
             }
         }
     }
-    val b = bmp ?: run {
-        Text("Не удалось загрузить фото", style = MaterialTheme.typography.bodyMedium)
+    val b = bmp
+    if (b == null) {
+        Text(err ?: "Загрузка…", style = MaterialTheme.typography.bodyMedium)
         return
     }
 

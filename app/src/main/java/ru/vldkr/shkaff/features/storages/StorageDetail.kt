@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,10 +17,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -59,6 +56,7 @@ import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.domain.levels.Levels
+import ru.vldkr.shkaff.features.annotations.StorageVisualization
 import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.CrumbPath
@@ -241,29 +239,12 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                 }
             }
             item {
-                Card(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.PhotoCamera,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Фото хранилища с разметкой ящиков", style = MaterialTheme.typography.bodyLarge)
-                            Text("Рисуйте ящики прямо на фото", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = { nav.navigate("annotations/$storageId") }) {
-                            Text("Разметка")
-                        }
-                    }
-                }
+                StorageVisualization(
+                    storageId = storageId,
+                    onOpenLocation = { nav.navigate("location/$it") },
+                    onEdit = { nav.navigate("annotations/$storageId") },
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
             }
             item { SectionTitle("Ящики (${locRows.size})") }
             if (Access.can(role, Access.LEND)) {
