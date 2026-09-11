@@ -132,6 +132,14 @@ private fun StorageRow(storage: StorageEntity, depth: Int, locationsCount: Int, 
                 style = if (depth == 0) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f)
             )
+            if (storage.level.isNotBlank()) {
+                Text(
+                    storage.level,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
             Text(
                 "$locationsCount яшк.",
                 style = MaterialTheme.typography.bodyMedium,

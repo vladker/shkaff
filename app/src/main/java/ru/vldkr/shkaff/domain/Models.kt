@@ -23,7 +23,8 @@ data class LocationData(
     val capacityVolumeLiters: Double? = null,
     val capacityWeightKg: Double? = null,
     val dontFillToBrim: Boolean = false,
-    val isFull: Boolean = false
+    val isFull: Boolean = false,
+    val level: String = ""
 )
 
 data class StorageData(
@@ -35,5 +36,6 @@ data class StorageData(
     val capacityVolumeLiters: Double? = null,
     val capacityWeightKg: Double? = null,
     val dontFillToBrim: Boolean = false,
-    val isFull: Boolean = false
+    val isFull: Boolean = false,
+    val level: String = ""
 )

@@ -7,6 +7,10 @@ import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.db.BasketEntity
+import ru.vldkr.shkaff.data.db.BasketItemEntity
+import ru.vldkr.shkaff.data.db.StackEntity
+import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.data.db.TagEntity
 import ru.vldkr.shkaff.data.db.UserEntity
@@ -22,6 +26,10 @@ data class MergeInput(
     val tags: List<TagEntity> = emptyList(),
     val users: List<UserEntity> = emptyList(),
     val loans: List<LoanEntity> = emptyList(),
+    val stacks: List<StackEntity> = emptyList(),
+    val stackMembers: List<StackMemberEntity> = emptyList(),
+    val baskets: List<BasketEntity> = emptyList(),
+    val basketItems: List<BasketItemEntity> = emptyList(),
     val lastModified: Long = 0L
 )
 
@@ -211,7 +219,31 @@ object MergeEngine {
         )
         allConflicts += c10
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10)
+        val (stacks, c11, s11) = mergeTable(
+            "stacks", local.stacks, remote.stacks,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c11
+
+        val (stackMembers, c12, s12) = mergeTable(
+            "stack_members", local.stackMembers, remote.stackMembers,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { "${it.entity_type}:${it.entity_id}" }, remoteWins
+        )
+        allConflicts += c12
+
+        val (baskets, c13, s13) = mergeTable(
+            "baskets", local.baskets, remote.baskets,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c13
+
+        val (basketItems, c14, s14) = mergeTable(
+            "basket_items", local.basketItems, remote.basketItems,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { "item:${it.item_id}" }, remoteWins
+        )
+        allConflicts += c14
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14)
         val total = MergeStats(
             added = all.sumOf { it.added },
             changed = all.sumOf { it.changed },
@@ -232,6 +264,10 @@ object MergeEngine {
             tags = tags,
             users = users,
             loans = loans,
+            stacks = stacks,
+            stackMembers = stackMembers,
+            baskets = baskets,
+            basketItems = basketItems,
             lastModified = lastModified
         )
 

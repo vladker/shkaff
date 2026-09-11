@@ -392,3 +392,129 @@ interface ActionLogDao {
     @Query("DELETE FROM action_log WHERE at < :before")
     suspend fun deleteOlderThan(before: Long)
 }
+
+@Dao
+interface StackDao {
+    @Query("SELECT * FROM stack WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    fun observeAll(): Flow<List<StackEntity>>
+
+    @Query("SELECT * FROM stack WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): StackEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(s: StackEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<StackEntity>)
+
+    @Query("SELECT * FROM stack")
+    suspend fun allWithDeleted(): List<StackEntity>
+
+    @Query("SELECT COUNT(*) FROM stack WHERE deleted_at IS NULL")
+    suspend fun count(): Int
+
+    @Query("SELECT 1 FROM stack WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
+    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+
+    @Query("SELECT code FROM stack WHERE deleted_at IS NULL AND code != ''")
+    suspend fun allCodes(): List<String>
+
+    @Query("UPDATE stack SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM stack WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
+interface StackMemberDao {
+    @Query("SELECT * FROM stack_member WHERE stack_id = :stackId AND deleted_at IS NULL ORDER BY sort_order, created_at")
+    suspend fun byStack(stackId: String): List<StackMemberEntity>
+
+    @Query("SELECT * FROM stack_member WHERE entity_type = :entityType AND entity_id = :entityId AND deleted_at IS NULL")
+    suspend fun groupsForEntity(entityType: String, entityId: String): List<StackMemberEntity>
+
+    @Query("SELECT COUNT(*) FROM stack_member WHERE stack_id = :stackId AND deleted_at IS NULL")
+    suspend fun countByStack(stackId: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(m: StackMemberEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<StackMemberEntity>)
+
+    @Query("SELECT * FROM stack_member")
+    suspend fun allWithDeleted(): List<StackMemberEntity>
+
+    @Query("UPDATE stack_member SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM stack_member WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
+interface BasketDao {
+    @Query("SELECT * FROM basket WHERE deleted_at IS NULL ORDER BY created_at DESC")
+    fun observeAll(): Flow<List<BasketEntity>>
+
+    @Query("SELECT * FROM basket WHERE deleted_at IS NULL AND status = 'active' ORDER BY created_at DESC")
+    fun observeActive(): Flow<List<BasketEntity>>
+
+    @Query("SELECT * FROM basket WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): BasketEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(b: BasketEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<BasketEntity>)
+
+    @Query("SELECT * FROM basket")
+    suspend fun allWithDeleted(): List<BasketEntity>
+
+    @Query("SELECT COUNT(*) FROM basket WHERE deleted_at IS NULL")
+    suspend fun count(): Int
+
+    @Query("UPDATE basket SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM basket WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
+interface BasketItemDao {
+    @Query("SELECT * FROM basket_item WHERE basket_id = :basketId AND deleted_at IS NULL ORDER BY created_at")
+    suspend fun byBasket(basketId: String): List<BasketItemEntity>
+
+    @Query("SELECT COUNT(*) FROM basket_item WHERE basket_id = :basketId AND deleted_at IS NULL")
+    suspend fun countByBasket(basketId: String): Int
+
+    @Query("SELECT COUNT(*) FROM basket_item WHERE basket_id = :basketId AND deleted_at IS NULL AND picked_ts IS NOT NULL")
+    suspend fun countPickedByBasket(basketId: String): Int
+
+    @Query("SELECT 1 FROM basket_item WHERE basket_id = :basketId AND item_id = :itemId AND deleted_at IS NULL LIMIT 1")
+    suspend fun exists(basketId: String, itemId: String): Int
+
+    @Query("UPDATE basket_item SET picked_ts = :pickedTs, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun updatePicked(id: String, pickedTs: Long?, now: Long, dev: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(b: BasketItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<BasketItemEntity>)
+
+    @Query("SELECT * FROM basket_item")
+    suspend fun allWithDeleted(): List<BasketItemEntity>
+
+    @Query("UPDATE basket_item SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM basket_item WHERE id = :id")
+    suspend fun hardDelete(id: String)
+
+    @Query("DELETE FROM basket_item WHERE basket_id = :basketId")
+    suspend fun hardDeleteByBasket(basketId: String)
+}

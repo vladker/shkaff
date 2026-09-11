@@ -48,6 +48,7 @@ import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
+import ru.vldkr.shkaff.ui.components.LevelPicker
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.subtreeIds
@@ -61,6 +62,7 @@ class LocationFormVm(
     var label by mutableStateOf("")
     var name by mutableStateOf("")
     var parentId by mutableStateOf<String?>(null)
+    var level by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
     var capacityVolume by mutableStateOf("")
     var capacityWeight by mutableStateOf("")
@@ -92,6 +94,7 @@ class LocationFormVm(
                     label = it.label
                     name = it.name
                     parentId = it.parent_id
+                    level = it.level
                     attrs = AttrJson.toMap(it.attributes)
                     capacityVolume = it.capacity_volume?.takeIf { v -> v > 0 }?.let { v -> v.toString() } ?: ""
                     capacityWeight = it.capacity_weight?.takeIf { v -> v > 0 }?.let { v -> v.toString() } ?: ""
@@ -139,7 +142,8 @@ class LocationFormVm(
                 capacityVolumeLiters = capacityVolume.toDoubleOrNull()?.takeIf { it > 0 },
                 capacityWeightKg = capacityWeight.toDoubleOrNull()?.takeIf { it > 0 },
                 dontFillToBrim = dontFillToBrim,
-                isFull = isFull
+                isFull = isFull,
+                level = level
             )
             try {
                 val id = if (locationId == null) {
@@ -237,6 +241,9 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                         }
                     }
                 }
+            }
+            FieldRow("Уровень") {
+                LevelPicker(vm.level) { vm.level = it }
             }
             FieldRow("Ёмкость (л)") {
                 OutlinedTextField(

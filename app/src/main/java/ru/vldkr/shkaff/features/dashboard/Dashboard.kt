@@ -196,6 +196,16 @@ fun DashboardScreen(nav: NavController) {
                     }
                 }
                 item {
+                    OutlinedButton(onClick = { nav.navigate("stacks") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        Text("Стеки (группы)")
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = { nav.navigate("basket") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        Text("Корзина извлечения")
+                    }
+                }
+                item {
                     OutlinedButton(
                         onClick = { nav.navigate("batch") },
                         modifier = Modifier

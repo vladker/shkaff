@@ -58,8 +58,10 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.domain.levels.Levels
 import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.CapacitySection
+import ru.vldkr.shkaff.ui.components.CrumbPath
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.FormBus
@@ -70,7 +72,7 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     data class LocRow(val location: LocationEntity, val depth: Int)
 
     val storage = MutableStateFlow<StorageEntity?>(null)
-    val parentName = MutableStateFlow<String?>(null)
+    val breadcrumb = MutableStateFlow<List<String>>(emptyList())
     val locRows = MutableStateFlow<List<LocRow>>(emptyList())
     val itemCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val usage = MutableStateFlow<CapacityUsage?>(null)
@@ -85,10 +87,10 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            val s = Deps.storages.byId(storageId)
-            storage.value = s
-            s?.parent_id?.let { pid ->
-                parentName.value = Deps.storages.byId(pid)?.name
+            Deps.storages.observeAll().collect { all ->
+                val byId = all.associateBy { it.id }
+                storage.value = byId[storageId]
+                breadcrumb.value = Levels.chainToRoot(byId[storageId]?.parent_id, byId, { it.name }, { it.parent_id })
             }
         }
         viewModelScope.launch {
@@ -153,7 +155,7 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
 fun StorageDetailScreen(nav: NavController, storageId: String) {
     val vm: StorageDetailVm = viewModel(factory = StorageDetailVm.Factory(storageId))
     val storage by vm.storage.collectAsState()
-    val parentName by vm.parentName.collectAsState()
+    val breadcrumb by vm.breadcrumb.collectAsState()
     val locRows by vm.locRows.collectAsState()
     val itemCounts by vm.itemCounts.collectAsState()
     val usage by vm.usage.collectAsState()
@@ -201,11 +203,14 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
         ) {
             if (s != null) {
                 item {
-                    if (parentName != null) {
+                    if (breadcrumb.isNotEmpty()) {
+                        CrumbPath(breadcrumb)
+                    }
+                    if (s.level.isNotBlank()) {
                         Text(
-                            "Вложено в: $parentName",
+                            "Уровень: ${s.level}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }

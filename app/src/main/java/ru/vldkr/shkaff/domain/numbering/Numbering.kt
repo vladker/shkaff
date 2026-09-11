@@ -7,6 +7,7 @@ object Numbering {
     const val SCOPE_ITEM = "item"
     const val SCOPE_LOCATION = "location"
     const val SCOPE_STORAGE = "storage"
+    const val SCOPE_STACK = "stack"
 
     fun format(prefix: String, seq: Int, width: Int): String {
         require(seq >= 1) { "seq должен быть >= 1" }

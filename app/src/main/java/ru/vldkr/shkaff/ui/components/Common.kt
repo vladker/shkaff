@@ -41,6 +41,7 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.domain.levels.Levels
 
 @Composable
 fun SectionTitle(text: String) {
@@ -427,4 +428,53 @@ fun rememberRole(): Role {
         role = Role.parse(Deps.users.activeUser()?.role ?: "view")
     }
     return role
+}
+
+// Уровень иерархии (US-C1): чипы с базовой цепочкой + свободный ввод своего уровня.
+// Одно поле ввода — единый источник значения; чип подставляет/убирает предустановку.
+@Composable
+fun LevelPicker(current: String, onChange: (String) -> Unit) {
+    var custom by remember(current) { mutableStateOf(current) }
+    Column(Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = custom,
+            onValueChange = { s ->
+                custom = s
+                onChange(s)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(Levels.chain.joinToString(" / ")) },
+            singleLine = true
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 4.dp)
+        ) {
+            Levels.chain.forEach { lvl ->
+                FilterChip(
+                    selected = custom == lvl,
+                    onClick = {
+                        custom = if (custom == lvl) "" else lvl
+                        onChange(custom)
+                    },
+                    label = { Text(lvl) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+// Хлебные крошки пути: «Корень › Шкаф › Полка».
+@Composable
+fun CrumbPath(chain: List<String>) {
+    if (chain.isEmpty()) return
+    Text(
+        chain.joinToString(" › "),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp)
+    )
 }

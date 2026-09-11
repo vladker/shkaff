@@ -10,12 +10,14 @@ import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.repository.ActionLogRepository
 import ru.vldkr.shkaff.data.repository.AttributeRepository
+import ru.vldkr.shkaff.data.repository.BasketRepository
 import ru.vldkr.shkaff.data.repository.DraftRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
 import ru.vldkr.shkaff.data.repository.LoansRepository
 import ru.vldkr.shkaff.data.repository.NumberingService
 import ru.vldkr.shkaff.data.repository.StorageRepository
+import ru.vldkr.shkaff.data.repository.StacksRepository
 import ru.vldkr.shkaff.data.repository.TagRepository
 import ru.vldkr.shkaff.data.repository.UsersRepository
 import ru.vldkr.shkaff.domain.access.Role
@@ -51,6 +53,10 @@ object Deps {
         private set
     lateinit var actionLog: ActionLogRepository
         private set
+    lateinit var stacks: StacksRepository
+        private set
+    lateinit var baskets: BasketRepository
+        private set
 
     private var ready = false
 
@@ -75,6 +81,8 @@ object Deps {
         users = UsersRepository(db)
         loans = LoansRepository(db)
         actionLog = ActionLogRepository(db)
+        stacks = StacksRepository(db)
+        baskets = BasketRepository(db)
         seedDefaultAttributes()
         seedDefaultTemplate()
         backfillExpiryDates()

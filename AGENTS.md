@@ -23,7 +23,7 @@
 
 ## Модель данных
 
-- Сущности: `data/db/Entities.kt` — `storage`, `location`, `item`, `annotation`, `label_template`, `attribute_def`, `printer_profile`, `conflict_log`, `schema_meta`.
+- Сущности: `data/db/Entities.kt` — `storage`, `location`, `item`, `annotation`, `label_template`, `attribute_def`, `printer_profile`, `conflict_log`, `schema_meta`, `tag`, `draft`, `user`, `loan`, `action_log`, `stack`, `stack_member`, `basket`, `basket_item`.
 - У всех: `id: String` (UUID через `util/newId()`), `created_at`/`updated_at` (эпоха, мс), **мягкое удаление** `deleted_at: Long?`, `device_last_modified` (UUID устройства).
 - Иерархия: `storage` (само-вложенность) → `location` (`storage_id` + само-вложенность) → `item` (`location_id`). `annotation` привязана к `storage` и указывает на `location`.
 - Атрибуты: JSON-строка `Map<String,String>` через `AttrJson`; словарь типов в `attribute_def` (сиется в `Deps.seedDefaultAttributes()`, только если таблица пуста).

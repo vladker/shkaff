@@ -44,6 +44,8 @@ import ru.vldkr.shkaff.features.agent.VolumeEstimateScreen
 import ru.vldkr.shkaff.features.annotations.AnnotationScreen
 import ru.vldkr.shkaff.features.actions.ActionsScreen
 import ru.vldkr.shkaff.features.attrdefs.AttrDefsScreen
+import ru.vldkr.shkaff.features.basket.BasketDetailScreen
+import ru.vldkr.shkaff.features.basket.BasketScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
 import ru.vldkr.shkaff.features.items.ItemFormScreen
@@ -63,6 +65,8 @@ import ru.vldkr.shkaff.features.locations.LocationFormScreen
 import ru.vldkr.shkaff.features.scan.ScannerScreen
 import ru.vldkr.shkaff.data.printer.UsbPermission
 import ru.vldkr.shkaff.features.settings.SettingsScreen
+import ru.vldkr.shkaff.features.stacks.StackDetailScreen
+import ru.vldkr.shkaff.features.stacks.StacksScreen
 import ru.vldkr.shkaff.features.storages.StorageDetailScreen
 import ru.vldkr.shkaff.features.storages.StorageFormScreen
 import ru.vldkr.shkaff.features.storages.StoragesScreen
@@ -222,6 +226,16 @@ fun AppRoot() {
             composable("loans") { LoansScreen(navController) }
             composable("journal") { JournalScreen(navController) }
             composable("actions") { ActionsScreen(navController) }
+
+            composable("stacks") { StacksScreen(navController) }
+            composable("stack/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { b ->
+                StackDetailScreen(navController, b.arguments?.getString("id").orEmpty())
+            }
+
+            composable("basket") { BasketScreen(navController) }
+            composable("basket/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { b ->
+                BasketDetailScreen(navController, b.arguments?.getString("id").orEmpty())
+            }
         }
     }
 }

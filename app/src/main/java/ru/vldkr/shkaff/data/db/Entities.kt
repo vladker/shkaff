@@ -29,6 +29,8 @@ data class StorageEntity(
     val dont_fill_to_brim: Boolean = false,
     // Принудительно «полное» — блокирует добавление независимо от расчёта.
     val is_full: Boolean = false,
+    // Уровень иерархии (US-C1): город/склад/комната/шкаф/полка/коробка/пакет или свой.
+    val level: String = "",
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -56,6 +58,7 @@ data class LocationEntity(
     val capacity_weight: Double? = null,
     val dont_fill_to_brim: Boolean = false,
     val is_full: Boolean = false,
+    val level: String = "",
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -254,4 +257,57 @@ data class ActionLogEntity(
     val detail: String = "{}",
     val at: Long,
     val device_id: String = ""
+)
+
+// Группа вещей/хранилищ (US-E2): стек — дополнительный взгляд, без переноса объектов.
+// Входящие объекты сохраняют идентичность и оригинальные номера; стек получает свой code.
+@Entity(tableName = "stack", indices = [Index("code")])
+data class StackEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String = "",
+    val code: String = "",
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+@Entity(tableName = "stack_member", indices = [Index("stack_id"), Index("entity_id")])
+data class StackMemberEntity(
+    @PrimaryKey val id: String,
+    val stack_id: String,
+    val entity_type: String, // item | storage
+    val entity_id: String,
+    val sort_order: Int = 0,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+// Корзина извлечения (US-E1): список вещей «на вынос». Внутри неё items группируются
+// по месту (локации) в шаги извлечения; чекбокс «взято» отмечает извлечённую вещь.
+@Entity(tableName = "basket", indices = [Index("name")])
+data class BasketEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val status: String = "active", // active | done
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+@Entity(tableName = "basket_item", indices = [Index("basket_id"), Index("item_id")])
+data class BasketItemEntity(
+    @PrimaryKey val id: String,
+    val basket_id: String,
+    val item_id: String,
+    // Момент отметки «взято»; null — ещё не извлечено.
+    val picked_ts: Long? = null,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
 )

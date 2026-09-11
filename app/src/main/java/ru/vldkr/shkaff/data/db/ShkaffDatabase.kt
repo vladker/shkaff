@@ -22,9 +22,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DraftEntity::class,
         UserEntity::class,
         LoanEntity::class,
-        ActionLogEntity::class
+        ActionLogEntity::class,
+        StackEntity::class,
+        StackMemberEntity::class,
+        BasketEntity::class,
+        BasketItemEntity::class
     ],
-    version = 7,
+    version = 10,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -43,10 +47,14 @@ abstract class ShkaffDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun loanDao(): LoanDao
     abstract fun actionLogDao(): ActionLogDao
+    abstract fun stackDao(): StackDao
+    abstract fun stackMemberDao(): StackMemberDao
+    abstract fun basketDao(): BasketDao
+    abstract fun basketItemDao(): BasketItemDao
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "7"
+        const val SCHEMA_VERSION = "10"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -173,10 +181,62 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v8 (M12 — «Структура и группировка»): уровень иерархии у хранилищ и ящиков (US-C1).
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE storage ADD COLUMN level TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE location ADD COLUMN level TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        // v9 (M12): стеки (US-E2) — группы вещей/хранилищ без потери оригинальной информации.
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `stack` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `code` TEXT NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_stack_code` ON `stack` (`code`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `stack_member` (" +
+                        "`id` TEXT NOT NULL, `stack_id` TEXT NOT NULL, `entity_type` TEXT NOT NULL, " +
+                        "`entity_id` TEXT NOT NULL, `sort_order` INTEGER NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_stack_member_stack_id` ON `stack_member` (`stack_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_stack_member_entity_id` ON `stack_member` (`entity_id`)")
+            }
+        }
+
+        // v10 (M12): корзина извлечения (US-E1) — списки вещей на вынос.
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `basket` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `status` TEXT NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_basket_name` ON `basket` (`name`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `basket_item` (" +
+                        "`id` TEXT NOT NULL, `basket_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, " +
+                        "`picked_ts` INTEGER, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_basket_item_basket_id` ON `basket_item` (`basket_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_basket_item_item_id` ON `basket_item` (`item_id`)")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

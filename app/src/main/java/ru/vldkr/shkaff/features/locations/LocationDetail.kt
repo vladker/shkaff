@@ -51,10 +51,11 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
+import ru.vldkr.shkaff.domain.levels.Levels
 import ru.vldkr.shkaff.ui.components.CapacitySection
+import ru.vldkr.shkaff.ui.components.CrumbPath
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
-import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.util.FormBus
@@ -63,6 +64,7 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
 
     val location = MutableStateFlow<LocationEntity?>(null)
     val storage = MutableStateFlow<StorageEntity?>(null)
+    val breadcrumb = MutableStateFlow<List<String>>(emptyList())
     val nested = MutableStateFlow<List<LocationEntity>>(emptyList())
     val items = MutableStateFlow<List<ItemEntity>>(emptyList())
     val usage = MutableStateFlow<CapacityUsage?>(null)
@@ -85,6 +87,20 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
             if (loc != null) storage.value = Deps.storages.byId(loc.storage_id)
         }
         viewModelScope.launch {
+            Deps.storages.observeAll().collect { allStores ->
+                val loc = Deps.locations.byId(locationId)
+                if (loc == null) {
+                    breadcrumb.value = emptyList()
+                    return@collect
+                }
+                val storById = allStores.associateBy { it.id }
+                val locById = Deps.locations.allByStorage(loc.storage_id).associateBy { it.id }
+                breadcrumb.value =
+                    Levels.chainToRoot(loc.storage_id, storById, { it.name }, { it.parent_id }) +
+                        Levels.chainToRoot(loc.id, locById, { it.label.ifBlank { it.name } }, { it.parent_id })
+            }
+        }
+        viewModelScope.launch {
             Deps.items.observeByLocation(locationId).collect { items.value = it }
         }
         viewModelScope.launch {
@@ -102,11 +118,10 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
 fun LocationDetailScreen(nav: NavController, locationId: String) {
     val vm: LocationDetailVm = viewModel(factory = LocationDetailVm.Factory(locationId))
     val location by vm.location.collectAsState()
-    val storage by vm.storage.collectAsState()
+    val breadcrumb by vm.breadcrumb.collectAsState()
     val nested by vm.nested.collectAsState()
     val items by vm.items.collectAsState()
     val usage by vm.usage.collectAsState()
-    val locations = LocationMap()
     var showDelete by remember { mutableStateOf(false) }
     val role = rememberRole()
 
@@ -157,15 +172,15 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
             if (l != null) {
                 item {
                     Column(Modifier.padding(top = 4.dp)) {
-                        storage?.let {
-                            Text("Хранилище: ${it.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (breadcrumb.isNotEmpty()) {
+                            CrumbPath(breadcrumb)
                         }
-                        val parent = l.parent_id?.let { locations[it] }
-                        if (parent != null) {
+                        if (l.level.isNotBlank()) {
                             Text(
-                                "Внутри: ${parent.label.ifBlank { parent.name }}",
+                                "Уровень: ${l.level}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                         val attrs = AttrJson.toMap(l.attributes)

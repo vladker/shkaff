@@ -31,6 +31,7 @@ class NumberingService(private val db: ShkaffDatabase) {
         Numbering.SCOPE_ITEM -> "T"
         Numbering.SCOPE_LOCATION -> "B"
         Numbering.SCOPE_STORAGE -> "S"
+        Numbering.SCOPE_STACK -> "ST"
         else -> ""
     }
 

@@ -11,6 +11,10 @@ import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
+import ru.vldkr.shkaff.data.db.BasketEntity
+import ru.vldkr.shkaff.data.db.BasketItemEntity
+import ru.vldkr.shkaff.data.db.StackEntity
+import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.data.db.TagEntity
 import ru.vldkr.shkaff.data.db.UserEntity
@@ -35,6 +39,10 @@ object Backup {
         tags = db.tagDao().allWithDeleted(),
         users = db.userDao().allWithDeleted(),
         loans = db.loanDao().allWithDeleted(),
+        stacks = db.stackDao().allWithDeleted(),
+        stackMembers = db.stackMemberDao().allWithDeleted(),
+        baskets = db.basketDao().allWithDeleted(),
+        basketItems = db.basketItemDao().allWithDeleted(),
         lastModified = System.currentTimeMillis()
     )
 
@@ -64,6 +72,7 @@ object Backup {
         put("capacity_weight", e.capacity_weight ?: 0.0)
         put("dont_fill_to_brim", e.dont_fill_to_brim)
         put("is_full", e.is_full)
+        put("level", e.level)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -78,6 +87,7 @@ object Backup {
         capacity_weight = j.optDouble("capacity_weight", 0.0).takeIf { it > 0 },
         dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
         is_full = j.optBoolean("is_full", false),
+        level = j.optString("level", ""),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -91,6 +101,7 @@ object Backup {
         put("capacity_weight", e.capacity_weight ?: 0.0)
         put("dont_fill_to_brim", e.dont_fill_to_brim)
         put("is_full", e.is_full)
+        put("level", e.level)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -105,6 +116,7 @@ object Backup {
         capacity_weight = j.optDouble("capacity_weight", 0.0).takeIf { it > 0 },
         dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
         is_full = j.optBoolean("is_full", false),
+        level = j.optString("level", ""),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -252,6 +264,65 @@ object Backup {
         device_last_modified = j.optString("device", "")
     )
 
+    private fun o(e: StackEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name); put("description", e.description); put("code", e.code)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun stack(j: JSONObject): StackEntity = StackEntity(
+        id = j.getString("id"), name = j.optString("name", ""),
+        description = j.optString("description", ""), code = j.optString("code", ""),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
+    private fun o(e: StackMemberEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("stack_id", e.stack_id)
+        put("entity_type", e.entity_type); put("entity_id", e.entity_id); put("sort_order", e.sort_order)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun stackMember(j: JSONObject): StackMemberEntity = StackMemberEntity(
+        id = j.getString("id"), stack_id = j.optString("stack_id", ""),
+        entity_type = j.optString("entity_type", "item"), entity_id = j.optString("entity_id", ""),
+        sort_order = j.optInt("sort_order", 0),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
+    private fun o(e: BasketEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name); put("status", e.status)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun basket(j: JSONObject): BasketEntity = BasketEntity(
+        id = j.getString("id"), name = j.optString("name", ""), status = j.optString("status", "active"),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
+    private fun o(e: BasketItemEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("basket_id", e.basket_id); put("item_id", e.item_id)
+        put("picked_ts", e.picked_ts ?: 0)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun basketItem(j: JSONObject): BasketItemEntity = BasketItemEntity(
+        id = j.getString("id"), basket_id = j.optString("basket_id", ""),
+        item_id = j.optString("item_id", ""),
+        picked_ts = j.optLong("picked_ts", 0L).takeIf { it > 0 },
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
     fun toJson(input: MergeInput): String {
         val root = JSONObject()
         root.put("format", FORMAT)
@@ -267,6 +338,10 @@ object Backup {
         root.put("tags", JSONArray().apply { input.tags.forEach { put(o(it)) } })
         root.put("users", JSONArray().apply { input.users.forEach { put(o(it)) } })
         root.put("loans", JSONArray().apply { input.loans.forEach { put(o(it)) } })
+        root.put("stacks", JSONArray().apply { input.stacks.forEach { put(o(it)) } })
+        root.put("stack_members", JSONArray().apply { input.stackMembers.forEach { put(o(it)) } })
+        root.put("baskets", JSONArray().apply { input.baskets.forEach { put(o(it)) } })
+        root.put("basket_items", JSONArray().apply { input.basketItems.forEach { put(o(it)) } })
         return root.toString()
     }
 
@@ -290,6 +365,10 @@ object Backup {
             tags = arr("tags") { tag(it) },
             users = arr("users") { user(it) },
             loans = arr("loans") { loan(it) },
+            stacks = arr("stacks") { stack(it) },
+            stackMembers = arr("stack_members") { stackMember(it) },
+            baskets = arr("baskets") { basket(it) },
+            basketItems = arr("basket_items") { basketItem(it) },
             lastModified = root.optLong("exported_at", 0L)
         )
     }
@@ -342,6 +421,10 @@ object Backup {
             db.tagDao().upsertAll(m.tags)
             db.userDao().upsertAll(m.users)
             db.loanDao().upsertAll(m.loans)
+            db.stackDao().upsertAll(m.stacks)
+            db.stackMemberDao().upsertAll(m.stackMembers)
+            db.basketDao().upsertAll(m.baskets)
+            db.basketItemDao().upsertAll(m.basketItems)
         }
     }
 }

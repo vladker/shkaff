@@ -37,6 +37,7 @@ class StorageRepository(
             capacity_weight = d.capacityWeightKg,
             dont_fill_to_brim = d.dontFillToBrim,
             is_full = d.isFull,
+            level = d.level,
             created_at = now,
             updated_at = now,
             deleted_at = null,
@@ -62,6 +63,7 @@ class StorageRepository(
             capacity_weight = d.capacityWeightKg,
             dont_fill_to_brim = d.dontFillToBrim,
             is_full = d.isFull,
+            level = d.level,
             updated_at = System.currentTimeMillis(),
             device_last_modified = deviceId()
         )

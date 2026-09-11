@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Place
@@ -36,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +68,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
+import ru.vldkr.shkaff.data.db.BasketEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
@@ -139,7 +144,9 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     val role by vm.role.collectAsState()
     val loan by vm.activeLoan.collectAsState()
     var showLend by remember { mutableStateOf(false) }
+    var showBasket by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val i = item
     Scaffold(
@@ -373,6 +380,16 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                         ActionStub("Отсканировать код этой вещи", "M3")
                     }
                 }
+                item {
+                    OutlinedButton(
+                        onClick = { showBasket = true },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("В корзину извлечения")
+                    }
+                }
             }
         }
 
@@ -401,6 +418,24 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                 onConfirm = { b, n, d ->
                     showLend = false
                     vm.lend(b, n, d)
+                }
+            )
+        }
+
+        if (showBasket) {
+            AddToBasketDialog(
+                onDismiss = { showBasket = false },
+                onConfirm = { basketId, newName ->
+                    showBasket = false
+                    scope.launch {
+                        when {
+                            newName.isNotBlank() -> {
+                                val b = Deps.baskets.create(newName)
+                                Deps.baskets.addItem(b.id, itemId)
+                            }
+                            basketId != null -> Deps.baskets.addItem(basketId, itemId)
+                        }
+                    }
                 }
             )
         }
@@ -449,4 +484,75 @@ private fun openImageSearch(ctx: Context, photo: File) {
         addCategory(Intent.CATEGORY_DEFAULT)
     }
     ctx.startActivity(Intent.createChooser(intent, "Открыть картинку"))
+}
+
+// US-E1: «В корзину извлечения» — выбрать активную корзину или создать новую с именем.
+@Composable
+private fun AddToBasketDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (basketId: String?, newName: String) -> Unit
+) {
+    val baskets by Deps.baskets.observeActive().collectAsState(initial = emptyList())
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    var newName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Добавить в корзину") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                if (baskets.isEmpty()) {
+                    Text(
+                        "Активных корзин нет — создайте новую.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    baskets.forEach { b: BasketEntity ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedId = b.id
+                                    newName = ""
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selectedId == b.id,
+                                onClick = {
+                                    selectedId = b.id
+                                    newName = ""
+                                }
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(b.name, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "активная",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it; selectedId = null },
+                    placeholder = { Text("… или новая корзина с названием") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selectedId, newName.trim()) },
+                enabled = newName.isNotBlank() || selectedId != null
+            ) { Text("Добавить") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
 }
