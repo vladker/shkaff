@@ -8,6 +8,7 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
+import ru.vldkr.shkaff.data.llm.ModelStore
 import ru.vldkr.shkaff.data.repository.ActionLogRepository
 import ru.vldkr.shkaff.data.repository.AttributeRepository
 import ru.vldkr.shkaff.data.repository.BasketRepository
@@ -57,6 +58,8 @@ object Deps {
         private set
     lateinit var baskets: BasketRepository
         private set
+    lateinit var modelStore: ModelStore
+        private set
 
     private var ready = false
 
@@ -83,6 +86,7 @@ object Deps {
         actionLog = ActionLogRepository(db)
         stacks = StacksRepository(db)
         baskets = BasketRepository(db)
+        modelStore = ModelStore(app)
         seedDefaultAttributes()
         seedClimateAttributeDefs()
         seedDefaultTemplate()

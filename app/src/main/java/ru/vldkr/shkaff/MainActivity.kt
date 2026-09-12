@@ -82,6 +82,7 @@ import ru.vldkr.shkaff.features.merge.ConflictsScreen
 import ru.vldkr.shkaff.features.printers.PrintersScreen
 import ru.vldkr.shkaff.features.profiles.ProfilesScreen
 import ru.vldkr.shkaff.features.labels.TemplatesScreen
+import ru.vldkr.shkaff.features.llm.ModelStoreScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
 import ru.vldkr.shkaff.features.locations.LocationFormScreen
 import ru.vldkr.shkaff.features.scan.ScannerScreen
@@ -344,6 +345,7 @@ fun AppRoot() {
             composable("printers") { PrintersScreen(navController) }
             composable("agent") { AgentScreen(navController) }
             composable("agent-volumes") { VolumeEstimateScreen(navController) }
+            composable("llm-models") { ModelStoreScreen(navController) }
 
             composable("attrdefs") { AttrDefsScreen(navController) }
             composable("settings") { SettingsScreen(navController) }

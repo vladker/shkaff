@@ -148,6 +148,13 @@ fun SettingsScreen(nav: NavController) {
             item { Section("ИИ-агент") }
             item {
                 SettingRow(
+                    "Модели на устройстве",
+                    "Скачивание GGUF-моделей (Qwen3) для работы без интернета",
+                    { nav.navigate("llm-models") }
+                )
+            }
+            item {
+                SettingRow(
                     "LLM-чат",
                     "Агент по вашей базе: поиск, сводки, подсказки; провайдер — в настройках чата",
                     { nav.navigate("agent") }
