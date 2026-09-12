@@ -7,6 +7,8 @@
 *.so
 *.a
 *.out
+*.pyc
+__pycache__/
 build/
 dist/
 
@@ -18,11 +20,10 @@ local.properties
 node_modules/
 venv/
 .venv/
-__pycache__/
+.gradle/
 .mypy_cache/
 .pytest_cache/
 target/
-.gradle/
 
 # Logs and temp files
 *.log
