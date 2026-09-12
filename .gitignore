@@ -10,6 +10,10 @@
 build/
 dist/
 
+# Android / local
+local.properties
+.cxx/
+
 # Dependencies
 node_modules/
 venv/

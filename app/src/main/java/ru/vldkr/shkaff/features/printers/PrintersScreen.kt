@@ -80,6 +80,12 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.util.newId
 
+// Устройство, найденное поиском: имя + MAC (на Android 12+ без геолокации MAC скрыт — null)
+data class FDevice(
+    val name: String,
+    val mac: String?
+)
+
 class PrintersVm : ViewModel() {
 
     data class Ui(
@@ -92,7 +98,7 @@ class PrintersVm : ViewModel() {
         val permToRequest: List<String> = emptyList(),
         val bonded: List<String> = emptyList(),
         val usb: List<String> = emptyList(),
-        val found: List<String> = emptyList(),
+        val found: List<FDevice> = emptyList(),
         val discovering: Boolean = false
     )
 
@@ -188,9 +194,9 @@ class PrintersVm : ViewModel() {
                             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                         }
                         d?.let { dev ->
-                            val label = "${dev.name?.ifBlank { "Без имени" } ?: "Без имени"} — ${dev.address}"
-                            if (label !in ui.value.found) {
-                                update { it -> it.copy(found = it.found + label) }
+                            val f = FDevice(dev.name?.ifBlank { "Без имени" } ?: "Без имени", dev.address)
+                            if (ui.value.found.none { it == f }) {
+                                update { it -> it.copy(found = it.found + f) }
                             }
                         }
                     }
@@ -236,14 +242,14 @@ class PrintersVm : ViewModel() {
 
     private fun onBleResult(result: ScanResult?) {
         val dev = result?.device ?: return
-        val mac = dev.address ?: return
+        val mac = dev.address // на Android 12+ без геолокации MAC скрыт — устройство в списке, но его нельзя сохранить
         val name = result.scanRecord?.deviceName
             ?: runCatching { dev.name }.getOrNull()
             ?: ""
-        val label = "${name.ifBlank { "Без имени" }} — $mac"
-        if (label !in ui.value.found) {
-            bleMacs.add(mac)
-            update { it -> it.copy(found = it.found + label) }
+        val f = FDevice(name.ifBlank { "Без имени" }, mac)
+        if (mac != null) bleMacs.add(mac)
+        if (ui.value.found.none { it == f }) {
+            update { it -> it.copy(found = it.found + f) }
         }
     }
 
@@ -499,7 +505,7 @@ fun PrinterFormDialog(
     onBondedRefresh: () -> Unit,
     usbDevices: List<String>,
     onUsbRefresh: () -> Unit,
-    found: List<String>,
+    found: List<FDevice>,
     discovering: Boolean,
     bleActive: Boolean,
     bleMacs: Set<String>,
@@ -760,7 +766,7 @@ fun PrinterFormDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.width(16.dp).height(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Ищем… (классический Bluetooth — канал печати; обычно принтер входит в режим сопряжения при удержании FEED на включении)", style = MaterialTheme.typography.bodyMedium)
+                            Text("Ищем по классическому Bluetooth и BLE. Выбранное устройство подставит транспорт само: BLE → GATT-печать, BT → RFCOMM. Обычно принтер входит в режим сопряжения при удержании FEED на включении.", style = MaterialTheme.typography.bodyMedium)
                         }
                         Spacer(Modifier.height(8.dp))
                     }
@@ -775,14 +781,34 @@ fun PrinterFormDialog(
                                 Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val m = d.substringAfter(" — ")
-                                        mac = m
+                                        val m = d.mac
+                                        if (m == null) {
+                                            error = "«${d.name}»: MAC-адрес скрыт системой — разрешите «Местоположение» и повторите поиск"
+                                        } else {
+                                            mac = m
+                                            // найден по BLE-скану → транспорт GATT; по классике → RFCOMM
+                                            selectMode(if (m in bleMacs) "ble" else "bluetooth")
+                                            if (name.isBlank()) name = d.name
+                                        }
                                         onBtScanStop()
                                         scanOpen = false
                                     }
                                     .padding(vertical = 6.dp)
                             ) {
-                                Text(d)
+                                Text(d.name, modifier = Modifier.weight(1f))
+                                if (d.mac in bleMacs) {
+                                    Text(
+                                        "BLE",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    d.mac ?: "MAC скрыт",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                         if (found.isEmpty() && !scanning) {
