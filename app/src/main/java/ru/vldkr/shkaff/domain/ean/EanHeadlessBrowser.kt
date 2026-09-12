@@ -100,12 +100,21 @@ class EanHeadlessBrowser(
             }
 
             onStep("Парсим результаты поиска…")
+            if (Agent.isDevice(s)) onStep("Загружаем модель на устройстве…")
             onStep("Отправляем в Алиса AI…")
             val prompt = buildPrompt(scraped, queryString, formContext)
+            // Показываем живой прогресс генерации (у модели на устройстве она может
+            // занимать минуты) — счётчик знаков вместо «зависшей» надписи.
+            val buffer = StringBuilder()
             val responseText = try {
                 Agent.complete(
                     settings = s,
-                    messages = listOf(ChatMessage("user", prompt))
+                    messages = listOf(ChatMessage("user", prompt)),
+                    onToken = { token ->
+                        buffer.append(token)
+                        onStep("Алиса AI печатает… ${buffer.length} зн.")
+                    },
+                    nMaxTokens = 1024
                 )
             } catch (e: Exception) {
                 throw SearchException("Алиса AI не ответила: ${e.message}")

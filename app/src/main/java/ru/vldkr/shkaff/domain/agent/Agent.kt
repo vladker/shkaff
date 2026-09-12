@@ -15,10 +15,11 @@ object Agent {
         settings: AgentSettings,
         messages: List<ChatMessage>,
         onToken: (String) -> Unit = {},
+        nMaxTokens: Int = DeviceLlm.N_MAX_TOKENS,
     ): String {
         require(messages.isNotEmpty()) { "Пустой список сообщений" }
         return if (isDevice(settings)) {
-            DeviceLlm.complete(settings, messages, onToken)
+            DeviceLlm.complete(settings, messages, onToken, nMaxTokens)
         } else {
             ChatClient.complete(settings, messages)
         }

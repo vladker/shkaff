@@ -368,6 +368,17 @@ class ItemFormVm(
         }
     }
 
+    // Прерывает генерацию модели на устройстве («Стоп» рядом со строкой шага).
+    fun cancelSmartSearch() {
+        if (!smartSearchBusy.value) return
+        viewModelScope.launch {
+            try {
+                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun brandValue(): String {
         val brandKey = attrDefs.value.firstOrNull { it.label.equals("Бренд", true) }?.key
         attrs[brandKey ?: "brand"]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
@@ -717,11 +728,17 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     )
                     if (vm.name.trim().isNotEmpty() || vm.attrs["brand"]?.trim()?.isNotEmpty() == true) {
                         if (vm.smartSearchBusy.collectAsState().value) {
-                            Text(
-                                vm.smartSearchStep.collectAsState().value?.ifBlank { null }
-                                    ?: "Ищем через Алиса AI…",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    vm.smartSearchStep.collectAsState().value?.ifBlank { null }
+                                        ?: "Ищем через Алиса AI…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { vm.cancelSmartSearch() }) {
+                                    Text("Стоп")
+                                }
+                            }
                         } else {
                             TextButton(onClick = { vm.smartSearchItem() }, modifier = Modifier.align(Alignment.End)) {
                                 Text("Найти через headless браузер + Алиса AI")

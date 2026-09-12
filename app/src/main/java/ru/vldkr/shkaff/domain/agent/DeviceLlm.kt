@@ -20,6 +20,7 @@ object DeviceLlm {
         settings: AgentSettings,
         messages: List<ChatMessage>,
         onToken: (String) -> Unit = {},
+        nMaxTokens: Int = N_MAX_TOKENS,
     ): String = withContext(Dispatchers.IO) {
         val fileName = settings.model.trim()
         if (fileName.isEmpty()) {
@@ -55,7 +56,7 @@ object DeviceLlm {
         val rc = LlamaBridge.complete(
             prompt = transcript,
             imagePath = null,
-            nMaxTokens = N_MAX_TOKENS,
+            nMaxTokens = nMaxTokens,
             cb = object : LlamaGenerationCallback {
                 override fun onToken(text: String) {
                     sb.append(text)
