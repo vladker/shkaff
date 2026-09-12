@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "ru.vldkr.shkaff"
-        minSdk = 26
+        minSdk = 33
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
@@ -53,6 +53,8 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":llama"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "shkaff"
 include(":app")
+include(":llama")
