@@ -12,6 +12,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object LlamaBridge {
 
+    init {
+        System.loadLibrary("shkaff_llm")
+    }
+
     /** Список кодов ошибок нативной части (дубль kErr* из shkaff_llm.cpp). */
     const val OK = 0
     const val ERR_NOT_LOADED = -1

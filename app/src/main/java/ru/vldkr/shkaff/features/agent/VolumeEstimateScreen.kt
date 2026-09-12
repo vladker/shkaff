@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
-import ru.vldkr.shkaff.domain.agent.ChatClient
+import ru.vldkr.shkaff.domain.agent.Agent
 import ru.vldkr.shkaff.domain.agent.ChatMessage
 import ru.vldkr.shkaff.domain.agent.FitReport
 import ru.vldkr.shkaff.domain.agent.VolumeEstimate
@@ -98,7 +98,7 @@ class VolumeVm : ViewModel() {
                 if (settings.model.isBlank()) {
                     throw IllegalStateException("Агент не настроен: задайте модель в агенте (шестерёнка).")
                 }
-                val reply = ChatClient.complete(
+                val reply = Agent.complete(
                     settings = settings,
                     messages = listOf(ChatMessage("user", VolumeEstimate.buildPrompt(lines)))
                 )

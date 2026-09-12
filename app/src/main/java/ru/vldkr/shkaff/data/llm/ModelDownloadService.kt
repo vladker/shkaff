@@ -65,7 +65,8 @@ class ModelDownloadService : Service() {
                 }
             }
             ACTION_CANCEL -> {
-                Deps.modelStore.cancel()
+                // stopSelf() → onDestroy() → scope.cancel() прекращает скачивание.
+                // modelStore.cancel() здесь НЕ вызывать: он шлёт этот же intent — зациклится.
                 stopSelf()
             }
         }

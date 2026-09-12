@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
@@ -154,7 +155,12 @@ fun DashboardScreen(nav: NavController) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
         ) {
             item {
-                DashboardHeader(ui.activeProfile, onScan = { nav.navigate("scan") }, onSettings = { nav.navigate("settings") })
+                DashboardHeader(
+                    ui.activeProfile,
+                    onScan = { nav.navigate("scan") },
+                    onAgent = { nav.navigate("agent") },
+                    onSettings = { nav.navigate("settings") }
+                )
             }
             item {
                 OzonSearch(nav)
@@ -347,7 +353,7 @@ private fun CategoryTile(label: String, count: Int, icon: ImageVector, tint: Col
 }
 
 @Composable
-private fun DashboardHeader(profile: String?, onScan: () -> Unit, onSettings: () -> Unit) {
+private fun DashboardHeader(profile: String?, onScan: () -> Unit, onAgent: () -> Unit, onSettings: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -366,6 +372,9 @@ private fun DashboardHeader(profile: String?, onScan: () -> Unit, onSettings: ()
         }
         IconButton(onClick = onScan) {
             Icon(Icons.Filled.QrCodeScanner, contentDescription = "Сканер", tint = Ozon.Blue)
+        }
+        IconButton(onClick = onAgent) {
+            Icon(Icons.Filled.Chat, contentDescription = "LLM-агент", tint = Ozon.Blue)
         }
         IconButton(onClick = onSettings) {
             Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Ozon.TextSecondary)

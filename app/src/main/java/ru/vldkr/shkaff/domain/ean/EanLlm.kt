@@ -1,12 +1,13 @@
 package ru.vldkr.shkaff.domain.ean
 
 import org.json.JSONObject
+import ru.vldkr.shkaff.domain.agent.Agent
 import ru.vldkr.shkaff.domain.agent.AgentSettings
 import ru.vldkr.shkaff.domain.agent.ChatClient
 import ru.vldkr.shkaff.domain.agent.ChatMessage
 
 // US-B1: LLM-фолбэк для штрихкодов, которых нет в OpenFoodFacts.
-// Облачный провайдер по умолчанию, локальный (Ollama) — если включён в настройках.
+// Провайдер по настройкам: облако, локальная сеть или модель на устройстве.
 class EanLlm(private val settings: () -> AgentSettings) : EanProvider {
 
     override suspend fun lookup(ean: String): EanProduct? {
@@ -14,7 +15,7 @@ class EanLlm(private val settings: () -> AgentSettings) : EanProvider {
         if (!s.enabled) return null
         val prompt = "По штрихкоду $ean верни JSON: {\"name\":\"...\",\"brand\":\"...\",\"categories\":\"...\",\"quantity\":\"...\"}. Пустые поля — пустые строки. Если сомневаешься — name=\"\"."
         val text = runCatching {
-            ChatClient.complete(
+            Agent.complete(
                 settings = s,
                 messages = listOf(ChatMessage("user", prompt))
             )

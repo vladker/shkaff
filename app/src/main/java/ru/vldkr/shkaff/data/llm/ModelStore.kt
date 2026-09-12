@@ -3,14 +3,9 @@ package ru.vldkr.shkaff.data.llm
 import android.content.Context
 import android.content.Intent
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -72,9 +67,6 @@ class ModelStore(private val context: Context) {
 
     val activeFile: String?
         get() = _state.value.activeName
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var activeJob: Job? = null
 
     init {
         dir.mkdirs()
@@ -145,7 +137,11 @@ class ModelStore(private val context: Context) {
 
     /** Отмена активной загрузки: файл «*.part» сохраняется для возобновления. */
     fun cancel() {
-        activeJob?.cancel()
+        // Скачивание живёт в scope сервиса — гасим его через ACTION_CANCEL
+        // (onDestroy сервиса отменит coroutine), а локальное состояние чистим тут.
+        context.startService(
+            Intent(context, ModelDownloadService::class.java).setAction(ModelDownloadService.ACTION_CANCEL)
+        )
         _state.value = _state.value.copy(activeId = null, activeName = null, bytes = 0, total = 0)
         val s = _state.value.rows
         if (s.isNotEmpty()) {
@@ -175,6 +171,13 @@ class ModelStore(private val context: Context) {
             throw e
         } catch (e: Exception) {
             updateRow(row.id) { it.copy(state = ModelState.ERROR, message = e.message ?: "Ошибка загрузки") }
+        } finally {
+            // После завершения (успех/ошибка/отмена) сбрасываем «активную загрузку»,
+            // иначе UI зависает на прогресс-баре и другие модели скачать нельзя
+            val s = _state.value
+            if (s.activeId == row.id || s.activeName == row.file || s.activeName == row.mmprojFile) {
+                _state.value = s.copy(activeId = null, activeName = null, bytes = 0, total = 0)
+            }
         }
     }
 

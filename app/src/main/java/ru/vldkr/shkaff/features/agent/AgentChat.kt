@@ -14,13 +14,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -29,18 +29,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,9 +55,12 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.agent.Agent
 import ru.vldkr.shkaff.domain.agent.AgentSettings
 import ru.vldkr.shkaff.domain.agent.ChatClient
 import ru.vldkr.shkaff.domain.agent.ChatMessage
+import ru.vldkr.shkaff.domain.agent.DeviceLlm
+import ru.vldkr.shkaff.domain.agent.LlmRuntime
 
 data class AgentMsg(val role: String, val content: String)
 
@@ -67,24 +69,31 @@ class AgentVm : ViewModel() {
     val messages = MutableStateFlow<List<AgentMsg>>(emptyList())
     val busy = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
+    val draft = MutableStateFlow("")
     val settings = MutableStateFlow(Deps.agentSettings())
-    var showSettings = MutableStateFlow(true)
+    val modelLoad = LlmRuntime.load
 
     private val history = mutableListOf<ChatMessage>()
 
     fun send(text: String) {
         val t = text.trim()
         if (t.isEmpty() || busy.value) return
+        if (Agent.isDevice(settings.value) && settings.value.model.isBlank()) {
+            error.value = "Модель на устройстве не выбрана — откройте настройки (шестерёнка) и скачайте GGUF"
+            return
+        }
         messages.value = messages.value + AgentMsg("user", t)
         history.add(ChatMessage("user", t))
         busy.value = true
         error.value = null
+        draft.value = ""
         viewModelScope.launch {
             try {
                 val system = ChatMessage("system", buildSystemPrompt())
-                val reply = ChatClient.complete(
+                val reply = Agent.complete(
                     settings.value,
-                    listOf(system) + history
+                    listOf(system) + history,
+                    onToken = { tok -> draft.value += tok }
                 )
                 val content = if (reply.isBlank()) "Нет ответа от модели" else reply
                 messages.value = messages.value + AgentMsg("assistant", content)
@@ -92,9 +101,14 @@ class AgentVm : ViewModel() {
             } catch (e: Exception) {
                 error.value = e.message ?: "Ошибка запроса к модели"
             } finally {
+                draft.value = ""
                 busy.value = false
             }
         }
+    }
+
+    fun stop() {
+        if (Agent.isDevice(settings.value)) DeviceLlm.abort()
     }
 
     fun saveSettings(s: AgentSettings) {
@@ -117,7 +131,7 @@ class AgentVm : ViewModel() {
         val sb = StringBuilder()
         sb.append(
             "Ты — LLM-агент «Шкаф», помогаешь владельцу базы вещей.\n" +
-            "База локальная (Room на устройстве), Вот текущий снимок.\n" +
+            "База локальная (Room на устройстве). Вот текущий снимок.\n" +
             "Отвечай по-русски, кратко и по делу.\n\n"
         )
         sb.append("== Шкафы (${storages.size}) ==\n")
@@ -143,11 +157,18 @@ class AgentVm : ViewModel() {
             locById[lid]?.let { sb.append(" → в «").append(it.name.ifBlank { it.label }).append("»") }
         }
         if (expiry_date?.isNotBlank() == true) sb.append(", срок ").append(expiry_date)
-        if (!expiry_date.isNullOrBlank()) sb.append(", истекает ").append(expiry_date)
         if (photo_path != null) sb.append(", фото есть")
         sb.append("\n")
     }
 }
+
+private data class ProviderOption(val id: String, val title: String, val desc: String)
+
+private val PROVIDERS = listOf(
+    ProviderOption(Agent.PROVIDER_CLOUD, "Облако", "OpenAI-совместимый API (OpenRouter, Groq, …)"),
+    ProviderOption(Agent.PROVIDER_LOCAL, "Локальная сеть", "Ollama / LM Studio на ПК рядом"),
+    ProviderOption(Agent.PROVIDER_DEVICE, "На устройстве", "GGUF-модель офлайн, llama.cpp"),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,13 +177,14 @@ fun AgentScreen(nav: NavController) {
     val messages by vm.messages.collectAsState()
     val busy by vm.busy.collectAsState()
     val error by vm.error.collectAsState()
+    val draft by vm.draft.collectAsState()
     val settings by vm.settings.collectAsState()
+    val modelLoad by vm.modelLoad.collectAsState()
     var input by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     // варианты для диалога настроек
-    var sProvider by remember { mutableStateOf(settings.provider) }
+    var sProvider by remember { mutableStateOf(settings.provider.ifBlank { Agent.PROVIDER_CLOUD }) }
     var sBaseUrl by remember { mutableStateOf(settings.baseUrl) }
     var sApiKey by remember { mutableStateOf(settings.apiKey) }
     var sModel by remember { mutableStateOf(settings.model) }
@@ -202,11 +224,20 @@ fun AgentScreen(nav: NavController) {
                         maxLines = 4
                     )
                     Spacer(Modifier.width(8.dp))
-                    IconButton(
-                        onClick = { vm.send(input); input = "" },
-                        enabled = !busy && input.isNotBlank()
-                    ) {
-                        Icon(Icons.Filled.Send, contentDescription = "Отправить", tint = MaterialTheme.colorScheme.primary)
+                    if (busy) {
+                        IconButton(
+                            onClick = { vm.stop() },
+                            enabled = Agent.isDevice(settings)
+                        ) {
+                            Icon(Icons.Filled.Stop, contentDescription = "Остановить", tint = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { vm.send(input); input = "" },
+                            enabled = input.isNotBlank()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
@@ -220,10 +251,12 @@ fun AgentScreen(nav: NavController) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 12.dp, bottom = 12.dp)
         ) {
-            item { Text("""
-Помогает по вашей базе: «где лежит мука», «что скоро истечёт», «куда положить банку 2 л». 
-Агент видит вещи, шкафы и ящики. Настройки провайдера — по шестерёнке.
-""".trimIndent(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { Text(
+                "Помогает по вашей базе: «где лежит мука», «что скоро истечёт», «куда положить банку 2 л».\n" +
+                "Агент видит вещи, шкафы и ящики. Провайдер — по шестерёнке: облако, локальная сеть или модель на устройстве (офлайн).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            ) }
             item {
                 OutlinedButton(
                     onClick = { nav.navigate("agent-volumes") },
@@ -237,26 +270,120 @@ fun AgentScreen(nav: NavController) {
                 }
             }
             items(messages) { m -> Bubble(m) }
-            if (busy) {
+            if (modelLoad.loading) {
                 item {
-                    Text("Агент думает…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "Загрузка модели… ${modelLoad.percent}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { modelLoad.percent / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+            if (busy && !modelLoad.loading) {
+                item { Text("Агент думает…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (draft.isNotBlank()) {
+                item { Bubble(AgentMsg("assistant", draft)) }
+            }
+            if (error != null) {
+                item {
+                    Text(error!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
     }
 
     if (showSettings) {
-        val dialog = AlertDialog(
-            onDismissRequest = { showSettings = false },
-            title = { Text("Агент") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = sProvider,
-                        onValueChange = { sProvider = it },
-                        label = { Text("Провайдер: cloud / local") },
-                        supportingText = { Text("cloud — OpenAI-совместимый API; local — Ollama") }
+        SettingsDialog(
+            initial = settings,
+            onDismiss = { showSettings = false },
+            onOpenCatalog = {
+                showSettings = false
+                nav.navigate("llm-models")
+            },
+            onSaved = { s ->
+                vm.saveSettings(
+                    s.copy(
+                        provider = s.provider.ifBlank { Agent.PROVIDER_CLOUD },
+                        enabled = s.model.isNotBlank()
                     )
+                )
+                showSettings = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    initial: AgentSettings,
+    onDismiss: () -> Unit,
+    onOpenCatalog: () -> Unit,
+    onSaved: (AgentSettings) -> Unit,
+) {
+    var sProvider by remember { mutableStateOf(initial.provider.ifBlank { Agent.PROVIDER_CLOUD }) }
+    var sBaseUrl by remember { mutableStateOf(initial.baseUrl) }
+    var sApiKey by remember { mutableStateOf(initial.apiKey) }
+    var sModel by remember { mutableStateOf(initial.model) }
+    val storeState by Deps.modelStore.state.collectAsState()
+    val downloaded = remember(storeState) { storeState.rows.filter { Deps.modelStore.isDownloaded(it) } }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Агент") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PROVIDERS.forEach { p ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = sProvider == p.id,
+                            onClick = { sProvider = p.id }
+                        )
+                        Column {
+                            Text(p.title)
+                            Text(p.desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                if (sProvider == Agent.PROVIDER_DEVICE) {
+                    if (downloaded.isEmpty()) {
+                        Text(
+                            "Скачанных моделей нет. Скачайте GGUF в каталоге моделей.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(onClick = onOpenCatalog, modifier = Modifier.fillMaxWidth()) {
+                            Text("Открыть каталог моделей")
+                        }
+                    } else {
+                        Text("Модель на устройстве:", style = MaterialTheme.typography.bodySmall)
+                        downloaded.forEach { row ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = sModel == row.file,
+                                    onClick = { sModel = row.file }
+                                )
+                                Text(row.name, modifier = Modifier.padding(start = 4.dp))
+                            }
+                        }
+                        OutlinedButton(onClick = onOpenCatalog, modifier = Modifier.fillMaxWidth()) {
+                            Text("Каталог моделей")
+                        }
+                    }
+                } else {
                     OutlinedTextField(
                         value = sBaseUrl,
                         onValueChange = { sBaseUrl = it },
@@ -275,26 +402,29 @@ fun AgentScreen(nav: NavController) {
                         placeholder = { Text("gpt-4o-mini / qwen2.5:7b") }
                     )
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.saveSettings(
-                        AgentSettings(
-                            provider = sProvider.trim(),
-                            baseUrl = sBaseUrl.trim(),
-                            apiKey = sApiKey.trim(),
-                            model = sModel.trim()
-                        )
-                    )
-                    showSettings = false
-                }) { Text("Сохранить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSettings = false }) { Text("Отмена") }
             }
-        )
-        dialog
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                // device-провайдер: имя модели = имя GGUF-файла; старое имя
+                // cloud-модели после переключения провайдера сбрасываем
+                val model = if (sProvider == Agent.PROVIDER_DEVICE && downloaded.none { it.file == sModel }) {
+                    ""
+                } else sModel.trim()
+                onSaved(
+                    AgentSettings(
+                        provider = sProvider,
+                        baseUrl = sBaseUrl.trim(),
+                        apiKey = sApiKey.trim(),
+                        model = model
+                    )
+                )
+            }) { Text("Сохранить") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
 }
 
 @Composable
