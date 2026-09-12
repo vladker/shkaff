@@ -214,6 +214,9 @@ interface LabelTemplateDao {
     @Query("SELECT * FROM label_template WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): LabelTemplateEntity?
 
+    @Query("SELECT * FROM label_template WHERE name = :name AND deleted_at IS NULL LIMIT 1")
+    suspend fun byName(name: String): LabelTemplateEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(t: LabelTemplateEntity)
 
