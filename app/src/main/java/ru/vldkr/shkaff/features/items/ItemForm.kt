@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
@@ -113,9 +115,12 @@ class ItemFormVm(
     val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
     val eanLookupError = MutableStateFlow<String?>(null)
 
-    // US-B2: поиск через headless браузер с Алиса AI (по названию/бренду без EAN)
+    // US-B2: поиск через headless браузер с Алиса AI (все поля карточки)
+    // accepted=true — предложение Алисы AI принято по умолчанию; крестик отменяет.
+    data class SmartField(val key: String, val label: String, val value: String, val accepted: Boolean = true)
     val smartSearchBusy = MutableStateFlow(false)
-    val smartSearchResult = MutableStateFlow<List<EanRow>?>(null)
+    val smartSearchStep = MutableStateFlow<String?>(null)
+    val smartSearchResult = MutableStateFlow<List<SmartField>?>(null)
     val smartSearchError = MutableStateFlow<String?>(null)
 
     // US-I5: «ссылка — сохранить как картинку в базу» — после успеха диалог сам закроется
@@ -321,121 +326,158 @@ class ItemFormVm(
         eanLookupError.value = null
     }
 
-    // US-B2: умный поиск через headless браузер с Алиса AI
+    // US-B2: умный поиск через headless браузер с Алиса AI.
+    // В запрос уходят все заполненные поля формы (включая пользовательские атрибуты),
+    // Алиса AI возвращает предложение по каждому — пользователь принимает/отклоняет по одному.
     fun smartSearchItem() {
-        val queryName = name.trim().takeIf { it.isNotBlank() }
-        val queryBrand = attrs["brand"]?.trim()?.takeIf { it.isNotBlank() }
-            ?: description.lines().firstOrNull { it.contains("бренд", ignoreCase = true) || it.contains("марка", ignoreCase = true) }?.let { line ->
-                line.substringAfter(":").takeIf { it.isNotBlank() }?.trim()
-            }
-        
-        if (queryName == null && queryBrand == null) {
-            smartSearchError.value = "Введите название товара или укажите бренд для поиска"
+        val searchQuery = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser.SearchQuery(
+            ean = ean.trim().takeIf { it.length >= 8 },
+            name = name.trim().takeIf { it.isNotBlank() },
+            brand = brandValue().takeIf { it.isNotBlank() }
+        )
+        if (searchQuery.toQueryString().isBlank()) {
+            smartSearchError.value = "Введите название вещи или укажите бренд для поиска"
             return
         }
 
         viewModelScope.launch {
             smartSearchBusy.value = true
+            smartSearchStep.value = "Подготавливаем запрос…"
             smartSearchError.value = null
             smartSearchResult.value = null
-            
-            val provider = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser(
-                settings = { Deps.agentSettings() }
-            )
-            
-            val searchQuery = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser.SearchQuery(
-                name = queryName,
-                brand = queryBrand
-            )
-            
-            val p = try {
-                provider.lookupByQuery(searchQuery)
+            try {
+                val provider = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser(
+                    settings = { Deps.agentSettings() }
+                )
+                val json = provider.smartLookup(searchQuery, formContextForSearch()) { step ->
+                    smartSearchStep.value = step
+                }
+                smartSearchStep.value = "Формируем предложения…"
+                val fields = buildSmartFields(json)
+                if (fields.isEmpty()) {
+                    smartSearchError.value = "Алиса AI не вернула полезных полей"
+                } else {
+                    smartSearchResult.value = fields
+                }
             } catch (e: Exception) {
-                smartSearchError.value = "Ошибка поиска: ${e.message}"
-                null
+                smartSearchError.value = e.message ?: "Ошибка поиска"
             } finally {
                 smartSearchBusy.value = false
+                smartSearchStep.value = null
             }
-            
-            if (p == null) {
-                if (smartSearchError.value == null) {
-                    smartSearchError.value = "Ничего не найдено по запросу \"${searchQuery.toQueryString()}\""
-                }
-                return@launch
-            }
-            
-            val rows = mutableListOf<EanRow>()
-            if (p.name.isNotBlank()) rows += EanRow("Название", p.name, true)
-            if (p.brand.isNotBlank()) rows += EanRow("Бренд", p.brand, true)
-            if (p.categories.isNotBlank()) rows += EanRow("Категория", p.categories, true)
-            if (p.quantity.isNotBlank()) rows += EanRow("Количество", p.quantity, true)
-            p.extra.forEach { (k, v) -> if (v.isNotBlank()) rows += EanRow(k, v, true) }
-            
-            smartSearchResult.value = rows.takeIf { it.isNotEmpty() }
-                ?: run {
-                    smartSearchError.value = "Найден товар, но без полезных полей"
-                    null
-                }
         }
     }
 
-    fun toggleSmartSearchRow(key: String) {
+    private fun brandValue(): String {
+        val brandKey = attrDefs.value.firstOrNull { it.label.equals("Бренд", true) }?.key
+        attrs[brandKey ?: "brand"]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        return description.lines()
+            .firstOrNull { it.contains("бренд", true) || it.contains("марка", true) }
+            ?.substringAfter(":")?.trim()?.takeIf { it.isNotBlank() }
+            .orEmpty()
+    }
+
+    // Все заполненные поля карточки (подпись → значение), включая пользовательские атрибуты.
+    private fun formContextForSearch(): Map<String, String> {
+        val m = LinkedHashMap<String, String>()
+        name.trim().takeIf { it.isNotBlank() }?.let { m["Название"] = it }
+        code.trim().takeIf { it.isNotBlank() }?.let { m["Код / номер"] = it }
+        ean.trim().takeIf { it.isNotBlank() }?.let { m["Штрихкод (EAN)"] = it }
+        description.trim().takeIf { it.isNotBlank() }?.let { m["Описание"] = it }
+        expiryDate.trim().takeIf { it.isNotBlank() }?.let { m["Срок годности"] = it }
+        volumeLiters.trim().takeIf { it.isNotBlank() }?.let { m["Объём, л"] = it }
+        weightKg.trim().takeIf { it.isNotBlank() }?.let { m["Вес, кг"] = it }
+        if (tags.isNotEmpty()) m["Теги"] = tags.joinToString(", ")
+        locationName()?.let { if (it.isNotBlank()) m["Место"] = it }
+        attrs.forEach { (key, value) ->
+            val v = value.trim()
+            if (v.isNotBlank()) {
+                val label = attrDefs.value.firstOrNull { it.key == key }?.label?.takeIf { l -> l.isNotBlank() } ?: key
+                m[label] = v
+            }
+        }
+        return m
+    }
+
+    // Ответ Алисы AI → список предложений по полям (пустые значения не показываем).
+    private fun buildSmartFields(json: org.json.JSONObject): List<SmartField> {
+        val fields = mutableListOf<SmartField>()
+        fun add(key: String, label: String, raw: String) {
+            val v = raw.trim()
+            if (v.isNotBlank()) fields += SmartField(key, label, v)
+        }
+        add("name", "Название", json.optString("name"))
+        add("code", "Код / номер", json.optString("code"))
+        add("ean", "Штрихкод (EAN)", json.optString("ean"))
+        add("description", "Описание", json.optString("description"))
+        add("expiryDate", "Срок годности", json.optString("expiryDate"))
+        add("volumeLiters", "Объём, л", json.optString("volumeLiters"))
+        add("weightKg", "Вес, кг", json.optString("weightKg"))
+        add("tags", "Теги", json.optString("tags"))
+        json.optJSONObject("attributes")?.let { a ->
+            a.keys().forEach { label ->
+                add("attr:$label", "Атрибут: $label", a.optString(label))
+            }
+        }
+        return fields
+    }
+
+    fun setSmartFieldAccepted(key: String, accepted: Boolean) {
         smartSearchResult.value = smartSearchResult.value?.map {
-            if (it.key == key) it.copy(checked = !it.checked) else it
+            if (it.key == key) it.copy(accepted = accepted) else it
         }
     }
 
-    fun applySmartSearch() {
-        val rows = smartSearchResult.value ?: return
-        val checked = rows.filter { it.checked && it.value.isNotBlank() }
-        if (checked.isEmpty()) {
-            smartSearchResult.value = null
-            return
+    private fun applySmartField(f: SmartField) {
+        when (f.key) {
+            "name" -> name = f.value
+            "code" -> code = f.value
+            "ean" -> ean = f.value
+            "description" -> description = f.value
+            "expiryDate" -> expiryDate = f.value
+            "volumeLiters" -> volumeLiters = f.value
+            "weightKg" -> weightKg = f.value
+            "tags" -> {
+                val list = f.value.split(',').map { it.trim() }.filter { it.isNotBlank() }
+                tags = (tags + list).distinct()
+            }
         }
-        
-        val byKey = checked.associate { it.key to it.value.trim() }
-        byKey["Название"]?.let { name = it }
-        
-        val descriptionParts = mutableListOf<String>()
-        if (description.isNotBlank()) descriptionParts += description
-        byKey["Бренд"]?.let { v ->
-            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Бренд: $v"
-        }
-        byKey["Количество"]?.let { v ->
-            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Количество: $v"
-        }
-        byKey["Описание"]?.let { v ->
-            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += v
-        }
-        byKey["Производитель"]?.let { v ->
-            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Производитель: $v"
-        }
-        description = descriptionParts.joinToString("\n")
-        
-        byKey["Категория"]?.let { v ->
-            val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
-            attrs = attrs + (categoryKey to v)
-            val def = attrDefs.value.firstOrNull { it.label == "Категория" }
+        if (f.key.startsWith("attr:")) {
+            val label = f.key.removePrefix("attr:")
+            val def = attrDefs.value.firstOrNull { it.label.equals(label, true) }
             if (def != null) {
-                val opts = runCatching { org.json.JSONArray(def.options) }.getOrNull() ?: org.json.JSONArray()
-                if ((0 until opts.length()).none { opts.optString(it).equals(v, ignoreCase = true) }) {
-                    viewModelScope.launch {
-                        try {
-                            Deps.attributes.addOption(def.id, v, Deps.deviceId)
-                        } catch (_: Exception) {
-                        }
-                    }
+                attrs = attrs + (def.key to f.value)
+                addOptionIfMissing(def, f.value)
+            } else if (!description.contains(label, true)) {
+                // Атрибута нет в словаре — не теряем значение, дописываем в описание
+                description += (if (description.isBlank()) "" else "\n") + "$label: ${f.value}"
+            }
+        }
+    }
+
+    private fun addOptionIfMissing(def: AttributeDefEntity, value: String) {
+        val opts = runCatching { org.json.JSONArray(def.options) }.getOrNull() ?: org.json.JSONArray()
+        if ((0 until opts.length()).none { opts.optString(it).equals(value, ignoreCase = true) }) {
+            viewModelScope.launch {
+                try {
+                    Deps.attributes.addOption(def.id, value, Deps.deviceId)
+                } catch (_: Exception) {
                 }
             }
         }
-        
-        byKey["Бренд"]?.let { v ->
-            val brandKey = attrDefs.value.firstOrNull { it.label == "Бренд" }?.key
-            if (brandKey != null) {
-                attrs = attrs + (brandKey to v)
-            }
-        }
-        
+    }
+
+    // Принять только отмеченные галочкой поля.
+    fun applySmartSearch() {
+        val fields = smartSearchResult.value ?: return
+        fields.filter { it.accepted && it.value.isNotBlank() }.forEach { applySmartField(it) }
+        smartSearchResult.value = null
+    }
+
+    // Общая галочка: принять все предложения, без учёта крестиков.
+    fun applyAllSmartSearch() {
+        val fields = smartSearchResult.value ?: return
+        fields.filter { it.value.isNotBlank() }.forEach { applySmartField(it) }
         smartSearchResult.value = null
     }
 
@@ -443,6 +485,7 @@ class ItemFormVm(
         smartSearchResult.value = null
         smartSearchError.value = null
     }
+
 
     fun save(onDone: (String) -> Unit) {
         if (name.isBlank()) {
@@ -674,7 +717,11 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     )
                     if (vm.name.trim().isNotEmpty() || vm.attrs["brand"]?.trim()?.isNotEmpty() == true) {
                         if (vm.smartSearchBusy.collectAsState().value) {
-                            Text("Ищем через Алиса AI…", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                vm.smartSearchStep.collectAsState().value?.ifBlank { null }
+                                    ?: "Ищем через Алиса AI…",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         } else {
                             TextButton(onClick = { vm.smartSearchItem() }, modifier = Modifier.align(Alignment.End)) {
                                 Text("Найти через headless браузер + Алиса AI")
@@ -868,27 +915,51 @@ private fun EanLookupDialog(vm: ItemFormVm) {
     )
 }
 
-// US-B2: подтверждение полей, найденных через headless браузер + Алиса AI.
+// US-B2: предложения Алисы AI по полям карточки: галочка — принять поле,
+// крестик — отклонить; «Принять всё» — все предложения сразу.
 @Composable
 private fun SmartSearchDialog(vm: ItemFormVm) {
     val rows by vm.smartSearchResult.collectAsState()
-    if (rows == null) return
+    val list = rows ?: return
     AlertDialog(
         onDismissRequest = { vm.dismissSmartSearch() },
         title = { Text("Найдено через Алиса AI") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                Text("Headless браузер нашёл информацию в интернете. Отметьте поля для переноса.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Алиса AI предложила значения по полям. Галочка — применить поле, крестик — отклонить.",
+                    style = MaterialTheme.typography.bodySmall
+                )
                 Spacer(Modifier.height(8.dp))
-                rows.orEmpty().forEach { row ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(checked = row.checked, onCheckedChange = { vm.toggleSmartSearchRow(row.key) })
-                        Column(Modifier.weight(1f).clickable { vm.toggleSmartSearchRow(row.key) }) {
-                            Text(row.key, style = MaterialTheme.typography.labelLarge)
+                list.forEach { f ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(f.label, style = MaterialTheme.typography.labelLarge)
                             Text(
-                                row.value,
+                                f.value,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { vm.setSmartFieldAccepted(f.key, true) }) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = "Принять поле",
+                                tint = if (f.accepted) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { vm.setSmartFieldAccepted(f.key, false) }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Отклонить поле",
+                                tint = if (!f.accepted) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -896,7 +967,8 @@ private fun SmartSearchDialog(vm: ItemFormVm) {
             }
         },
         confirmButton = {
-            TextButton(onClick = { vm.applySmartSearch() }) { Text("Перенести выбранные") }
+            TextButton(onClick = { vm.applyAllSmartSearch() }) { Text("Принять всё") }
+            TextButton(onClick = { vm.applySmartSearch() }) { Text("Принять отмеченные") }
         },
         dismissButton = {
             TextButton(onClick = { vm.dismissSmartSearch() }) { Text("Отмена") }

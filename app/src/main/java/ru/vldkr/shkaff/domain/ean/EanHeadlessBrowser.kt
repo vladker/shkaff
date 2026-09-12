@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import ru.vldkr.shkaff.domain.agent.Agent
 import ru.vldkr.shkaff.domain.agent.AgentSettings
+import ru.vldkr.shkaff.domain.agent.ChatClient
 import ru.vldkr.shkaff.domain.agent.ChatMessage
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -24,6 +25,9 @@ class EanHeadlessBrowser(
     private val settings: () -> AgentSettings,
     private val searchUrlTemplate: String = "https://yandex.ru/search/?text={query}"
 ) : EanProvider {
+
+    // Понятная пользователю причина сбоя поиска (вместо тихого null).
+    class SearchException(message: String) : Exception(message)
 
     data class SearchQuery(
         val ean: String? = null,
@@ -48,25 +52,68 @@ class EanHeadlessBrowser(
     /**
      * Поиск по произвольному запросу (название, бренд, категория)
      */
-    suspend fun lookupByQuery(query: SearchQuery): EanProduct? {
+    suspend fun lookupByQuery(query: SearchQuery, onStep: (String) -> Unit = {}): EanProduct? {
+        val json = runCatching { smartLookup(query, emptyMap(), onStep) }.getOrNull() ?: return null
+        val name = json.optString("name", "").trim()
+        if (name.isBlank()) return null
+        val attrs = json.optJSONObject("attributes") ?: JSONObject()
+        return EanProduct(
+            name = name,
+            brand = attrs.optString("Бренд", "").trim().ifBlank { json.optString("brand", "").trim() },
+            categories = attrs.optString("Категория", "").trim().ifBlank { json.optString("categories", "").trim() },
+            quantity = attrs.optString("Количество", "").trim().ifBlank { json.optString("quantity", "").trim() },
+            imageUrl = json.optString("imageUrl", "").trim(),
+            extra = buildExtraFromAI(json)
+        )
+    }
+
+    /**
+     * Полный поиск: Яндекс → Алиса AI → JSON с полями карточки.
+     *
+     * @param formContext Текущие поля карточки (подпись → значение): Алиса AI видит,
+     *                    что уже заполнено, и дополняет/уточняет по результатам поиска.
+     * @param onStep      Вызов с текстом текущего шага (отображается в строке формы).
+     * @return JSON с полями (name, code, ean, description, expiryDate, volumeLiters,
+     *         weightKg, tags, attributes{подпись→значение}).
+     * @throws SearchException С понятной причиной, если что-то пошло не так.
+     */
+    suspend fun smartLookup(
+        query: SearchQuery,
+        formContext: Map<String, String>,
+        onStep: (String) -> Unit = {}
+    ): JSONObject {
         val queryString = query.toQueryString()
-        if (queryString.isBlank()) return null
+        if (queryString.isBlank()) throw SearchException("Пустой запрос для поиска")
 
         val s = settings()
-        if (!s.enabled) return null
+        if (!s.enabled) throw SearchException("Алиса AI выключена — включите её в настройках агента")
 
         return withContext(Dispatchers.IO) {
-            try {
-                // Шаг 1: Парсим страницу поиска через headless браузер (эмуляция)
-                val scrapedContent = scrapeSearchResults(queryString)
-                
-                // Шаг 2: Отправляем собранные данные в Алиса AI для структурирования
-                val productData = extractProductInfoWithAI(scrapedContent, queryString, s)
-                
-                productData
+            onStep("Открываем поиск Яндекса…")
+            val scraped = try {
+                scrapeSearchResults(queryString)
             } catch (e: Exception) {
-                null
+                throw SearchException("Не удалось связаться с Яндексом: ${e.message}")
             }
+            if (scraped.error != null) {
+                throw SearchException("Яндекс не открыл страницу поиска: ${scraped.error}")
+            }
+
+            onStep("Парсим результаты поиска…")
+            onStep("Отправляем в Алиса AI…")
+            val prompt = buildPrompt(scraped, queryString, formContext)
+            val responseText = try {
+                Agent.complete(
+                    settings = s,
+                    messages = listOf(ChatMessage("user", prompt))
+                )
+            } catch (e: Exception) {
+                throw SearchException("Алиса AI не ответила: ${e.message}")
+            }
+
+            onStep("Разбираем ответ…")
+            ChatClient.extractJson(responseText)
+                ?: throw SearchException("Ответ Алисы AI не распознал как JSON")
         }
     }
 
@@ -111,44 +158,16 @@ class EanHeadlessBrowser(
     }
 
     /**
-     * Извлечение структурированной информации о продукте с помощью ИИ
+     * Промпт: Алиса AI видит текущее содержимое карточки (все поля, включая
+     * пользовательские атрибуты) и результаты поиска, возвращает JSON для предзаполнения.
      */
-    private suspend fun extractProductInfoWithAI(
-        scraped: ScrapedContent,
-        originalQuery: String,
-        settings: AgentSettings
-    ): EanProduct? {
-        
-        val prompt = buildPrompt(scraped, originalQuery)
-        
-        val responseText = runCatching {
-            Agent.complete(
-                settings = settings,
-                messages = listOf(ChatMessage("user", prompt))
-            )
-        }.getOrNull() ?: return null
-
-        val jsonObj = ru.vldkr.shkaff.domain.agent.ChatClient.extractJson(responseText) ?: return null
-        
-        val name = jsonObj.optString("name", "").trim()
-        if (name.isBlank()) return null
-        
-        return EanProduct(
-            name = name,
-            brand = jsonObj.optString("brand", "").trim(),
-            categories = jsonObj.optString("categories", "").trim(),
-            quantity = jsonObj.optString("quantity", "").trim(),
-            imageUrl = jsonObj.optString("imageUrl", "").trim(),
-            extra = buildExtraFromAI(jsonObj)
-        )
-    }
-
-    /**
-     * Построение промпта для ИИ с инструкцией вернуть структурированный JSON
-     */
-    private fun buildPrompt(scraped: ScrapedContent, query: String): String {
+    private fun buildPrompt(scraped: ScrapedContent, query: String, formContext: Map<String, String>): String {
+        val context = if (formContext.isEmpty()) "" else
+            "\n\nТекущее содержимое карточки (заполни пустые поля, уточни непустые, если в результатах есть точные данные):\n" +
+                formContext.entries.joinToString("\n") { (label, value) -> "- $label: $value" }
         return """
-Ты помощник для заполнения карточки товара. Проанализируй результаты поиска по запросу "$query" и извлеки структурированную информацию.
+Ты помощник, который заполняет карточку вещи в приложении инвентаризации.
+Проанализируй результаты поиска по запросу "$query" и заполни поля карточки.$context
 
 Результаты поиска:
 ${scraped.titles.take(5).joinToString("\n")}
@@ -156,30 +175,34 @@ ${scraped.titles.take(5).joinToString("\n")}
 Фрагменты:
 ${scraped.snippets.take(5).joinToString("\n")}
 
-Верни ТОЛЬКО JSON в формате:
+Верни ТОЛЬКО JSON без пояснений:
 {
-  "name": "Название товара",
-  "brand": "Бренд",
-  "categories": "Категория1 / Категория2",
-  "quantity": "Количество/вес/объём",
-  "imageUrl": "URL изображения (если есть)",
-  "description": "Краткое описание",
-  "manufacturer": "Производитель"
+  "name": "Название вещи",
+  "code": "Код/артикул производителя или пусто",
+  "ean": "Штрихкод (EAN) или пусто",
+  "description": "Краткое описание вещи",
+  "expiryDate": "Срок годности ДД.ММ.ГГГГ или пусто",
+  "volumeLiters": "Объём в литрах, число или пусто",
+  "weightKg": "Вес в кг, число или пусто",
+  "tags": "тег1, тег2 или пусто",
+  "attributes": { "Бренд": "...", "Категория": "...", "название атрибута из карточки": "значение" }
 }
 
-Если какое-то поле неизвестно — оставь пустую строку.
-Название (name) обязательно должно быть заполнено.
-Не добавляй никаких пояснений, только JSON.
+Правила:
+- name обязателен.
+- Не выдумывай: только данные, присутствующие в результатах поиска. Неизвестное — пустая строка.
+- В attributes — атрибуты карточки (по их названиям из текущего содержимого) и другие уместные: бренд, категория, серия, цвет.
 """.trimIndent()
     }
 
     private fun buildExtraFromAI(json: JSONObject): Map<String, String> {
         val extra = mutableMapOf<String, String>()
-        json.optString("description", "").takeIf { it.isNotBlank() }?.let { 
-            extra["Описание"] = it 
-        }
-        json.optString("manufacturer", "").takeIf { it.isNotBlank() }?.let { 
-            extra["Производитель"] = it 
+        val attrs = json.optJSONObject("attributes")
+        attrs?.let { a ->
+            a.keys().forEach { k ->
+                val v = a.optString(k, "").trim()
+                if (v.isNotBlank()) extra[k] = v
+            }
         }
         return extra
     }
