@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор Этикеток Pro</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --panel-bg: #ffffff;
+            --border-color: #d9d9d9;
+            --primary-color: #1890ff;
+            --text-color: #333;
+            --ruler-bg: #fafafa;
+            --ruler-line: #ccc;
+            --ruler-major: #999;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            background: var(--panel-bg);
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 50px;
+        }
+
+        h1 { margin: 0; font-size: 18px; }
+
+        .header-controls button {
+            margin-left: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .header-controls button.primary {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar Controls */
+        .sidebar {
+            width: 320px;
+            background: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-group {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+        }
+
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-row {
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-row label {
+            font-size: 12px;
+            margin-bottom: 4px;
+            color: #555;
+        }
+
+        .form-row input, .form-row select {
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .form-row input[type="range"] {
+            width: 100%;
+        }
+
+        .row-inline {
+            display: flex;
+            gap: 10px;
+        }
+        .row-inline .form-row { flex: 1; }
+
+        /* Workspace & Rulers */
+        .workspace {
+            flex: 1;
+            position: relative;
+            overflow: auto;
+            background: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .ruler-container {
+            position: sticky;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas unless on rulers */
+        }
+        
+        /* Specific Ruler Styles */
+        .ruler-h {
+            position: absolute;
+            top: 0;
+            left: 20px; /* Offset for vertical ruler */
+            height: 20px;
+            background: var(--ruler-bg);
+            border-bottom: 1px solid #999;
+            width: calc(100% - 20px);
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        .ruler-v {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 20px;
+            background: var(--ruler-bg);
+            border-right: 1px solid #999;
+            height: calc(100% - 20px);
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        .label-preview-area {
+            position: relative;
+            margin-top: 20px;
+            margin-left: 20px;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* Default align */
+            align-items: flex-start; /* Default align */
+        }
+
+        /* Content inside the label */
+        .label-content {
+            width: 100%;
+            height: 100%;
+            padding: 5mm; /* Base padding */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            position: relative;
+            z-index: 1;
+        }
+
+        .label-item {
+            margin: 2mm 0;
+            width: 100%;
+            text-align: left; /* Default */
+        }
+        
+        .label-item.qr-code {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .label-item img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Feed Controls Overlay */
+        .feed-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.9);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 100;
+            pointer-events: auto;
+        }
+
+        .feed-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .feed-btn:hover { background: #eee; }
+
+        /* Print Modal / Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+        }
+        .modal h2 { margin-top: 0; }
+        .modal-actions {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        /* Utility Classes for Alignment */
+        .align-start { justify-content: flex-start; }
+        .align-center { justify-content: center; }
+        .align-end { justify-content: flex-end; }
+        
+        .text-left { text-align: left; align-items: flex-start; }
+        .text-center { text-align: center; align-items: center; }
+        .text-right { text-align: right; align-items: flex-end; }
+
+        /* Inversion */
+        .inverted {
+            filter: invert(1);
+        }
+        
+        /* Dynamic Ruler Marks (generated via JS or CSS gradients) */
+        .ruler-h {
+            background-image: linear-gradient(90deg, #999 1px, transparent 1px);
+            background-size: 10mm 100%;
+        }
+        .ruler-v {
+            background-image: linear-gradient(#999 1px, transparent 1px);
+            background-size: 100% 10mm;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🖨️ Редактор Этикеток</h1>
+    <div class="header-controls">
+        <button onclick="saveTemplate('default')">💾 Сохранить как основной</button>
+        <button onclick="saveTemplateAsCustom()">💾 Сохранить как...</button>
+        <button class="primary" onclick="openPrintModal()">🖨️ Печать / Предпросмотр</button>
+    </div>
+</header>
+
+<div class="main-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        
+        <!-- Paper Settings -->
+        <div class="control-group">
+            <h3>📄 Параметры бумаги</h3>
+            <div class="row-inline">
+                <div class="form-row">
+                    <label>Ширина (мм)</label>
+                    <input type="number" id="paperWidth" value="50" min="10" max="200" onchange="updateLabelSize()">
+                </div>
+                <div class="form-row">
+                    <label>Высота (мм)</label>
+                    <input type="number" id="paperHeight" value="30" min="10" max="200" onchange="updateLabelSize()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Settings -->
+        <div class="control-group">
+            <h3>✏️ Содержимое</h3>
+            <div class="form-row">
+                <label>Текст 1</label>
+                <input type="text" id="text1" value="Название товара" oninput="renderLabel()">
+            </div>
+            <div class="form-row">
+                <label>Текст 2 (Цена/Вес)</label>
+                <input type="text" id="text2" value="150.00 ₽" oninput="renderLabel()">
+            </div>
+            <div class="form-row">
+                <label>QR Код (URL/Текст)</label>
+                <input type="text" id="qrData" value="https://example.com" oninput="renderLabel()">
+            </div>
+        </div>
+
+        <!-- Typography & QR -->
+        <div class="control-group">
+            <h3>🔤 Шрифт и QR</h3>
+            <div class="form-row">
+                <label>Размер шрифта (px)</label>
+                <input type="range" id="fontSize" min="8" max="48" value="14" oninput="renderLabel()">
+                <span id="fontSizeVal" style="font-size:10px; text-align:right;">14px</span>
+            </div>
+            <div class="form-row">
+                <label>Размер QR кода (px)</label>
+                <input type="range" id="qrSize" min="20" max="150" value="60" oninput="renderLabel()">
+                <span id="qrSizeVal" style="font-size:10px; text-align:right;">60px</span>
+            </div>
+        </div>
+
+        <!-- Alignment -->
+        <div class="control-group">
+            <h3>📐 Выравнивание</h3>
+            <div class="form-row">
+                <label>По вертикали</label>
+                <select id="alignV" onchange="renderLabel()">
+                    <option value="flex-start">Верх</option>
+                    <option value="center">Центр</option>
+                    <option value="flex-end">Низ</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>По горизонтали (Текст)</label>
+                <select id="alignH" onchange="renderLabel()">
+                    <option value="text-left">Слева</option>
+                    <option value="text-center">Центр</option>
+                    <option value="text-right">Справа</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Template Management -->
+        <div class="control-group">
+            <h3>📂 Шаблоны</h3>
+            <div class="form-row">
+                <label>Загрузить шаблон</label>
+                <select id="templateSelect" onchange="loadTemplate(this.value)">
+                    <option value="">-- Выберите --</option>
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+            <button onclick="deleteCurrentTemplate()" style="width:100%; margin-top:5px; background:#ff4d4f; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer;">Удалить текущий</button>
+        </div>
+
+    </div>
+
+    <!-- Workspace -->
+    <div class="workspace" id="workspace">
+        <div class="ruler-container">
+            <div class="ruler-h"></div>
+            <div class="ruler-v"></div>
+        </div>
+
+        <div id="labelPreview" class="label-preview-area">
+            <div id="labelContent" class="label-content">
+                <!-- Content injected by JS -->
+            </div>
+        </div>
+
+        <!-- Feed Controls (Simulated) -->
+        <div class="feed-controls">
+            <span style="font-size:12px; font-weight:bold;">Прокрутка:</span>
+            <button class="feed-btn" onclick="adjustFeed(-5)" title="Назад 5мм">▲</button>
+            <input type="number" id="feedOffset" value="0" style="width:50px; text-align:center;" onchange="applyFeedOffset()" placeholder="мм">
+            <button class="feed-btn" onclick="adjustFeed(5)" title="Вперед 5мм">▼</button>
+            <span style="font-size:10px; color:#666;">(Смещение)</span>
+        </div>
+    </div>
+</div>
+
+<!-- Print Modal -->
+<div class="modal-overlay" id="printModal">
+    <div class="modal">
+        <h2>Настройки печати</h2>
+        
+        <div class="form-row">
+            <label>
+                <input type="checkbox" id="invertColors" onchange="toggleInversion()"> Инвертировать цвета (Белый на черном)
+            </label>
+        </div>
+
+        <div class="form-row" style="margin-top:15px;">
+            <label>Смещение подачи (мм)</label>
+            <div class="row-inline">
+                <button class="feed-btn" style="width:100%; border-radius:4px;" onclick="adjustFeed(-10)">-10мм</button>
+                <input type="number" id="printFeedOffset" value="0" style="flex:1;">
+                <button class="feed-btn" style="width:100%; border-radius:4px;" onclick="adjustFeed(10)">+10мм</button>
+            </div>
+            <small style="color:#666; margin-top:5px;">Используйте для калибровки начала печати на ленте.</small>
+        </div>
+
+        <div style="margin-top: 20px; border:1px solid #eee; padding:10px; text-align:center;">
+            <p style="font-size:12px; color:#666;">Предпросмотр перед отправкой</p>
+            <div id="miniPreview" style="transform: scale(0.5); transform-origin: top center; border:1px dashed #ccc; display:inline-block;"></div>
+        </div>
+
+        <div class="modal-actions">
+            <button onclick="closePrintModal()" style="padding:8px 16px; cursor:pointer;">Отмена</button>
+            <button class="primary" onclick="executePrint()" style="padding:8px 16px; background:var(--primary-color); color:white; border:none; border-radius:4px; cursor:pointer;">Печать</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let currentTemplateId = null;
+    
+    // Initialization
+    window.onload = function() {
+        loadTemplateList();
+        updateLabelSize();
+        renderLabel();
+        
+        // Sync range sliders displays
+        document.getElementById('fontSize').oninput = function() {
+            document.getElementById('fontSizeVal').innerText = this.value + 'px';
+            renderLabel();
+        };
+        document.getElementById('qrSize').oninput = function() {
+            document.getElementById('qrSizeVal').innerText = this.value + 'px';
+            renderLabel();
+        };
+    };
+
+    // Core Rendering Logic
+    function renderLabel() {
+        const text1 = document.getElementById('text1').value;
+        const text2 = document.getElementById('text2').value;
+        const qrData = document.getElementById('qrData').value;
+        const fontSize = document.getElementById('fontSize').value;
+        const qrSize = document.getElementById('qrSize').value;
+        const alignV = document.getElementById('alignV').value;
+        const alignH = document.getElementById('alignH').value;
+
+        const container = document.getElementById('labelContent');
+        
+        // Apply Alignments
+        container.style.justifyContent = alignV;
+        container.className = `label-content ${alignH}`;
+
+        // Generate HTML
+        let html = '';
+        
+        if (text1) {
+            html += `<div class="label-item" style="font-size:${fontSize}px; font-weight:bold;">${text1}</div>`;
+        }
+        if (text2) {
+            html += `<div class="label-item" style="font-size:${fontSize}px;">${text2}</div>`;
+        }
+        if (qrData) {
+            // Using a public API for QR generation for demo purposes
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(qrData)}`;
+            html += `<div class="label-item qr-code"><img src="${qrUrl}" style="width:${qrSize}px; height:${qrSize}px;" alt="QR"></div>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    function updateLabelSize() {
+        const w = document.getElementById('paperWidth').value;
+        const h = document.getElementById('paperHeight').value;
+        const preview = document.getElementById('labelPreview');
+        
+        // Convert mm to px (approx 3.78px per mm at 96dpi, but we use CSS mm for print accuracy)
+        // For screen preview, we set width/height in mm directly via CSS
+        preview.style.width = `${w}mm`;
+        preview.style.height = `${h}mm`;
+        
+        // Update ruler markers dynamically if needed (CSS handles simple gradients)
+    }
+
+    // Feed Simulation Logic
+    function adjustFeed(amount) {
+        const input = document.getElementById('feedOffset');
+        let val = parseInt(input.value) || 0;
+        val += amount;
+        input.value = val;
+        applyFeedOffset();
+    }
+
+    function applyFeedOffset() {
+        const offset = document.getElementById('feedOffset').value;
+        const workspace = document.getElementById('workspace');
+        const label = document.getElementById('labelPreview');
+        
+        // Visual simulation: Move the label up/down within the workspace
+        // Positive offset = move down (print starts later)
+        // Note: In real printing, this sends G-Code or printer settings.
+        // Here we just shift the visual representation relative to the "zero" mark
+        const baseMarginTop = 20; // Initial CSS margin
+        label.style.marginTop = `${baseMarginTop + parseInt(offset)}px`;
+        
+        // Also update the modal input if open
+        document.getElementById('printFeedOffset').value = offset;
+    }
+
+    // Inversion
+    function toggleInversion() {
+        const isInverted = document.getElementById('invertColors').checked;
+        const preview = document.getElementById('labelPreview');
+        const mini = document.getElementById('miniPreview');
+        
+        if (isInverted) {
+            preview.classList.add('inverted');
+            mini.classList.add('inverted');
+        } else {
+            preview.classList.remove('inverted');
+            mini.classList.remove('inverted');
+        }
+    }
+
+    // Template Management (LocalStorage)
+    function getTemplateData() {
+        return {
+            paperWidth: document.getElementById('paperWidth').value,
+            paperHeight: document.getElementById('paperHeight').value,
+            text1: document.getElementById('text1').value,
+            text2: document.getElementById('text2').value,
+            qrData: document.getElementById('qrData').value,
+            fontSize: document.getElementById('fontSize').value,
+            qrSize: document.getElementById('qrSize').value,
+            alignV: document.getElementById('alignV').value,
+            alignH: document.getElementById('alignH').value,
+            feedOffset: document.getElementById('feedOffset').value
+        };
+    }
+
+    function setTemplateData(data) {
+        document.getElementById('paperWidth').value = data.paperWidth;
+        document.getElementById('paperHeight').value = data.paperHeight;
+        document.getElementById('text1').value = data.text1;
+        document.getElementById('text2').value = data.text2;
+        document.getElementById('qrData').value = data.qrData;
+        document.getElementById('fontSize').value = data.fontSize;
+        document.getElementById('qrSize').value = data.qrSize;
+        document.getElementById('alignV').value = data.alignV;
+        document.getElementById('alignH').value = data.alignH;
+        document.getElementById('feedOffset').value = data.feedOffset || 0;
+        
+        // Update UI helpers
+        document.getElementById('fontSizeVal').innerText = data.fontSize + 'px';
+        document.getElementById('qrSizeVal').innerText = data.qrSize + 'px';
+        
+        updateLabelSize();
+        renderLabel();
+        applyFeedOffset();
+    }
+
+    function saveTemplate(id) {
+        const data = getTemplateData();
+        localStorage.setItem('label_template_' + id, JSON.stringify(data));
+        
+        if (id === 'default') {
+            alert('Основной шаблон сохранен!');
+        } else {
+            alert(`Шаблон "${id}" сохранен.`);
+            currentTemplateId = id;
+        }
+        loadTemplateList();
+    }
+
+    function saveTemplateAsCustom() {
+        const name = prompt("Введите название нового шаблона:", "Мой шаблон " + new Date().toLocaleTimeString());
+        if (name) {
+            const safeId = 'custom_' + name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            saveTemplate(safeId);
+            // Store human readable name mapping if needed, simplified here
+        }
+    }
+
+    function loadTemplateList() {
+        const select = document.getElementById('templateSelect');
+        select.innerHTML = '<option value="">-- Выберите --</option>';
+        
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('label_template_')) {
+                const displayName = key.replace('label_template_', '');
+                const option = document.createElement('option');
+                option.value = key;
+                option.text = displayName === 'default' ? '⭐ Основной шаблон' : displayName;
+                select.appendChild(option);
+            }
+        }
+    }
+
+    function loadTemplate(key) {
+        if (!key) return;
+        const dataStr = localStorage.getItem(key);
+        if (dataStr) {
+            const data = JSON.parse(dataStr);
+            setTemplateData(data);
+            currentTemplateId = key;
+            document.getElementById('templateSelect').value = key;
+        }
+    }
+
+    function deleteCurrentTemplate() {
+        if (!currentTemplateId) {
+            alert("Сначала загрузите шаблон для удаления.");
+            return;
+        }
+        if (confirm("Вы уверены, что хотите удалить этот шаблон?")) {
+            localStorage.removeItem(currentTemplateId);
+            currentTemplateId = null;
+            document.getElementById('templateSelect').value = "";
+            loadTemplateList();
+        }
+    }
+
+    // Print Modal Logic
+    function openPrintModal() {
+        // Sync feed offset to modal
+        document.getElementById('printFeedOffset').value = document.getElementById('feedOffset').value;
+        
+        // Clone preview for modal
+        const mainPreview = document.getElementById('labelPreview').cloneNode(true);
+        mainPreview.id = 'miniPreviewContent';
+        mainPreview.style.position = 'static';
+        mainPreview.style.margin = '0';
+        
+        const container = document.getElementById('miniPreview');
+        container.innerHTML = '';
+        container.appendChild(mainPreview);
+        
+        // Sync inversion state visually in modal preview
+        if (document.getElementById('invertColors').checked) {
+            mainPreview.classList.add('inverted');
+        } else {
+            mainPreview.classList.remove('inverted');
+        }
+
+        document.getElementById('printModal').style.display = 'flex';
+    }
+
+    function closePrintModal() {
+        document.getElementById('printModal').style.display = 'none';
+    }
+
+    function executePrint() {
+        // Here you would integrate with the actual printer API (e.g., WebUSB, Electron ipcRenderer, or browser print)
+        const offset = document.getElementById('printFeedOffset').value;
+        const invert = document.getElementById('invertColors').checked;
+        
+        console.log("Sending to printer...");
+        console.log("Feed Offset:", offset, "mm");
+        console.log("Invert Colors:", invert);
+        
+        alert(`Отправка на печать...\nСмещение: ${offset}мм\nИнверсия: ${invert ? 'Да' : 'Нет'}`);
+        closePrintModal();
+    }
+
+    // Close modal on outside click
+    window.onclick = function(event) {
+        const modal = document.getElementById('printModal');
+        if (event.target == modal) {
+            closePrintModal();
+        }
+    }
+</script>
+
+</body>
+</html>
