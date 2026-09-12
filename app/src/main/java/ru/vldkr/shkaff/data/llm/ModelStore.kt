@@ -10,6 +10,7 @@ import kotlin.coroutines.coroutineContext
 import org.json.JSONArray
 import org.json.JSONObject
 import ru.vldkr.shkaff.domain.llm.ModelPreset
+import ru.vldkr.shkaff.domain.llm.ModelQuantization
 import ru.vldkr.shkaff.domain.llm.ModelRegistry
 import java.io.File
 import java.io.FileOutputStream
