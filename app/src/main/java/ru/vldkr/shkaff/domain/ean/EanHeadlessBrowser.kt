@@ -12,13 +12,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * US-B2: Поиск информации о вещи через headless браузер с умным поиском Алиса AI.
+ * US-B2: Поиск информации о вещи через headless браузер с умным поиском ИИ.
  * 
  * Этот провайдер использует headless браузер для парсинга веб-страниц и отправляет
- * собранные данные в Алиса AI для получения структурированного ответа в формате JSON
+ * собранные данные в ИИ для получения структурированного ответа в формате JSON
  * для заполнения карточки вещи.
  * 
- * @param settings Функция для получения настроек LLM (Алиса AI)
+ * @param settings Функция для получения настроек LLM (ИИ)
  * @param searchUrlTemplate Шаблон URL для поиска (по умолчанию Яндекс)
  */
 class EanHeadlessBrowser(
@@ -68,9 +68,9 @@ class EanHeadlessBrowser(
     }
 
     /**
-     * Полный поиск: Яндекс → Алиса AI → JSON с полями карточки.
+     * Полный поиск: Яндекс → ИИ → JSON с полями карточки.
      *
-     * @param formContext Текущие поля карточки (подпись → значение): Алиса AI видит,
+     * @param formContext Текущие поля карточки (подпись → значение): ИИ видит,
      *                    что уже заполнено, и дополняет/уточняет по результатам поиска.
      * @param onStep      Вызов с текстом текущего шага (отображается в строке формы).
      * @return JSON с полями (name, code, ean, description, expiryDate, volumeLiters,
@@ -86,7 +86,7 @@ class EanHeadlessBrowser(
         if (queryString.isBlank()) throw SearchException("Пустой запрос для поиска")
 
         val s = settings()
-        if (!s.enabled) throw SearchException("Алиса AI выключена — включите её в настройках агента")
+        if (!s.enabled) throw SearchException("ИИ выключен — включите его в настройках агента")
 
         return withContext(Dispatchers.IO) {
             onStep("Открываем поиск Яндекса…")
@@ -101,7 +101,7 @@ class EanHeadlessBrowser(
 
             onStep("Парсим результаты поиска…")
             if (Agent.isDevice(s)) onStep("Загружаем модель на устройстве…")
-            onStep("Отправляем в Алиса AI…")
+            onStep("Отправляем в ИИ…")
             val prompt = buildPrompt(scraped, queryString, formContext)
             // Показываем живой прогресс генерации (у модели на устройстве она может
             // занимать минуты) — счётчик знаков вместо «зависшей» надписи.
@@ -112,17 +112,17 @@ class EanHeadlessBrowser(
                     messages = listOf(ChatMessage("user", prompt)),
                     onToken = { token ->
                         buffer.append(token)
-                        onStep("Алиса AI печатает… ${buffer.length} зн.")
+                        onStep("ИИ печатает… ${buffer.length} зн.")
                     },
                     nMaxTokens = 1024
                 )
             } catch (e: Exception) {
-                throw SearchException("Алиса AI не ответила: ${e.message}")
+                throw SearchException("ИИ не ответил: ${e.message}")
             }
 
             onStep("Разбираем ответ…")
             ChatClient.extractJson(responseText)
-                ?: throw SearchException("Ответ Алисы AI не распознал как JSON")
+                ?: throw SearchException("Ответ ИИ не распознан как JSON")
         }
     }
 
@@ -167,7 +167,7 @@ class EanHeadlessBrowser(
     }
 
     /**
-     * Промпт: Алиса AI видит текущее содержимое карточки (все поля, включая
+     * Промпт: ИИ видит текущее содержимое карточки (все поля, включая
      * пользовательские атрибуты) и результаты поиска, возвращает JSON для предзаполнения.
      */
     private fun buildPrompt(scraped: ScrapedContent, query: String, formContext: Map<String, String>): String {

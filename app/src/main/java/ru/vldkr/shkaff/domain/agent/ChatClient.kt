@@ -16,9 +16,10 @@ data class AgentSettings(
     // cloud — облачный OpenAI-совместимый API (Qwen/OpenAI и т.п.);
     // local — локальный Ollama (тоже OpenAI-совместимый /v1/chat/completions).
     val provider: String = "cloud",
-    val baseUrl: String = "",
+    // Преднастроенный домашний сервер (Qwen 27B, OpenAI-совместимый API).
+    val baseUrl: String = "http://192.168.56.1:1234/v1",
     val apiKey: String = "",
-    val model: String = ""
+    val model: String = "qwen/qwen3.8-27b"
 )
 
 object ChatClient {

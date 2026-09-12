@@ -115,8 +115,8 @@ class ItemFormVm(
     val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
     val eanLookupError = MutableStateFlow<String?>(null)
 
-    // US-B2: поиск через headless браузер с Алиса AI (все поля карточки)
-    // accepted=true — предложение Алисы AI принято по умолчанию; крестик отменяет.
+    // US-B2: поиск через headless браузер с ИИ (все поля карточки)
+    // accepted=true — предложение ИИ принято по умолчанию; крестик отменяет.
     data class SmartField(val key: String, val label: String, val value: String, val accepted: Boolean = true)
     val smartSearchBusy = MutableStateFlow(false)
     val smartSearchStep = MutableStateFlow<String?>(null)
@@ -326,9 +326,9 @@ class ItemFormVm(
         eanLookupError.value = null
     }
 
-    // US-B2: умный поиск через headless браузер с Алиса AI.
+    // US-B2: умный поиск через headless браузер с ИИ.
     // В запрос уходят все заполненные поля формы (включая пользовательские атрибуты),
-    // Алиса AI возвращает предложение по каждому — пользователь принимает/отклоняет по одному.
+    // ИИ возвращает предложение по каждому — пользователь принимает/отклоняет по одному.
     fun smartSearchItem() {
         val searchQuery = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser.SearchQuery(
             ean = ean.trim().takeIf { it.length >= 8 },
@@ -355,7 +355,7 @@ class ItemFormVm(
                 smartSearchStep.value = "Формируем предложения…"
                 val fields = buildSmartFields(json)
                 if (fields.isEmpty()) {
-                    smartSearchError.value = "Алиса AI не вернула полезных полей"
+                    smartSearchError.value = "ИИ не вернул полезных полей"
                 } else {
                     smartSearchResult.value = fields
                 }
@@ -410,7 +410,7 @@ class ItemFormVm(
         return m
     }
 
-    // Ответ Алисы AI → список предложений по полям (пустые значения не показываем).
+    // Ответ ИИ → список предложений по полям (пустые значения не показываем).
     private fun buildSmartFields(json: org.json.JSONObject): List<SmartField> {
         val fields = mutableListOf<SmartField>()
         fun add(key: String, label: String, raw: String) {
@@ -731,7 +731,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     vm.smartSearchStep.collectAsState().value?.ifBlank { null }
-                                        ?: "Ищем через Алиса AI…",
+                                        ?: "Ищем через ИИ…",
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -741,7 +741,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                             }
                         } else {
                             TextButton(onClick = { vm.smartSearchItem() }, modifier = Modifier.align(Alignment.End)) {
-                                Text("Найти через headless браузер + Алиса AI")
+                                Text("Найти через headless браузер + ИИ")
                             }
                         }
                     }
@@ -932,7 +932,7 @@ private fun EanLookupDialog(vm: ItemFormVm) {
     )
 }
 
-// US-B2: предложения Алисы AI по полям карточки: галочка — принять поле,
+// US-B2: предложения ИИ по полям карточки: галочка — принять поле,
 // крестик — отклонить; «Принять всё» — все предложения сразу.
 @Composable
 private fun SmartSearchDialog(vm: ItemFormVm) {
@@ -940,11 +940,11 @@ private fun SmartSearchDialog(vm: ItemFormVm) {
     val list = rows ?: return
     AlertDialog(
         onDismissRequest = { vm.dismissSmartSearch() },
-        title = { Text("Найдено через Алиса AI") },
+        title = { Text("Найдено через ИИ") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
-                    "Алиса AI предложила значения по полям. Галочка — применить поле, крестик — отклонить.",
+                    "ИИ предложил значения по полям. Галочка — применить поле, крестик — отклонить.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))

@@ -113,12 +113,14 @@ object Deps {
     // LLM-агент (US-B3): облако / локаль (Ollama), OpenAI-совместимый API.
     fun agentSettings(): ru.vldkr.shkaff.domain.agent.AgentSettings {
         val m = meta()
+        // Нет сохранённого значения → преднастроенный домашний Qwen 27B;
+        // сохранённая пустая строка — уважает намеренно очищенное поле.
         return ru.vldkr.shkaff.domain.agent.AgentSettings(
             enabled = m.get("agentEnabled") == "1",
             provider = m.get("agentProvider") ?: "cloud",
-            baseUrl = m.get("agentBaseUrl").orEmpty(),
+            baseUrl = m.get("agentBaseUrl") ?: "http://192.168.56.1:1234/v1",
             apiKey = m.get("agentApiKey").orEmpty(),
-            model = m.get("agentModel").orEmpty()
+            model = m.get("agentModel") ?: "qwen/qwen3.8-27b"
         )
     }
 

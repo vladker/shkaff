@@ -339,6 +339,16 @@ private fun SettingsDialog(
         title = { Text("Агент") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        sProvider = Agent.PROVIDER_CLOUD
+                        sBaseUrl = "http://192.168.56.1:1234/v1"
+                        sModel = "qwen/qwen3.8-27b"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Пресет: домашний Qwen 27B")
+                }
                 PROVIDERS.forEach { p ->
                     Row(
                         Modifier.fillMaxWidth(),
@@ -388,7 +398,7 @@ private fun SettingsDialog(
                         value = sBaseUrl,
                         onValueChange = { sBaseUrl = it },
                         label = { Text("Base URL") },
-                        placeholder = { Text(ChatClient.DEFAULT_BASE_URL) }
+                        placeholder = { Text("http://192.168.56.1:1234/v1") }
                     )
                     OutlinedTextField(
                         value = sApiKey,
@@ -399,7 +409,7 @@ private fun SettingsDialog(
                         value = sModel,
                         onValueChange = { sModel = it },
                         label = { Text("Модель") },
-                        placeholder = { Text("gpt-4o-mini / qwen2.5:7b") }
+                        placeholder = { Text("qwen/qwen3.8-27b") }
                     )
                 }
             }
