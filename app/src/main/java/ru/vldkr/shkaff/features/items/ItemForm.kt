@@ -113,6 +113,11 @@ class ItemFormVm(
     val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
     val eanLookupError = MutableStateFlow<String?>(null)
 
+    // US-B2: поиск через headless браузер с Алиса AI (по названию/бренду без EAN)
+    val smartSearchBusy = MutableStateFlow(false)
+    val smartSearchResult = MutableStateFlow<List<EanRow>?>(null)
+    val smartSearchError = MutableStateFlow<String?>(null)
+
     // US-I5: «ссылка — сохранить как картинку в базу» — после успеха диалог сам закроется
     val linkPhotoBusy = MutableStateFlow(false)
     val linkPhotoError = MutableStateFlow<String?>(null)
@@ -314,6 +319,129 @@ class ItemFormVm(
     fun dismissEan() {
         eanLookupResult.value = null
         eanLookupError.value = null
+    }
+
+    // US-B2: умный поиск через headless браузер с Алиса AI
+    fun smartSearchItem() {
+        val queryName = name.trim().takeIf { it.isNotBlank() }
+        val queryBrand = attrs["brand"]?.trim()?.takeIf { it.isNotBlank() }
+            ?: description.lines().firstOrNull { it.contains("бренд", ignoreCase = true) || it.contains("марка", ignoreCase = true) }?.let { line ->
+                line.substringAfter(":").takeIf { it.isNotBlank() }?.trim()
+            }
+        
+        if (queryName == null && queryBrand == null) {
+            smartSearchError.value = "Введите название товара или укажите бренд для поиска"
+            return
+        }
+
+        viewModelScope.launch {
+            smartSearchBusy.value = true
+            smartSearchError.value = null
+            smartSearchResult.value = null
+            
+            val provider = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser(
+                settings = { Deps.agentSettings() }
+            )
+            
+            val searchQuery = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser.SearchQuery(
+                name = queryName,
+                brand = queryBrand
+            )
+            
+            val p = try {
+                provider.lookupByQuery(searchQuery)
+            } catch (e: Exception) {
+                smartSearchError.value = "Ошибка поиска: ${e.message}"
+                null
+            } finally {
+                smartSearchBusy.value = false
+            }
+            
+            if (p == null) {
+                if (smartSearchError.value == null) {
+                    smartSearchError.value = "Ничего не найдено по запросу \"${searchQuery.toQueryString()}\""
+                }
+                return@launch
+            }
+            
+            val rows = mutableListOf<EanRow>()
+            if (p.name.isNotBlank()) rows += EanRow("Название", p.name, true)
+            if (p.brand.isNotBlank()) rows += EanRow("Бренд", p.brand, true)
+            if (p.categories.isNotBlank()) rows += EanRow("Категория", p.categories, true)
+            if (p.quantity.isNotBlank()) rows += EanRow("Количество", p.quantity, true)
+            p.extra.forEach { (k, v) -> if (v.isNotBlank()) rows += EanRow(k, v, true) }
+            
+            smartSearchResult.value = rows.takeIf { it.isNotEmpty() }
+                ?: run {
+                    smartSearchError.value = "Найден товар, но без полезных полей"
+                    null
+                }
+        }
+    }
+
+    fun toggleSmartSearchRow(key: String) {
+        smartSearchResult.value = smartSearchResult.value?.map {
+            if (it.key == key) it.copy(checked = !it.checked) else it
+        }
+    }
+
+    fun applySmartSearch() {
+        val rows = smartSearchResult.value ?: return
+        val checked = rows.filter { it.checked && it.value.isNotBlank() }
+        if (checked.isEmpty()) {
+            smartSearchResult.value = null
+            return
+        }
+        
+        val byKey = checked.associate { it.key to it.value.trim() }
+        byKey["Название"]?.let { name = it }
+        
+        val descriptionParts = mutableListOf<String>()
+        if (description.isNotBlank()) descriptionParts += description
+        byKey["Бренд"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Бренд: $v"
+        }
+        byKey["Количество"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Количество: $v"
+        }
+        byKey["Описание"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += v
+        }
+        byKey["Производитель"]?.let { v ->
+            if (descriptionParts.none { it.contains(v, ignoreCase = true) }) descriptionParts += "Производитель: $v"
+        }
+        description = descriptionParts.joinToString("\n")
+        
+        byKey["Категория"]?.let { v ->
+            val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
+            attrs = attrs + (categoryKey to v)
+            val def = attrDefs.value.firstOrNull { it.label == "Категория" }
+            if (def != null) {
+                val opts = runCatching { org.json.JSONArray(def.options) }.getOrNull() ?: org.json.JSONArray()
+                if ((0 until opts.length()).none { opts.optString(it).equals(v, ignoreCase = true) }) {
+                    viewModelScope.launch {
+                        try {
+                            Deps.attributes.addOption(def.id, v, Deps.deviceId)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            }
+        }
+        
+        byKey["Бренд"]?.let { v ->
+            val brandKey = attrDefs.value.firstOrNull { it.label == "Бренд" }?.key
+            if (brandKey != null) {
+                attrs = attrs + (brandKey to v)
+            }
+        }
+        
+        smartSearchResult.value = null
+    }
+
+    fun dismissSmartSearch() {
+        smartSearchResult.value = null
+        smartSearchError.value = null
     }
 
     fun save(onDone: (String) -> Unit) {
@@ -536,13 +664,27 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
         ) {
             PhotoField(vm)
             FieldRow("Название *") {
-                OutlinedTextField(
-                    value = vm.name,
-                    onValueChange = { vm.name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Например: Дрель Makita") },
-                    singleLine = true
-                )
+                Column {
+                    OutlinedTextField(
+                        value = vm.name,
+                        onValueChange = { vm.name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Например: Дрель Makita") },
+                        singleLine = true
+                    )
+                    if (vm.name.trim().isNotEmpty() || vm.attrs["brand"]?.trim()?.isNotEmpty() == true) {
+                        if (vm.smartSearchBusy.collectAsState().value) {
+                            Text("Ищем через Алиса AI…", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            TextButton(onClick = { vm.smartSearchItem() }, modifier = Modifier.align(Alignment.End)) {
+                                Text("Найти через headless браузер + Алиса AI")
+                            }
+                        }
+                    }
+                    vm.smartSearchError.collectAsState().value?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
             FieldRow("Код / номер (можно от руки)") {
                 OutlinedTextField(
@@ -685,6 +827,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
             )
         }
         EanLookupDialog(vm)
+        SmartSearchDialog(vm)
     }
 }
 
@@ -721,6 +864,42 @@ private fun EanLookupDialog(vm: ItemFormVm) {
         },
         dismissButton = {
             TextButton(onClick = { vm.dismissEan() }) { Text("Отмена") }
+        }
+    )
+}
+
+// US-B2: подтверждение полей, найденных через headless браузер + Алиса AI.
+@Composable
+private fun SmartSearchDialog(vm: ItemFormVm) {
+    val rows by vm.smartSearchResult.collectAsState()
+    if (rows == null) return
+    AlertDialog(
+        onDismissRequest = { vm.dismissSmartSearch() },
+        title = { Text("Найдено через Алиса AI") },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Text("Headless браузер нашёл информацию в интернете. Отметьте поля для переноса.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                rows.orEmpty().forEach { row ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = row.checked, onCheckedChange = { vm.toggleSmartSearchRow(row.key) })
+                        Column(Modifier.weight(1f).clickable { vm.toggleSmartSearchRow(row.key) }) {
+                            Text(row.key, style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                row.value,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.applySmartSearch() }) { Text("Перенести выбранные") }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.dismissSmartSearch() }) { Text("Отмена") }
         }
     )
 }

@@ -1,32 +1,24 @@
-```
 # Compiled and build artifacts
 *.class
 *.o
 *.obj
+*.out
+*.dll
 *.so
 *.a
-*.dll
-*.exe
-*.out
+*.pyc
+__pycache__/
 
 # Dependencies
-.gradle/
 node_modules/
 venv/
 .venv/
-__pycache__/
+.gradle/
 .mypy_cache/
 .pytest_cache/
-
-# Build directories
+target/
 build/
 dist/
-target/
-
-# Environment
-.env
-.env.local
-*.env.*
 
 # Editors
 .vscode/
@@ -38,12 +30,16 @@ target/
 # Logs
 *.log
 
+# Environment
+.env
+.env.local
+*.env.*
+
 # Coverage
 coverage/
 htmlcov/
 .coverage
 
-# System
+# System files
 .DS_Store
 Thumbs.db
-```
