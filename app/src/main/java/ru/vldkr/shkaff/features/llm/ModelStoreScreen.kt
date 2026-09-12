@@ -278,11 +278,14 @@ private fun ActionButton(vm: ModelStoreVm, rv: ModelStoreVm.RowVm, row: ModelRow
 
 private fun description(rv: ModelStoreVm.RowVm): String {
     val row = rv.row
-    val size = if (row.sizeBytes > 0) "%.1f ГБ".format(row.sizeBytes / 1e9) else "размер неизвестен"
+    val size = if (row.sizeBytes > 0) {
+        if (row.sizeBytes >= 1e9) "%.1f ГБ".format(row.sizeBytes / 1e9) else "%.0f МБ".format(row.sizeBytes / 1e6)
+    } else "размер неизвестен"
+    val quantInfo = if (row.quantName.isNotEmpty()) " · ${row.quantName}" else ""
     return when {
-        rv.got && rv.mmprojGot -> "$size · скачана, готова к использованию"
-        rv.got -> "$size · файл есть (mmproj не хватает)"
+        rv.got && rv.mmprojGot -> "$size$quantInfo · скачана, готова к использованию"
+        rv.got -> "$size$quantInfo · файл есть (mmproj не хватает)"
         row.custom -> size
-        else -> "$size · нет на устройстве"
+        else -> "$size$quantInfo · нет на устройстве"
     }
 }

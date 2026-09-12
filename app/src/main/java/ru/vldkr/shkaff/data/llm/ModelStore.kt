@@ -37,6 +37,8 @@ data class ModelRow(
     val custom: Boolean = false,
     val state: ModelState = ModelState.IDLE,
     val message: String? = null,
+    val quantId: String = "",
+    val quantName: String = "",
 )
 
 data class StoreState(
@@ -78,20 +80,26 @@ class ModelStore(private val context: Context) {
             ?: File(context.filesDir, "models").also { it.mkdirs() }
 
     fun reload() {
-        val rows = ModelRegistry.presets.map { rowOf(it) } + customs.map { rowOf(it) }
+        val rows = ModelRegistry.presets.flatMap { preset ->
+            preset.quantizations.map { quant ->
+                rowOf(preset, quant)
+            }
+        } + customs.map { rowOf(it) }
         val prevActive = _state.value.activeName
         _state.value = StoreState(rows = rows, activeName = prevActive)
     }
 
-    private fun rowOf(p: ModelPreset) = ModelRow(
-        id = p.id,
-        name = p.name,
-        file = p.fileName,
-        url = p.url,
-        sizeBytes = p.sizeBytes,
+    private fun rowOf(p: ModelPreset, q: ModelQuantization) = ModelRow(
+        id = "${p.id}-${q.id}",
+        name = "${p.name} (${q.name})",
+        file = q.fileName,
+        url = q.url,
+        sizeBytes = q.sizeBytes,
         mmprojFile = p.mmprojFile,
         mmprojUrl = p.mmprojUrl,
         mmprojSizeBytes = p.mmprojSizeBytes,
+        quantId = q.id,
+        quantName = q.name,
     )
 
     private fun rowOf(c: CustomModel) = ModelRow(
