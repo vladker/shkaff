@@ -1,16 +1,48 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
+```
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
+
+# Build artifacts
+dist/
 build/
-/captures
-.externalNativeBuild
-.cxx
-.kotlin
-*.apk
-*.aab
-*.ap_
-*.keystore
-/android
-/load_screen_*.png
+*.pyc
+*.class
+*.o
+*.obj
+*.out
+*.exe
+*.dll
+*.so
+*.a
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# System
+.DS_Store
+Thumbs.db
+```

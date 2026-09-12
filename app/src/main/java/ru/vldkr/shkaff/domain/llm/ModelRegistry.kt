@@ -49,5 +49,29 @@ object ModelRegistry {
             mmprojFile = "mmproj-Qwen3-VL-4B-Instruct-F16.gguf",
             mmprojSizeBytes = 836180160,
         ),
+        ModelPreset(
+            id = "gemma-4-e2b-it",
+            name = "Gemma 4 E2B IT",
+            description = "Новая модель Google для агентских задач. Требует мощный телефон.",
+            url = "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+            fileName = "gemma-4-E2B-it-Q4_K_M.gguf",
+            sizeBytes = 3106738272,
+        ),
+        ModelPreset(
+            id = "gemma-3-270m",
+            name = "Gemma 3 270M",
+            description = "Сверхлёгкая модель Google для самых слабых устройств. Быстрая, но менее умная.",
+            url = "https://huggingface.co/gguf-org/gemma-3-270m-gguf/resolve/main/gemma-3-270m-q4_k_m.gguf",
+            fileName = "gemma-3-270m-q4_k_m.gguf",
+            sizeBytes = 253113248,
+        ),
+        ModelPreset(
+            id = "ornith-1.5-9b",
+            name = "Ornith 1.5 9B",
+            description = "Мощная универсальная модель для агентских задач. Требует флагманский телефон (12+ ГБ ОЗУ).",
+            url = "https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/Ornith-1.5-9B-Q4_K_M.gguf",
+            fileName = "Ornith-1.5-9B-Q4_K_M.gguf",
+            sizeBytes = 5780090816,
+        ),
     )
 }
