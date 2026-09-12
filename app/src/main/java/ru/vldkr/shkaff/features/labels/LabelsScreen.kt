@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -483,9 +484,9 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                             OutlinedButton(
                                 onClick = { vm.setFormat(fmt) },
                                 modifier = Modifier.weight(1f),
-                                colors = if (selected) androidx.compose.material3.OutlinedButtonDefaults.outlinedButtonColors(
+                                colors = if (selected) androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer
-                                ) else androidx.compose.material3.OutlinedButtonDefaults.outlinedButtonColors()
+                                ) else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
                             ) {
                                 Text(fmt, style = MaterialTheme.typography.labelSmall)
                             }
@@ -650,7 +651,7 @@ fun HorizontalRuler(widthMm: Double, modifier: Modifier = Modifier) {
         val h = size.height
         // Рисуем линию
         drawLine(
-            color = Color.Gray,
+            color = androidx.compose.ui.graphics.Color(0xFF666666),
             start = Offset(0f, h - 2.dp.toPx()),
             end = Offset(w, h - 2.dp.toPx()),
             strokeWidth = 1.dp.toPx()
@@ -663,7 +664,7 @@ fun HorizontalRuler(widthMm: Double, modifier: Modifier = Modifier) {
             val isMedium = mm % 5 == 0 && !isMajor
             val lineH = if (isMajor) h else if (isMedium) h * 0.6f else h * 0.3f
             drawLine(
-                color = Color.Gray,
+                color = androidx.compose.ui.graphics.Color(0xFF666666),
                 start = Offset(x, h - lineH),
                 end = Offset(x, h),
                 strokeWidth = if (isMajor) 1.5.dp.toPx() else 0.5.dp.toPx()
@@ -682,7 +683,7 @@ fun VerticalRuler(heightMm: Double, modifier: Modifier = Modifier) {
         val h = size.height
         // Рисуем линию
         drawLine(
-            color = Color.Gray,
+            color = androidx.compose.ui.graphics.Color(0xFF666666),
             start = Offset(w - 2.dp.toPx(), 0f),
             end = Offset(w - 2.dp.toPx(), h),
             strokeWidth = 1.dp.toPx()
@@ -695,7 +696,7 @@ fun VerticalRuler(heightMm: Double, modifier: Modifier = Modifier) {
             val isMedium = mm % 5 == 0 && !isMajor
             val lineW = if (isMajor) w else if (isMedium) w * 0.6f else w * 0.3f
             drawLine(
-                color = Color.Gray,
+                color = androidx.compose.ui.graphics.Color(0xFF666666),
                 start = Offset(w - lineW, y),
                 end = Offset(w, y),
                 strokeWidth = if (isMajor) 1.5.dp.toPx() else 0.5.dp.toPx()
