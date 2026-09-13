@@ -43,7 +43,7 @@ object DeviceLlm {
             throw IllegalStateException("Не удалось загрузить модель: ${LlamaBridge.lastError().ifBlank { "код $code" }}")
         }
 
-        val system = messages.filter { it.role == "system" }.joinToString("\n") { it.content }.trim()
+        val system = messages.filter { it.role == "system" }.joinToString("\n") { it.content.orEmpty() }.trim()
         if (system.isNotEmpty()) {
             LlamaBridge.setSystemPrompt(system)
         } else {
@@ -88,7 +88,7 @@ object DeviceLlm {
         for (m in messages) {
             if (m.role == "system") continue
             val role = if (m.role == "assistant") "Ассистент" else "Пользователь"
-            sb.append(role).append(": ").append(m.content.trim()).append("\n")
+            sb.append(role).append(": ").append(m.content.orEmpty().trim()).append("\n")
             hasTurn = true
         }
         if (hasTurn) sb.append("Ассистент:")

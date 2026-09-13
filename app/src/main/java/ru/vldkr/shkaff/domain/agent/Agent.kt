@@ -24,4 +24,25 @@ object Agent {
             ChatClient.complete(settings, messages)
         }
     }
+
+    /**
+     * Запрос с инструментами (web_search/web_fetch).
+     * Провайдеры cloud/local — полноценный цикл tool-calling через OpenAI-API;
+     * device (llama.cpp) — мост не умеет tool_calls, отвечаем без инструментов.
+     */
+    suspend fun run(
+        settings: AgentSettings,
+        messages: List<ChatMessage>,
+        tools: List<Tool>,
+        onStep: (String) -> Unit = {},
+        onToken: (String) -> Unit = {},
+    ): AgentLoop.RunResult {
+        require(messages.isNotEmpty()) { "Пустой список сообщений" }
+        return if (isDevice(settings)) {
+            val answer = DeviceLlm.complete(settings, messages, onToken)
+            AgentLoop.RunResult(answer, messages + ChatMessage("assistant", answer))
+        } else {
+            AgentLoop.run(settings, messages, tools, onStep = onStep)
+        }
+    }
 }

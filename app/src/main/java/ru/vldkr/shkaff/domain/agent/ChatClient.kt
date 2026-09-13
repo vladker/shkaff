@@ -8,8 +8,34 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-// Сообщение чата OpenAI-совместимого API: role = system|user|assistant
-data class ChatMessage(val role: String, val content: String)
+// Сообщение чата OpenAI-совместимого API: role = system|user|assistant|tool.
+// tool-роль несёт результат вызова (toolCallId ссылается на id в toolCalls ассистента).
+data class ChatMessage(
+    val role: String,
+    val content: String? = null,
+    val toolCalls: List<ToolCall> = emptyList(),
+    val toolCallId: String? = null,
+)
+
+// Вызов инструмента, запрошенный моделью (function calling в OpenAI-формате).
+data class ToolCall(
+    val id: String,
+    val name: String,
+    val argumentsJson: String,
+)
+
+// Ответ одной итерации: либо текст, либо список вызовов инструментов (иногда и то и другое).
+data class ChatResponse(
+    val content: String?,
+    val toolCalls: List<ToolCall>,
+)
+
+// Спецификация инструмента для тела запроса (JSON Schema аргументов).
+data class ToolSpec(
+    val name: String,
+    val description: String,
+    val parameters: JSONObject,
+)
 
 data class AgentSettings(
     val enabled: Boolean = false,
@@ -32,20 +58,44 @@ object ChatClient {
     }
 
     // Один запрос chat completion; возвращает текст ответа ассистента.
-    suspend fun complete(settings: AgentSettings, messages: List<ChatMessage>): String =
+    suspend fun complete(settings: AgentSettings, messages: List<ChatMessage>): String {
+        val resp = completeWithTools(settings, messages, emptyList())
+        return resp.content ?: ""
+    }
+
+    /**
+     * Запрос chat completion с инструментами (OpenAI `tools`).
+     * [tools] пустой — обычный запрос; иначе модель может ответить tool_calls.
+     */
+    suspend fun completeWithTools(
+        settings: AgentSettings,
+        messages: List<ChatMessage>,
+        tools: List<ToolSpec>,
+    ): ChatResponse =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
             body.put("model", settings.model.ifBlank { "gpt-4o-mini" })
             body.put("messages", JSONArray().apply {
-                messages.forEach { m ->
-                    put(
-                        JSONObject().apply {
-                            put("role", m.role)
-                            put("content", m.content)
-                        }
-                    )
-                }
+                messages.forEach { put(messageToJson(it)) }
             })
+            if (tools.isNotEmpty()) {
+                body.put("tools", JSONArray().apply {
+                    tools.forEach { t ->
+                        put(
+                            JSONObject().apply {
+                                put("type", "function")
+                                put(
+                                    "function", JSONObject().apply {
+                                        put("name", t.name)
+                                        put("description", t.description)
+                                        put("parameters", t.parameters)
+                                    }
+                                )
+                            }
+                        )
+                    }
+                })
+            }
             body.put("temperature", 0.2)
 
             val url = endpoint(settings)
@@ -68,7 +118,7 @@ object ChatClient {
                 if (code !in 200..299) {
                     throw IllegalStateException("HTTP $code: ${raw.take(300)}")
                 }
-                extractContent(JSONObject(raw))
+                parseResponse(JSONObject(raw))
             } catch (e: java.io.IOException) {
                 throw IllegalStateException("Нет связи с $url: ${e.message}", e)
             } finally {
@@ -76,14 +126,57 @@ object ChatClient {
             }
         }
 
-    internal fun extractContent(root: JSONObject): String {
+    internal fun extractContent(root: JSONObject): String = parseResponse(root).content ?: ""
+
+    // Ответ → (текст, tool_calls). `content` может быть null — у OpenAI-формата
+    // сообщение ассистента с tool_calls часто без текстового тела.
+    internal fun parseResponse(root: JSONObject): ChatResponse {
         val choices = root.optJSONArray("choices")
-            ?: return root.optString("content", "").takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Нет ответа от модели")
+            ?: return ChatResponse(root.optString("content", "").takeIf { it.isNotBlank() }, emptyList())
         if (choices.length() == 0) throw IllegalStateException("Нет ответа от модели")
         val msg = choices.getJSONObject(0).optJSONObject("message")
             ?: throw IllegalStateException("Нет ответа от модели")
-        return msg.optString("content", "")
+        val content = (msg.opt("content") as? String)?.takeIf { it.isNotBlank() }
+        val calls = mutableListOf<ToolCall>()
+        msg.optJSONArray("tool_calls")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val t = arr.optJSONObject(i) ?: continue
+                val fn = t.optJSONObject("function") ?: continue
+                calls += ToolCall(
+                    id = t.optString("id", ""),
+                    name = fn.optString("name", ""),
+                    argumentsJson = fn.optString("arguments", "{}"),
+                )
+            }
+        }
+        return ChatResponse(content, calls)
+    }
+
+    // Сообщение → JSON тела запроса: role, content, tool_calls, tool_call_id.
+    internal fun messageToJson(m: ChatMessage): JSONObject = JSONObject().apply {
+        put("role", m.role)
+        if (m.content != null) put("content", m.content)
+        if (m.toolCalls.isNotEmpty()) {
+            put(
+                "tool_calls", JSONArray().apply {
+                    m.toolCalls.forEach { tc ->
+                        put(
+                            JSONObject().apply {
+                                put("id", tc.id)
+                                put("type", "function")
+                                put(
+                                    "function", JSONObject().apply {
+                                        put("name", tc.name)
+                                        put("arguments", tc.argumentsJson)
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            )
+        }
+        if (m.toolCallId != null) put("tool_call_id", m.toolCallId)
     }
 
     // Извлечение JSON-объекта из ответа: допускаем ```json … ``` и произвольный текст вокруг.

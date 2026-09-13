@@ -65,6 +65,7 @@ import ru.vldkr.shkaff.domain.agent.ChatMessage
 import ru.vldkr.shkaff.domain.agent.DeviceLlm
 import ru.vldkr.shkaff.domain.agent.LlmDiscovery
 import ru.vldkr.shkaff.domain.agent.LlmRuntime
+import ru.vldkr.shkaff.domain.agent.WebTools
 
 data class AgentMsg(val role: String, val content: String)
 
@@ -74,6 +75,8 @@ class AgentVm : ViewModel() {
     val busy = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     val draft = MutableStateFlow("")
+    // Текущий шаг цикла инструментов (напр., «Поиск: цена кофе»), null — просто думает.
+    val status = MutableStateFlow<String?>(null)
     val settings = MutableStateFlow(Deps.agentSettings())
     val modelLoad = LlmRuntime.load
 
@@ -94,18 +97,24 @@ class AgentVm : ViewModel() {
         viewModelScope.launch {
             try {
                 val system = ChatMessage("system", buildSystemPrompt())
-                val reply = Agent.complete(
+                val res = Agent.run(
                     settings.value,
                     listOf(system) + history,
+                    WebTools.all(),
+                    onStep = { status.value = it },
                     onToken = { tok -> draft.value += tok }
                 )
-                val content = if (reply.isBlank()) "Нет ответа от модели" else reply
+                // history — вся переписка, включая tool-вызовы и их результаты,
+                // чтобы следующий ход модели видел контекст поиска.
+                history.clear()
+                history.addAll(res.conversation.subList(1, res.conversation.size))
+                val content = if (res.answer.isBlank()) "Нет ответа от модели" else res.answer
                 messages.value = messages.value + AgentMsg("assistant", content)
-                history.add(ChatMessage("assistant", content))
             } catch (e: Exception) {
                 error.value = e.message ?: "Ошибка запроса к модели"
             } finally {
                 draft.value = ""
+                status.value = null
                 busy.value = false
             }
         }
@@ -136,8 +145,16 @@ class AgentVm : ViewModel() {
         sb.append(
             "Ты — LLM-агент «Шкаф», помогаешь владельцу базы вещей.\n" +
             "База локальная (Room на устройстве). Вот текущий снимок.\n" +
-            "Отвечай по-русски, кратко и по делу.\n\n"
+            "Отвечай по-русски, кратко и по делу.\n"
         )
+        if (!Agent.isDevice(settings.value)) {
+            sb.append(
+                "У тебя есть инструменты: web_search — поиск в интернете, web_fetch — прочитать страницу по URL. " +
+                "Если вопрос требует внешних фактов (цены, характеристики, аналоги) — найди их инструментами, " +
+                "не выдумывай, и указывай в ответе ссылки-источники.\n"
+            )
+        }
+        sb.append("\n")
         sb.append("== Шкафы (${storages.size}) ==\n")
         storages.forEach { sb.append("- ").append(it.name).append("\n") }
         sb.append("\n== Ящики/полки (${locations.size}) ==\n")
@@ -182,6 +199,7 @@ fun AgentScreen(nav: NavController) {
     val busy by vm.busy.collectAsState()
     val error by vm.error.collectAsState()
     val draft by vm.draft.collectAsState()
+    val status by vm.status.collectAsState()
     val settings by vm.settings.collectAsState()
     val modelLoad by vm.modelLoad.collectAsState()
     var input by remember { mutableStateOf("") }
@@ -257,7 +275,8 @@ fun AgentScreen(nav: NavController) {
         ) {
             item { Text(
                 "Помогает по вашей базе: «где лежит мука», «что скоро истечёт», «куда положить банку 2 л».\n" +
-                "Агент видит вещи, шкафы и ящики. Провайдер — по шестерёнке: облако, локальная сеть или модель на устройстве (офлайн).",
+                "Умеет искать в интернете (web_search, web_fetch) — спрашивайте про цены, характеристики и аналоги.\n" +
+                "Агент видит вещи, шкафы и ящики. Провайдер — по шестерёнке: облако, локальная сеть или модель на устройстве (офлайн, без инструментов).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             ) }
@@ -290,7 +309,11 @@ fun AgentScreen(nav: NavController) {
                 }
             }
             if (busy && !modelLoad.loading) {
-                item { Text("Агент думает…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                item { Text(
+                    if (status != null) "Агент: $status" else "Агент думает…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                ) }
             }
             if (draft.isNotBlank()) {
                 item { Bubble(AgentMsg("assistant", draft)) }
