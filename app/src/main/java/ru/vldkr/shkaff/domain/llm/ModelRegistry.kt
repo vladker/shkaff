@@ -219,5 +219,59 @@ object ModelRegistry {
                 )
             ),
         ),
+        ModelPreset(
+            id = "qwen3.5-0.8b",
+            name = "Qwen3.5 0.8B",
+            description = "Очень маленькая модель для слабых устройств. Быстрая, минимум качества.",
+            quantizations = listOf(
+                ModelQuantization(
+                    id = "q4_k_m",
+                    name = "Q4_K_M",
+                    url = "https://huggingface.co/diodel/Qwen3.5-0.8B-Q4_K_M-GGUF/resolve/main/qwen3.5-0.8b-Q4_K_M.gguf",
+                    fileName = "qwen3.5-0.8b-Q4_K_M.gguf",
+                    sizeBytes = 529297312,
+                    description = "0.5 ГБ · очень быстрая, минимальная точность"
+                )
+            ),
+        ),
+        ModelPreset(
+            id = "qwen3.8-2b-distill",
+            name = "Qwen3.8 2B Distill",
+            description = "Дистиллят Qwen3.8 2.4T в 2B: качество выше, чем размер. Нужен свежий llama.cpp (Gated DeltaNet).",
+            quantizations = listOf(
+                ModelQuantization(
+                    id = "q4_k_m",
+                    name = "Q4_K_M",
+                    url = "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF/resolve/main/Qwen3.8-2B-Q4_K_M.gguf",
+                    fileName = "Qwen3.8-2B-Q4_K_M.gguf",
+                    sizeBytes = 1312164224,
+                    description = "1.3 ГБ · баланс (рекомендуется)"
+                ),
+                ModelQuantization(
+                    id = "q5_k_m",
+                    name = "Q5_K_M",
+                    url = "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF/resolve/main/Qwen3.8-2B-Q5_K_M.gguf",
+                    fileName = "Qwen3.8-2B-Q5_K_M.gguf",
+                    sizeBytes = 1454786944,
+                    description = "1.5 ГБ · высокая точность"
+                ),
+                ModelQuantization(
+                    id = "q6_k",
+                    name = "Q6_K",
+                    url = "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF/resolve/main/Qwen3.8-2B-Q6_K.gguf",
+                    fileName = "Qwen3.8-2B-Q6_K.gguf",
+                    sizeBytes = 1606323584,
+                    description = "1.6 ГБ · почти без потерь"
+                ),
+                ModelQuantization(
+                    id = "q8_0",
+                    name = "Q8_0",
+                    url = "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF/resolve/main/Qwen3.8-2B-Q8_0.gguf",
+                    fileName = "Qwen3.8-2B-Q8_0.gguf",
+                    sizeBytes = 2076674432,
+                    description = "2.1 ГБ · максимальная точность"
+                )
+            ),
+        ),
     )
 }
