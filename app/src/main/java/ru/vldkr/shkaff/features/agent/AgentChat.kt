@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +63,7 @@ import ru.vldkr.shkaff.domain.agent.AgentSettings
 import ru.vldkr.shkaff.domain.agent.ChatClient
 import ru.vldkr.shkaff.domain.agent.ChatMessage
 import ru.vldkr.shkaff.domain.agent.DeviceLlm
+import ru.vldkr.shkaff.domain.agent.LlmDiscovery
 import ru.vldkr.shkaff.domain.agent.LlmRuntime
 
 data class AgentMsg(val role: String, val content: String)
@@ -331,6 +335,7 @@ private fun SettingsDialog(
     var sBaseUrl by remember { mutableStateOf(initial.baseUrl) }
     var sApiKey by remember { mutableStateOf(initial.apiKey) }
     var sModel by remember { mutableStateOf(initial.model) }
+    var sStatus by remember { mutableStateOf<String?>(null) }
     val storeState by Deps.modelStore.state.collectAsState()
     val downloaded = remember(storeState) { storeState.rows.filter { Deps.modelStore.isDownloaded(it) } }
 
@@ -339,15 +344,16 @@ private fun SettingsDialog(
         title = { Text("Агент") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Пресет задаёт только провайдера и модель; URL — через «Автопоиск»
+                // (IP дома не постоянен, хардкод здесь ломал настройки).
                 OutlinedButton(
                     onClick = {
                         sProvider = Agent.PROVIDER_CLOUD
-                        sBaseUrl = "http://192.168.56.1:1234/v1"
                         sModel = "qwen/qwen3.8-27b"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Пресет: домашний Qwen 27B")
+                    Text("Пресет: Qwen 27B (URL — автопоиск)")
                 }
                 PROVIDERS.forEach { p ->
                     Row(
@@ -394,11 +400,24 @@ private fun SettingsDialog(
                         }
                     }
                 } else {
+                    AutoSearchRow(
+                        baseUrl = sBaseUrl,
+                        onResult = { url, models, msg ->
+                            if (url != null) {
+                                sBaseUrl = url
+                                if (models.none { it == sModel }) sModel = models.first()
+                            }
+                            sStatus = msg
+                        }
+                    )
+                    sStatus?.let { st ->
+                        Text(st, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     OutlinedTextField(
                         value = sBaseUrl,
-                        onValueChange = { sBaseUrl = it },
+                        onValueChange = { sBaseUrl = it; sStatus = null },
                         label = { Text("Base URL") },
-                        placeholder = { Text("http://192.168.56.1:1234/v1") }
+                        placeholder = { Text("http://192.168.1.11:1234/v1") }
                     )
                     OutlinedTextField(
                         value = sApiKey,
@@ -435,6 +454,55 @@ private fun SettingsDialog(
             TextButton(onClick = onDismiss) { Text("Отмена") }
         }
     )
+}
+
+/**
+ * «Автопоиск»: ищет LLM-сервер (GET /v1/models) в подсети телефона и на 127.0.0.1
+ * (USB-отладка через `adb reverse tcp:1234 tcp:1234`), результат подставляется в форму.
+ */
+@Composable
+private fun AutoSearchRow(
+    baseUrl: String,
+    onResult: (url: String?, models: List<String>, message: String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = {
+            if (busy) return@OutlinedButton
+            busy = true
+            scope.launch {
+                try {
+                    val port = LlmDiscovery.portFromBaseUrl(baseUrl)
+                    val found = LlmDiscovery.discover(port)
+                    if (found == null) {
+                        onResult(
+                            null,
+                            emptyList(),
+                            "Сервер не найден. ПК с ИИ должен быть в той же Wi-Fi сети (порт $port) либо телефон подключён по USB с активным adb reverse tcp:$port tcp:$port."
+                        )
+                    } else {
+                        onResult(found.baseUrl, found.models, "Найдено: ${found.baseUrl} (моделей: ${found.models.size})")
+                    }
+                } catch (e: Exception) {
+                    onResult(null, emptyList(), "Ошибка автопоиска: ${e.message}")
+                } finally {
+                    busy = false
+                }
+            }
+        },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(if (busy) "Ищем сервер ИИ…" else "Автопоиск сервера ИИ")
+    }
 }
 
 @Composable

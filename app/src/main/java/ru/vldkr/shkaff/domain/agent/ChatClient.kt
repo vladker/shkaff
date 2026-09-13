@@ -48,7 +48,8 @@ object ChatClient {
             })
             body.put("temperature", 0.2)
 
-            val conn = URL(endpoint(settings)).openConnection() as HttpURLConnection
+            val url = endpoint(settings)
+            val conn = URL(url).openConnection() as HttpURLConnection
             try {
                 conn.requestMethod = "POST"
                 conn.connectTimeout = 15_000
@@ -68,6 +69,8 @@ object ChatClient {
                     throw IllegalStateException("HTTP $code: ${raw.take(300)}")
                 }
                 extractContent(JSONObject(raw))
+            } catch (e: java.io.IOException) {
+                throw IllegalStateException("Нет связи с $url: ${e.message}", e)
             } finally {
                 conn.disconnect()
             }
