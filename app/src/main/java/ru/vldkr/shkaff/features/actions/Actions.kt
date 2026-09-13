@@ -40,8 +40,10 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.actions.ActionCode
 import ru.vldkr.shkaff.domain.actions.ActionCode.Verb
 import ru.vldkr.shkaff.features.labels.LabelGenerator
+import ru.vldkr.shkaff.util.newUlid
 
-// Служебные QR (US-F1): QR кодирует действие; скан в приложении его выполняет.
+// Служебные QR (US-F1): QR кодирует действие + ULID-номер карточки; скан в приложении
+// выполняет действие. У каждого QR свой ULID — видно, какой код распечатали и отсканировали.
 // Ссылка установки (US-I3): обычная HTTPS-ссылка — сканируется и без приложения.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,10 +53,10 @@ fun ActionsScreen(nav: NavController) {
     var dialogBmp by remember { mutableStateOf<Bitmap?>(null) }
     var dialogTitle by remember { mutableStateOf("") }
 
-    fun show(code: String, title: String) {
+    fun show(payload: String, code: String, title: String) {
         dialogCode = code
         dialogTitle = title
-        dialogBmp = LabelGenerator.generate(qrTemplate(), code, "")
+        dialogBmp = LabelGenerator.generate(qrTemplate(title), payload, code)
     }
 
     Scaffold(
@@ -77,17 +79,32 @@ fun ActionsScreen(nav: NavController) {
         ) {
             item {
                 Text(
-                    "QR-коды действий можно распечатать и повесить рядом с хранилищем. Скан внутри «Шкафа» выполнит действие с учётом прав профиля.",
+                    "QR-коды действий можно распечатать и повесить рядом с хранилищем. Скан внутри «Шкафа» выполнит действие с учётом прав профиля. У каждого QR свой ULID-номер — подписан на карточке.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-            item { ActionRow("Новая вещь", "add:item → открыть форму", { show(ActionCode.encode(Verb.ADD, "item"), "QR: новая вещь") }) }
-            item { ActionRow("Новое хранилище", "add:storage → открыть форму", { show(ActionCode.encode(Verb.ADD, "storage"), "QR: новое хранилище") }) }
-            item { ActionRow("Новый ящик", "add:location → открыть форму", { show(ActionCode.encode(Verb.ADD, "location"), "QR: новый ящик") }) }
-            item { ActionRow("Экспорт базы", "export → экран экспорта", { show(ActionCode.encode(Verb.EXPORT), "QR: экспорт") }) }
-            item { ActionRow("Журнал действий", "journal → открыть журнал", { show(ActionCode.encode(Verb.JOURNAL), "QR: журнал") }) }
+            item { ActionRow("Новая вещь", "Скан откроет форму новой вещи", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.ADD, "item", code), code, "Новая вещь")
+            }) }
+            item { ActionRow("Новое хранилище", "Скан откроет форму нового хранилища", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.ADD, "storage", code), code, "Новое хранилище")
+            }) }
+            item { ActionRow("Новый ящик", "Скан откроет форму нового ящика", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.ADD, "location", code), code, "Новый ящик")
+            }) }
+            item { ActionRow("Экспорт базы", "Скан откроет экран экспорта", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.EXPORT, "", code), code, "Экспорт базы")
+            }) }
+            item { ActionRow("Журнал действий", "Скан откроет журнал действий", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.JOURNAL, "", code), code, "Журнал действий")
+            }) }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item {
                 Text(
@@ -104,7 +121,7 @@ fun ActionsScreen(nav: NavController) {
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
             }
-            item { ActionRow("Ссылка для установки", ActionCode.INSTALL_URL, { show(ActionCode.INSTALL_URL, "QR: установка") }) }
+            item { ActionRow("Ссылка для установки", ActionCode.INSTALL_URL, { show(ActionCode.INSTALL_URL, ActionCode.INSTALL_URL, "Установка «Шкафа»") }) }
         }
     }
 
@@ -161,8 +178,8 @@ private fun ActionRow(title: String, subtitle: String, onClick: () -> Unit) {
     HorizontalDivider()
 }
 
-// Временный шаблон: чистый QR без текстовой подписи (для служебных кодов).
-private fun qrTemplate(): LabelTemplateEntity {
+// Шаблон служебного QR: код + текстовая подпись и ULID-номер карточки.
+private fun qrTemplate(caption: String): LabelTemplateEntity {
     val now = System.currentTimeMillis()
     return LabelTemplateEntity(
         id = "service-qr",
@@ -171,9 +188,9 @@ private fun qrTemplate(): LabelTemplateEntity {
         width_mm = 58.0,
         height_mm = 58.0,
         margin_mm = 2.0,
-        show_text = false,
-        text_content = "",
-        show_number = false,
+        show_text = true,
+        text_content = caption,
+        show_number = true,
         font_size = 10.0,
         created_at = now,
         updated_at = now,

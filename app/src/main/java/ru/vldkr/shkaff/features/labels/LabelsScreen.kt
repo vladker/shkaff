@@ -70,6 +70,7 @@ import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.util.newId
+import ru.vldkr.shkaff.util.newUlid
 import android.content.Intent
 
 class LabelsVm(
@@ -365,24 +366,22 @@ class LabelsVm(
         if (itemId != null) {
             viewModelScope.launch {
                 Deps.items.byId(itemId)?.let { found ->
-                    update {
-                        it.copy(
-                            item = found,
-                            code = if (found.code.isNotBlank()) found.code else (ScanBus.lastCode ?: found.code),
-                            name = found.name
-                        )
-                    }
+                    // Код вещи → отсканированный → ULID (сохраняем, если вещь без кода).
+                    val code = found.code.ifBlank {
+                        ScanBus.lastCode?.also { ScanBus.lastCode = null }
+                    }.orEmpty().ifBlank { newUlid() }
+                    if (code != found.code) Deps.items.setCode(itemId, code)
+                    update { it.copy(item = found, code = code, name = found.name) }
                     regenerate()
                 }
             }
         }
         if (ui.value.code.isEmpty() && ui.value.item == null) {
             val scanned = ScanBus.lastCode
-            if (scanned != null) {
-                update { it.copy(code = scanned) }
-                ScanBus.lastCode = null
-                regenerate()
-            }
+            val code = scanned ?: newUlid()
+            if (scanned != null) ScanBus.lastCode = null
+            update { it.copy(code = code) }
+            regenerate()
         }
     }
 }
@@ -424,7 +423,7 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                 value = ui.code,
                 onValueChange = { vm.setCode(it) },
                 label = { Text("Код (QR / штрихкод)") },
-                supportingText = { Text("Содержимое штрихкода. Пусто — сгенерировать нельзя") },
+                supportingText = { Text("Содержимое штрихкода. Пусто — присваивается ULID (26 символов)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )

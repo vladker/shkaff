@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.features.items
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -71,6 +72,8 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.ean.ProductPageBrowser
+import ru.vldkr.shkaff.domain.ean.findUrlInText
 import ru.vldkr.shkaff.domain.recommend.Recommend
 import ru.vldkr.shkaff.domain.recommend.RecommendCandidate
 import ru.vldkr.shkaff.domain.recommend.RecommendLlm
@@ -126,10 +129,30 @@ class ItemFormVm(
     val smartSearchResult = MutableStateFlow<List<SmartField>?>(null)
     val smartSearchError = MutableStateFlow<String?>(null)
 
+    // «Описание с ИИ по фото» (кнопка в поле «Описание»): только текст описания.
+    val descAiBusy = MutableStateFlow(false)
+    val descAiStep = MutableStateFlow<String?>(null)
+    val descAiError = MutableStateFlow<String?>(null)
+
     // US-I5: «ссылка — сохранить как картинку в базу» — после успеха диалог сам закроется
     val linkPhotoBusy = MutableStateFlow(false)
     val linkPhotoError = MutableStateFlow<String?>(null)
     val linkPhotoDone = MutableStateFlow(false)
+
+    // «Из ссылки» — ссылка на страницу товара: ИИ изучает описание на странице и,
+    // если данных не хватает, добирает сведения о товаре поиском (web_search).
+    // Картинка товара со страницы становится главным фото; поля — в диалоге предложений.
+    val pageLinkBusy = MutableStateFlow(false)
+    val pageLinkStep = MutableStateFlow<String?>(null)
+    val pageLinkError = MutableStateFlow<String?>(null)
+    val pageLinkDone = MutableStateFlow(false)
+
+    // «Распознать скриншот» — пользователь отдаёт скриншот описания товара; ИИ (vision)
+    // читает с него название/модель и через web_search добирает атрибуты. Поля — предложения.
+    val shotBusy = MutableStateFlow(false)
+    val shotStep = MutableStateFlow<String?>(null)
+    val shotError = MutableStateFlow<String?>(null)
+    val shotDone = MutableStateFlow(false)
 
     class Factory(private val itemId: String, private val preselectLocationId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -423,7 +446,8 @@ class ItemFormVm(
         }
     }
 
-    // «Заполнить с ИИ» (мастер): по фото и/или по коду (модели) → те же SmartField, что и поиск.
+    // «Заполнить с ИИ» (мастер): по фото (ИИ читает текст на фото → поиск в интернете)
+    // либо по коду/названию → те же SmartField, что и поиск.
     fun aiFill() {
         if (photoPath.isNullOrBlank() && code.isBlank() && ean.isBlank() && name.isBlank()) {
             smartSearchError.value = "Добавьте фото или введите название/код/штрихкод"
@@ -465,6 +489,33 @@ class ItemFormVm(
             try {
                 ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    // «Описание с ИИ по фото» — кнопка в поле «Описание»: короткое описание по фото,
+    // заменяет текущий текст описания. Поля карточки при этом не трогаем.
+    fun aiDescription() {
+        val photo = photoPath?.trim()?.takeIf { it.isNotEmpty() }
+        if (photo == null) {
+            descAiError.value = "Сначала добавьте фото вещи"
+            return
+        }
+        viewModelScope.launch {
+            descAiBusy.value = true
+            descAiStep.value = "Готовим запрос…"
+            descAiError.value = null
+            try {
+                description = ItemVision.describeFromPhoto(
+                    settings = Deps.agentSettings(),
+                    photoPath = photo,
+                    onStep = { descAiStep.value = it },
+                )
+            } catch (e: Exception) {
+                descAiError.value = e.message ?: "Не получилось"
+            } finally {
+                descAiBusy.value = false
+                descAiStep.value = null
             }
         }
     }
@@ -515,8 +566,8 @@ class ItemFormVm(
     private fun buildSmartFields(json: org.json.JSONObject): List<SmartField> {
         val fields = mutableListOf<SmartField>()
         fun add(key: String, label: String, raw: String) {
-            val v = raw.trim()
-            if (v.isNotBlank()) fields += SmartField(key, label, v)
+            val v = ItemVision.clean(raw)
+            if (v.isNotEmpty()) fields += SmartField(key, label, v)
         }
         add("name", "Название", json.optString("name"))
         add("code", "Код / номер", json.optString("code"))
@@ -598,6 +649,33 @@ class ItemFormVm(
         smartSearchError.value = null
     }
 
+    // Новая сессия добавления: очищаем поля предыдущей сессии, чтобы ИИ ориентировался
+    // только на новые вводные (ссылку/скриншот), а не смешивал их со старыми значениями
+    // (formContextForSearch уходит в промпт). Фото и ящик — выбор пользователя — остаются.
+    fun resetCardFields() {
+        name = ""
+        code = ""
+        ean = ""
+        description = ""
+        expiryDate = ""
+        volumeLiters = ""
+        weightKg = ""
+        tags = emptyList()
+        attrs = emptyMap()
+        smartSearchResult.value = null
+        smartSearchError.value = null
+        eanLookupResult.value = null
+        eanLookupError.value = null
+        descAiError.value = null
+        pageLinkError.value = null
+        shotError.value = null
+        linkPhotoError.value = null
+        // Черновик предыдущей сессии не должен «воскреснуть» после рестарта.
+        viewModelScope.launch {
+            runCatching { Deps.drafts.clear(draftKey()) }
+        }
+    }
+
 
     fun save(onDone: (String) -> Unit) {
         if (name.isBlank()) {
@@ -670,12 +748,18 @@ class ItemFormVm(
 
     enum class PhotoTarget { MAIN, BARCODE }
 
-    fun downloadLinkPhoto(url: String, target: PhotoTarget = PhotoTarget.MAIN) {
+    fun downloadLinkPhoto(rawText: String, target: PhotoTarget = PhotoTarget.MAIN) {
         if (linkPhotoBusy.value) return
-        if (url.isBlank()) {
+        if (rawText.isBlank()) {
             linkPhotoError.value = "Вставьте ссылку на картинку"
             return
         }
+        // Ссылку ищем и внутри произвольного текста (копипаст из мессенджера).
+        val url = findUrlInText(rawText)
+            ?: run {
+                linkPhotoError.value = "Не нашёл ссылку на картинку в тексте — добавьте её"
+                return
+            }
         linkPhotoError.value = null
         linkPhotoBusy.value = true
         viewModelScope.launch {
@@ -696,6 +780,113 @@ class ItemFormVm(
 
     fun clearLinkPhotoError() {
         linkPhotoError.value = null
+    }
+
+    // «Из ссылки» (страница товара): ИИ изучает описание на странице и при необходимости
+    // ищет дополнительные сведения об этом же товаре. Поля — как предложения (SmartSearchDialog),
+    // картинка товара со страницы скачивается и становится главным фото вещи.
+    fun fillFromPageLink(rawText: String) {
+        if (pageLinkBusy.value) return
+        if (rawText.trim().isBlank()) {
+            pageLinkError.value = "Вставьте ссылку на страницу товара"
+            return
+        }
+        // Пользователь может вставить любой текст (копипаст из мессенджера) — ссылку ищем сами.
+        val url = findUrlInText(rawText)
+            ?: run {
+                pageLinkError.value = "Не нашёл ссылку в тексте — добавьте её"
+                return
+            }
+        // Новая сессия: старые поля не должны попадать в контекст и смешиваться с новой ссылкой.
+        resetCardFields()
+        pageLinkError.value = null
+        pageLinkBusy.value = true
+        viewModelScope.launch {
+            try {
+                val result = ProductPageBrowser(settings = { Deps.agentSettings() })
+                    .lookupFromPage(
+                        url = url,
+                        hintText = rawText,
+                        formContext = formContextForSearch(),
+                    ) { step ->
+                        pageLinkStep.value = step
+                    }
+                val fields = buildSmartFields(result.json)
+                // Картинка товара со страницы — как главное фото вещи (ошибка фото не ломает заполнение полей).
+                result.imageUrl?.takeIf { it.isNotBlank() }?.let { img ->
+                    runCatching {
+                        val f = ImageDownload.download(Deps.app, img)
+                        setPhoto(f.absolutePath)
+                    }
+                }
+                if (fields.isEmpty()) {
+                    pageLinkError.value = "ИИ не извлек полезных полей со страницы"
+                } else {
+                    smartSearchResult.value = fields
+                    pageLinkDone.value = true
+                }
+            } catch (e: Exception) {
+                pageLinkError.value = e.message ?: "Не получилось"
+            } finally {
+                pageLinkBusy.value = false
+                pageLinkStep.value = null
+            }
+        }
+    }
+
+    // «Распознать скриншот»: ИИ читает скриншот описания товара, находит модель/название и
+    // через поиск добирает атрибуты. Скриншот не становится фото вещи — только источник данных.
+    fun recognizeScreenshot(imagePath: String) {
+        if (shotBusy.value) return
+        // Новая сессия: старые поля не должны попадать в контекст и смешиваться со скриншотом.
+        resetCardFields()
+        shotError.value = null
+        shotBusy.value = true
+        viewModelScope.launch {
+            try {
+                val result = ProductPageBrowser(settings = { Deps.agentSettings() })
+                    .lookupFromScreenshot(
+                        imagePath = imagePath,
+                        formContext = formContextForSearch(),
+                    ) { step ->
+                        shotStep.value = step
+                    }
+                val fields = buildSmartFields(result.json)
+                if (fields.isEmpty()) {
+                    shotError.value = "ИИ не извлек полезных полей со скриншота"
+                } else {
+                    smartSearchResult.value = fields
+                    shotDone.value = true
+                }
+            } catch (e: Exception) {
+                shotError.value = e.message ?: "Не получилось"
+            } finally {
+                shotBusy.value = false
+                shotStep.value = null
+            }
+        }
+    }
+
+    // «Стоп» в диалоге скриншота: прерывает генерацию модели.
+    fun cancelShot() {
+        if (!shotBusy.value) return
+        viewModelScope.launch {
+            try {
+                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    // «Стоп» в диалоге ссылки: прерывает генерацию модели (актуально для модели на устройстве).
+    fun cancelPageLink() {
+        if (!pageLinkBusy.value) return
+        viewModelScope.launch {
+            try {
+                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun removePhoto() {
@@ -815,6 +1006,12 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
     val locations by vm.locations.collectAsState()
     val recommendations by vm.recommendations.collectAsState()
     var showLocationPicker by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
+    // «Сбросить поля» недоступно, пока ИИ заполняет (иначе потеряются результаты на лету).
+    val smartBusy by vm.smartSearchBusy.collectAsState()
+    val pageBusy by vm.pageLinkBusy.collectAsState()
+    val shotBusy by vm.shotBusy.collectAsState()
+    val anyFillBusy = smartBusy || pageBusy || shotBusy
 
     val locName = vm.locationName()
 
@@ -853,6 +1050,14 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(
+                    onClick = { showResetConfirm = true },
+                    enabled = !anyFillBusy
+                ) {
+                    Text("Сбросить поля", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             PhotoField(vm)
             FieldRow("Название *") {
                 Column {
@@ -901,7 +1106,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     onValueChange = { vm.code = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Например: T-001") },
-                    supportingText = { Text("Пусто — сгенерируется автоматически") },
+                    supportingText = { Text("Пусто — присвоится ULID (26 символов)") },
                     singleLine = true
                 )
             }
@@ -931,12 +1136,38 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
             }
             BarcodePhotoField(vm)
             FieldRow("Описание") {
-                OutlinedTextField(
-                    value = vm.description,
-                    onValueChange = { vm.description = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Комментарий") }
-                )
+                Column {
+                    OutlinedTextField(
+                        value = vm.description,
+                        onValueChange = { vm.description = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Комментарий") }
+                    )
+                    if (!vm.photoPath.isNullOrBlank()) {
+                        if (vm.descAiBusy.collectAsState().value) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    vm.descAiStep.collectAsState().value ?: "ИИ пишет описание…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { vm.cancelSmartSearch() }) { Text("Стоп") }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { vm.aiDescription() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Text("Описание с ИИ по фото")
+                            }
+                        }
+                        vm.descAiError.collectAsState().value?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
             FieldRow("Где хранится") {
                 Column {
@@ -1034,6 +1265,28 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 currentId = vm.locationId,
                 onPick = { vm.locationId = it },
                 onDismiss = { showLocationPicker = false }
+            )
+        }
+        if (showResetConfirm) {
+            AlertDialog(
+                onDismissRequest = { showResetConfirm = false },
+                title = { Text("Сбросить поля?") },
+                text = {
+                    Text(
+                        "Название, код, штрихкод, описание, срок годности, объём, вес, теги " +
+                            "и атрибуты будут очищены — начнётся новая сессия добавления. " +
+                            "Фото и ящик останутся."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showResetConfirm = false
+                        vm.resetCardFields()
+                    }) { Text("Сбросить") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetConfirm = false }) { Text("Отмена") }
+                }
             )
         }
         EanLookupDialog(vm)
@@ -1214,14 +1467,15 @@ fun TagChipsField(vm: ItemFormVm) {
 }
 
 // US-I5: фото вещи — как у товара в маркетплейсе: снимок камеры, файл из галереи
-// или картинка по ссылке (скачивается в базу, в поле остаётся файл, а не ссылка)
+// или по ссылке на страницу товара (ИИ изучает страницу, картинка товара — в фото)
 @Composable
 fun PhotoField(vm: ItemFormVm) {
     val pickers = rememberPhotoPickers(
         onCaptured = { f -> vm.setPhoto(f.absolutePath) },
         onPicked = { f -> vm.setPhoto(f.absolutePath) }
     )
-    var showLinkDialog by remember { mutableStateOf(false) }
+    var showPageDialog by remember { mutableStateOf(false) }
+    var showShotDialog by remember { mutableStateOf(false) }
     FieldRow("Фото") {
         val path = vm.photoPath
         if (path == null) {
@@ -1242,7 +1496,7 @@ fun PhotoField(vm: ItemFormVm) {
                     }
                 }
                 OutlinedButton(
-                    onClick = { showLinkDialog = true },
+                    onClick = { showPageDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
@@ -1250,6 +1504,16 @@ fun PhotoField(vm: ItemFormVm) {
                     Icon(Icons.Filled.Link, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Из ссылки")
+                }
+                OutlinedButton(
+                    onClick = { showShotDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Распознать скриншот ИИ")
                 }
             }
         } else {
@@ -1265,8 +1529,11 @@ fun PhotoField(vm: ItemFormVm) {
                     TextButton(onClick = { pickers.pickFromGallery() }) {
                         Text("Заменить")
                     }
-                    TextButton(onClick = { showLinkDialog = true }) {
+                    TextButton(onClick = { showPageDialog = true }) {
                         Text("Из ссылки")
+                    }
+                    TextButton(onClick = { showShotDialog = true }) {
+                        Text("Скриншот ИИ")
                     }
                     TextButton(onClick = { vm.removePhoto() }) {
                         Text("Удалить", color = MaterialTheme.colorScheme.error)
@@ -1274,8 +1541,11 @@ fun PhotoField(vm: ItemFormVm) {
                 }
             }
         }
-        if (showLinkDialog) {
-            LinkPhotoDialog(vm, target = ItemFormVm.PhotoTarget.MAIN, onDismiss = { showLinkDialog = false })
+        if (showPageDialog) {
+            ProductPageDialog(vm, onDismiss = { showPageDialog = false })
+        }
+        if (showShotDialog) {
+            ScreenshotAiDialog(vm, onDismiss = { showShotDialog = false })
         }
     }
 }
@@ -1346,6 +1616,150 @@ private fun BarcodePhotoField(vm: ItemFormVm) {
     }
 }
 
+// «Из ссылки» — ссылка на страницу товара в интернете: ИИ изучает описание на странице,
+// при необходимости ищет дополнительные сведения о том же товаре, а картинку товара
+// со страницы сохраняет как фото вещи. Поля — в привычном диалоге предложений.
+@Composable
+private fun ProductPageDialog(
+    vm: ItemFormVm,
+    onDismiss: () -> Unit
+) {
+    var url by remember { mutableStateOf("") }
+    val busy by vm.pageLinkBusy.collectAsState()
+    val step by vm.pageLinkStep.collectAsState()
+    val err by vm.pageLinkError.collectAsState()
+    LaunchedEffect(vm.pageLinkDone) {
+        if (vm.pageLinkDone.value) {
+            vm.pageLinkDone.value = false
+            onDismiss()
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Из ссылки — страница товара") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "Вставьте ссылку на страницу товара (маркетплейс, сайт продавца или производителя) " +
+                        "— или просто скопированный текст, в нём найдётся ссылка. " +
+                        "ИИ изучит описание на странице и при необходимости найдёт дополнительные " +
+                        "сведения о товаре. Картинка товара сохранится как фото вещи. " +
+                        "Поля предыдущей сессии будут очищены — сессия начнётся с этой ссылки.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Ссылка на страницу товара (или текст с ней)") },
+                    enabled = !busy,
+                    isError = err != null,
+                    supportingText = err?.let { e -> { Text(e) } }
+                )
+                if (busy) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            step ?: "ИИ изучает страницу…",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { vm.cancelPageLink() }) {
+                            Text("Стоп")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { vm.fillFromPageLink(url) },
+                enabled = !busy && url.isNotBlank()
+            ) { Text(if (busy) "Изучаем…" else "Заполнить") }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDismiss() }, enabled = !busy) { Text("Отмена") }
+        }
+    )
+}
+
+// «Распознать скриншот ИИ»: пользователь выбирает скриншот описания товара; ИИ (vision)
+// читает с него название/модель и через web_search добирает атрибуты.
+@Composable
+private fun ScreenshotAiDialog(
+    vm: ItemFormVm,
+    onDismiss: () -> Unit
+) {
+    val busy by vm.shotBusy.collectAsState()
+    val step by vm.shotStep.collectAsState()
+    val err by vm.shotError.collectAsState()
+    LaunchedEffect(vm.shotDone) {
+        if (vm.shotDone.value) {
+            vm.shotDone.value = false
+            onDismiss()
+        }
+    }
+    val shotPickers = rememberPhotoPickers(
+        onCaptured = { f -> vm.recognizeScreenshot(f.absolutePath) },
+        onPicked = { f -> vm.recognizeScreenshot(f.absolutePath) }
+    )
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Распознать скриншот ИИ") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "Выберите скриншот описания товара (карточка магазина, фото упаковки, " +
+                        "таблица характеристик). ИИ прочитает его, определит модель и найдёт " +
+                        "в интернете атрибуты для карточки. " +
+                        "Поля предыдущей сессии будут очищены — сессия начнётся с этого скриншота.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { shotPickers.pickFromGallery() }, enabled = !busy) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Выбрать скриншот")
+                    }
+                    OutlinedButton(
+                        onClick = { shotPickers.takePhoto() },
+                        enabled = !busy,
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.CameraAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Снять")
+                    }
+                }
+                if (busy) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            step ?: "ИИ работает…",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { vm.cancelShot() }) {
+                            Text("Стоп")
+                        }
+                    }
+                }
+                err?.let { e ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(e, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = { onDismiss() }, enabled = !busy) { Text("Отмена") }
+        }
+    )
+}
+
 @Composable
 private fun LinkPhotoDialog(
     vm: ItemFormVm,
@@ -1368,7 +1782,9 @@ private fun LinkPhotoDialog(
         text = {
             Column(Modifier.fillMaxWidth()) {
                 Text(
-                    "Вставьте прямую ссылку на картинку (jpg/png/webp). Она скачается и сохранится в базе — в карточке останется файл, а не ссылка.",
+                    "Вставьте прямую ссылку на картинку (jpg/png/webp) — или текст, в котором есть " +
+                        "такая ссылка, она найдётся сама. Картинка скачается и сохранится в базе — " +
+                        "в карточке останется файл, а не ссылка.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1376,8 +1792,7 @@ private fun LinkPhotoDialog(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("Ссылка на картинку") },
-                    singleLine = true,
+                    label = { Text("Ссылка на картинку (или текст с ней)") },
                     isError = err != null,
                     supportingText = err?.let { e -> { Text(e) } }
                 )

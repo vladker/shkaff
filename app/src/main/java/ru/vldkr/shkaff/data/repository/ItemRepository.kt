@@ -7,15 +7,14 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
-import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
+import ru.vldkr.shkaff.util.newUlid
 import java.time.LocalDate
 
 class ItemRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId },
-    private val numbering: () -> NumberingService = { Deps.numbering }
+    private val deviceId: () -> String = { Deps.deviceId }
 ) {
     private val dao get() = db.itemDao()
 
@@ -91,11 +90,23 @@ class ItemRepository(
         return u
     }
 
-    // Пустой штрих-код → автонумерация серии; заданный → проверка дубля.
+    // Пустой код → ULID (если включена автогенерация); заданный → проверка дубля.
     private suspend fun resolveCode(input: String): String {
-        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_ITEM, dao.allCodes())
+        if (input.isEmpty()) {
+            if (Deps.numberingAuto()) return newUlid()
+            return input
+        }
         if (dao.existsByCode(input) > 0) throw IllegalStateException("Номер уже занят: $input")
         return input
+    }
+
+    suspend fun setCode(id: String, code: String): ItemEntity? {
+        val e = dao.byId(id) ?: return null
+        val c = code.trim()
+        if (c.isNotEmpty() && dao.existsByCode(c, id) > 0) throw IllegalStateException("Номер уже занят: $c")
+        val u = e.copy(code = c, updated_at = System.currentTimeMillis(), device_last_modified = deviceId())
+        dao.upsert(u)
+        return u
     }
 
     suspend fun expiringSoon(thresholdDays: Int, today: LocalDate = LocalDate.now(), limit: Int = 20): List<ItemEntity> {

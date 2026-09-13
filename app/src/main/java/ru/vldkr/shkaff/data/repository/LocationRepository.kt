@@ -7,13 +7,12 @@ import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.LocationData
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
-import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
+import ru.vldkr.shkaff.util.newUlid
 
 class LocationRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId },
-    private val numbering: () -> NumberingService = { Deps.numbering }
+    private val deviceId: () -> String = { Deps.deviceId }
 ) {
     private val dao get() = db.locationDao()
 
@@ -81,9 +80,12 @@ class LocationRepository(
         return u
     }
 
-    // Пустая метка → автонумерация серии; заданная метка → проверка дубля.
+    // Пустая метка → ULID (если включена автогенерация); заданная → проверка дубля.
     private suspend fun resolveLabel(input: String): String {
-        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_LOCATION, dao.allLabels())
+        if (input.isEmpty()) {
+            if (Deps.numberingAuto()) return newUlid()
+            return input
+        }
         if (dao.existsByLabel(input) > 0) throw IllegalStateException("Номер уже занят: $input")
         return input
     }

@@ -243,22 +243,50 @@ object ChatClient {
         return out.toByteArray()
     }
 
-    // Извлечение JSON-объекта из ответа: допускаем ```json … ``` и произвольный текст вокруг.
+    // Извлечение JSON-объекта из ответа: допускаем ```json … ```, «размышления» модели
+    // и произвольный текст вокруг. Берём не «от первого { до последнего }» (падает на
+    // вложенных объектах и мусорных скобках), а перебираем каждое «{»: для каждого
+    // ищем сбалансированный фрагмент {...} и пробуем разобрать как JSON — первый
+    // удачный кандидат и есть ответ.
     fun extractJson(text: String): JSONObject? {
         if (text.isBlank()) return null
-        val fence = "```"
-        if (text.contains(fence)) {
-            val start = text.indexOf(fence) + fence.length
-            val inner = text.substring(start).removePrefix("json").trim()
-            val end = inner.indexOf(fence)
-            val code = if (end >= 0) inner.substring(0, end) else inner
-            return runCatching { JSONObject(code.trim()) }.getOrNull()
+        runCatching { JSONObject(text.trim()) }.getOrNull()?.let { return it }
+        var from = 0
+        while (true) {
+            val open = text.indexOf('{', from)
+            if (open < 0) return null
+            balancedSpan(text, open)?.let { span ->
+                runCatching { JSONObject(span) }.getOrNull()?.let { return it }
+            }
+            from = open + 1
         }
-        val open = text.indexOf('{')
-        val close = text.lastIndexOf('}')
-        if (open >= 0 && close > open) {
-            return runCatching { JSONObject(text.substring(open, close + 1)) }.getOrNull()
+    }
+
+    // Фрагмент от «{» до соответствующего «}», с учётом строк и экранирования.
+    // null — если с этого «{» скобки не закрываются до конца текста.
+    private fun balancedSpan(text: String, open: Int): String? {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in open until text.length) {
+            val c = text[i]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+            } else {
+                when (c) {
+                    '"' -> inString = true
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) return text.substring(open, i + 1)
+                    }
+                }
+            }
         }
-        return runCatching { JSONObject(text.trim()) }.getOrNull()
+        return null
     }
 }

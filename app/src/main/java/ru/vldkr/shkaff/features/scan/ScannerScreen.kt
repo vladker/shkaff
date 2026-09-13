@@ -331,6 +331,14 @@ private fun ServiceCodeCard(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (parsed.entityId.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                parsed.entityId,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(8.dp))
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

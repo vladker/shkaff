@@ -30,6 +30,7 @@
 - `annotation.points` — **нормализованные координаты 0..1** (JSON). Пиксели сохранять нельзя.
 - Поиск — `LIKE` (`likeSearch` в DAO), FTS5 нет.
 - DAO: `data/db/Daos.kt` (`observeAll`, `allWithDeleted`, `upsertAll`, `likeSearch`...), репозитории: `data/repository/`.
+- Коды объектов (`storage.code`, `location.label`, `item.code`, `stack.code`): пустой код при создании → **ULID** (26 символов, Crockford base32, `newUlid()` в `util/Ids.kt`), если включена автогенерация (`Deps.numberingAuto()`, тумблер в Настройках); ручной код проверяется на дубль. Служебные QR-действия (`domain/actions/ActionCode.kt`, формат `shkaff:v1:<verb>:<entityType>:<ULID>`) тоже получают ULID на карточку.
 
 ## Бэкап и слияние
 

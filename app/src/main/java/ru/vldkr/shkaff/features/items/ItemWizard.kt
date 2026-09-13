@@ -62,6 +62,7 @@ import ru.vldkr.shkaff.features.labels.LabelGenerator
 import ru.vldkr.shkaff.features.labels.TemplatePickerDialog
 import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.features.scan.ScanCameraPreview
+import ru.vldkr.shkaff.util.newUlid
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
@@ -195,7 +196,10 @@ fun ItemWizardScreen(nav: NavController) {
 
                 WStep.INFO -> InfoStep(vm, onBack = { step = WStep.PHOTO }, onNext = { step = WStep.CONFIRM })
 
-                WStep.CONFIRM -> ConfirmStep(vm, defs, onBack = { step = WStep.INFO }, onNext = { step = WStep.LABEL })
+                WStep.CONFIRM -> ConfirmStep(vm, defs, onBack = { step = WStep.INFO }, onNext = {
+                    if (vm.code.isBlank()) vm.code = newUlid()
+                    step = WStep.LABEL
+                })
 
                 WStep.LABEL -> LabelStep(
                     vm = vm,
@@ -346,7 +350,7 @@ private fun WizardStepper(step: WStep) {
 private fun PhotoStep(vm: ItemFormVm, onNext: () -> Unit, onAi: () -> Unit) {
     val busy by vm.smartSearchBusy.collectAsState()
     Text(
-        "Сфотографируйте вещь (опционально). Можно заполнить поля с ИИ по фото или ввести вручную.",
+        "Сфотографируйте вещь (опционально). ИИ прочитает текст на фото (а если его нет — опишет внешний вид) и найдёт вещь в интернете, либо введите поля вручную.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -358,7 +362,7 @@ private fun PhotoStep(vm: ItemFormVm, onNext: () -> Unit, onAi: () -> Unit) {
         // Идёт распознавание: остаёмся на фото и показываем процесс, пока поля не заполнены.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "ИИ читает фото и заполнит поля — пока вводить ничего не нужно.",
+                "ИИ читает фото и ищет вещь в интернете — пока вводить ничего не нужно.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -418,7 +422,7 @@ private fun InfoStep(vm: ItemFormVm, onBack: () -> Unit, onNext: () -> Unit) {
             onValueChange = { vm.code = it },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Например: T-001") },
-            supportingText = { Text("Пусто — сгенерируется автоматически") },
+            supportingText = { Text("Пусто — присвоится ULID (26 символов)") },
             singleLine = true
         )
     }
@@ -447,7 +451,24 @@ private fun ConfirmStep(vm: ItemFormVm, defs: List<ru.vldkr.shkaff.data.db.Attri
     )
     Spacer(Modifier.height(12.dp))
     FieldRow("Описание") {
-        OutlinedTextField(value = vm.description, onValueChange = { vm.description = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Комментарий") })
+        Column {
+            OutlinedTextField(value = vm.description, onValueChange = { vm.description = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Комментарий") })
+            if (!vm.photoPath.isNullOrBlank()) {
+                if (vm.descAiBusy.collectAsState().value) {
+                    Text(
+                        vm.descAiStep.collectAsState().value ?: "ИИ пишет описание…",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    OutlinedButton(onClick = { vm.aiDescription() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Text("Описание с ИИ по фото")
+                    }
+                }
+                vm.descAiError.collectAsState().value?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FieldRow("Объём (л)") {
@@ -512,13 +533,13 @@ private fun LabelStep(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Spacer(Modifier.height(12.dp))
-    if (code.isBlank()) {
-        FieldRow("Код для этикетки *") {
-            OutlinedTextField(
-                value = code, onValueChange = { vm.code = it },
-                modifier = Modifier.fillMaxWidth(), placeholder = { Text("Например: T-001") }, singleLine = true
-            )
-        }
+    FieldRow("Код для этикетки") {
+        OutlinedTextField(
+            value = code, onValueChange = { vm.code = it },
+            modifier = Modifier.fillMaxWidth(),
+            supportingText = { Text("Присвоен автоматически — можно заменить") },
+            singleLine = true
+        )
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Шаблон: ${sel?.name ?: "нет"}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)

@@ -228,7 +228,7 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     onValueChange = { vm.code = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("например: S-01") },
-                    supportingText = { Text("Пусто — сгенерируется автоматически") },
+                    supportingText = { Text("Пусто — присвоится ULID (26 символов)") },
                     singleLine = true
                 )
             }

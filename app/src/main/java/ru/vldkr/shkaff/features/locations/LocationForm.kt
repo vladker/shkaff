@@ -218,6 +218,7 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                     onValueChange = { vm.label = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Например: B-14") },
+                    supportingText = { Text("Пусто — присвоится ULID (26 символов)") },
                     singleLine = true
                 )
             }

@@ -5,15 +5,14 @@ import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.StackEntity
 import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.di.Deps
-import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
+import ru.vldkr.shkaff.util.newUlid
 
 // Стеки (US-E2): группа вещей/хранилищ с собственным номером. Члены не переносятся
 // и сохраняют идентичность — стек лишь дополнительный взгляд на объекты.
 class StacksRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId },
-    private val numbering: () -> NumberingService = { Deps.numbering }
+    private val deviceId: () -> String = { Deps.deviceId }
 ) {
     private val dao get() = db.stackDao()
     private val memberDao get() = db.stackMemberDao()
@@ -29,8 +28,12 @@ class StacksRepository(
     suspend fun groupsForEntity(entityType: String, entityId: String): List<StackMemberEntity> =
         memberDao.groupsForEntity(entityType, entityId)
 
+    // Пустой номер → ULID (если включена автогенерация); заданный → проверка дубля.
     private suspend fun resolveCode(input: String): String {
-        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_STACK, dao.allCodes())
+        if (input.isEmpty()) {
+            if (Deps.numberingAuto()) return newUlid()
+            return input
+        }
         if (dao.existsByCode(input) > 0) throw IllegalStateException("Номер уже занят: $input")
         return input
     }

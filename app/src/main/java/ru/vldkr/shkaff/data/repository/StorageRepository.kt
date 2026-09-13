@@ -7,13 +7,12 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.StorageData
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
-import ru.vldkr.shkaff.domain.numbering.Numbering
 import ru.vldkr.shkaff.util.newId
+import ru.vldkr.shkaff.util.newUlid
 
 class StorageRepository(
     private val db: ShkaffDatabase,
-    private val deviceId: () -> String = { Deps.deviceId },
-    private val numbering: () -> NumberingService = { Deps.numbering }
+    private val deviceId: () -> String = { Deps.deviceId }
 ) {
     private val dao get() = db.storageDao()
 
@@ -72,9 +71,12 @@ class StorageRepository(
         return u
     }
 
-    // Пустой номер → автонумерация серии; заданный номер → проверка дубля.
+    // Пустой номер → ULID (если включена автогенерация); заданный → проверка дубля.
     private suspend fun resolveCode(input: String): String {
-        if (input.isEmpty()) return numbering().nextFreeCode(Numbering.SCOPE_STORAGE, dao.allCodes())
+        if (input.isEmpty()) {
+            if (Deps.numberingAuto()) return newUlid()
+            return input
+        }
         if (dao.existsByCode(input) > 0) throw IllegalStateException("Номер уже занят: $input")
         return input
     }

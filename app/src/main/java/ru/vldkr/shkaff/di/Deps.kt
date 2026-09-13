@@ -16,7 +16,6 @@ import ru.vldkr.shkaff.data.repository.DraftRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
 import ru.vldkr.shkaff.data.repository.LoansRepository
-import ru.vldkr.shkaff.data.repository.NumberingService
 import ru.vldkr.shkaff.data.repository.StorageRepository
 import ru.vldkr.shkaff.data.repository.StacksRepository
 import ru.vldkr.shkaff.data.repository.TagRepository
@@ -41,8 +40,6 @@ object Deps {
     lateinit var storages: StorageRepository
         private set
     lateinit var attributes: AttributeRepository
-        private set
-    lateinit var numbering: NumberingService
         private set
     lateinit var tags: TagRepository
         private set
@@ -78,7 +75,6 @@ object Deps {
         locations = LocationRepository(db)
         storages = StorageRepository(db)
         attributes = AttributeRepository(db)
-        numbering = NumberingService(db)
         tags = TagRepository(db)
         drafts = DraftRepository(db)
         users = UsersRepository(db)

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.json.JSONArray
 import org.json.JSONObject
@@ -48,6 +49,49 @@ class ChatClientTest {
         assertNull(ChatClient.extractJson("Просто текст без JSON"))
         assertNull(ChatClient.extractJson(""))
         assertNull(ChatClient.extractJson("null"))
+    }
+
+    @Test
+    fun extractJson_jsonAfterThinkingText() {
+        val text = "Подумаем. Товар — кружка IKEA, объём 350 мл. Итог:\n{\"name\": \"Кружка\", \"volumeLiters\": \"0.35\"}"
+        val obj = ChatClient.extractJson(text)
+        assertNotNull(obj)
+        assertEquals("Кружка", obj!!.getString("name"))
+    }
+
+    @Test
+    fun extractJson_jsonWithProseAndBracesAfter() {
+        val text = "{\"name\": \"Кружка\", \"attributes\": {\"brand\": \"IKEA\"}} " +
+            "Важно: поле {name} обязательно, остальные — по усмотрению."
+        val obj = ChatClient.extractJson(text)
+        assertNotNull(obj)
+        assertEquals("Кружка", obj!!.getString("name"))
+        assertEquals("IKEA", obj.getJSONObject("attributes").getString("brand"))
+    }
+
+    @Test
+    fun extractJson_skipsInvalidBraceCandidate() {
+        val text = "Формат ответа: {name, code, description}\nВот JSON: {\"name\": \"Кружка\"}"
+        val obj = ChatClient.extractJson(text)
+        assertNotNull(obj)
+        assertEquals("Кружка", obj!!.getString("name"))
+    }
+
+    @Test
+    fun extractJson_nestedObjectsReturnOuter() {
+        val text = "Ответ: {\"name\": \"Кружка\", \"attributes\": {\"brand\": \"IKEA\", \"extra\": {\"a\": \"1\"}}}"
+        val obj = ChatClient.extractJson(text)
+        assertNotNull(obj)
+        assertEquals("Кружка", obj!!.getString("name"))
+        assertTrue(obj.has("attributes"))
+    }
+
+    @Test
+    fun extractJson_unclosedFenceWithTrailingText() {
+        val text = "```json\n{\"name\": \"Кружка\"}\nПояснение: объём 350 мл."
+        val obj = ChatClient.extractJson(text)
+        assertNotNull(obj)
+        assertEquals("Кружка", obj!!.getString("name"))
     }
 
     @Test
