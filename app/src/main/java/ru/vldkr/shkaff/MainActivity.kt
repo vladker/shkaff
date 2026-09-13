@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.ShoppingBasket
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Person
@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -82,7 +85,9 @@ import ru.vldkr.shkaff.features.labels.LabelsScreen
 import ru.vldkr.shkaff.features.loans.LoansScreen
 import ru.vldkr.shkaff.features.merge.ConflictsScreen
 import ru.vldkr.shkaff.features.printers.PrintersScreen
+import ru.vldkr.shkaff.features.products.ProductsScreen
 import ru.vldkr.shkaff.features.profiles.ProfilesScreen
+import ru.vldkr.shkaff.features.search.SearchScreen
 import ru.vldkr.shkaff.features.labels.TemplatesScreen
 import ru.vldkr.shkaff.features.llm.ModelStoreScreen
 import ru.vldkr.shkaff.features.locations.LocationDetailScreen
@@ -159,14 +164,22 @@ private data class Tab(
     val label: String,
     val icon: ImageVector,
     val pattern: String = route,
-    val badgeKey: String? = null
-)
+    val badgeKey: String? = null,
+    val prefix: String? = null
+) {
+    // prefix — чтобы суб-экраны (agent-volumes) тоже подсвечивали свою вкладку.
+    fun matches(route: String?): Boolean =
+        route == pattern || (prefix != null && route?.startsWith(prefix) == true)
+}
 
-// Таб-бар как в Ozon: Главная, Шкафы, [+] по центру, Поиск, Профиль.
+// Таб-бар как в Ozon: Главная, Вещи, Продукты, [+] по центру, Хранилища, ИИ, Поиск, Профиль.
 private val tabs = listOf(
     Tab("dashboard", "Главная", Icons.Filled.Home, "dashboard"),
-    Tab("storages", "Шкафы", Icons.Filled.Storage, "storages", "storages"),
-    Tab("items/0", "Поиск", Icons.Filled.Search, "items/{tag}", "items"),
+    Tab("items/0", "Вещи", Icons.Filled.Inventory2, "items/{tag}", "items"),
+    Tab("products", "Продукты", Icons.Filled.ShoppingBasket, "products"),
+    Tab("storages", "Хранилища", Icons.Filled.Storage, "storages", "storages"),
+    Tab("agent", "ИИ", Icons.Filled.SmartToy, "agent", prefix = "agent"),
+    Tab("search", "Поиск", Icons.Filled.Search, "search"),
     Tab("profiles", "Профиль", Icons.Filled.Person, "profiles")
 )
 
@@ -189,7 +202,7 @@ fun AppRoot() {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-    val onTab = tabs.any { it.pattern == currentRoute }
+    val onTab = tabs.any { it.matches(currentRoute) }
     val counts = TabCounts()
 
     // US-I3: deep-link из QR/браузера — открываем «Вещи» с поиском по коду.
@@ -209,11 +222,11 @@ fun AppRoot() {
                 Column {
                     HorizontalDivider(color = Ozon.Card, thickness = 1.dp)
                     NavigationBar(containerColor = Ozon.Bg) {
-                        // 5 слотов: Главная, Шкафы, [+] по центру, Поиск, Профиль.
+                        // 8 слотов: Главная, Вещи, Продукты, [+] по центру, Хранилища, ИИ, Поиск, Профиль.
                         // ВАЖНО: центральной кнопке НЕЛЬЗЯ давать fillMaxHeight() — она растянула бы
                         // весь NavigationBar на экран и сжала контент до нуля.
-                        (0..4).forEach { slot ->
-                            if (slot == 2) {
+                        (0..7).forEach { slot ->
+                            if (slot == 3) {
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -238,10 +251,10 @@ fun AppRoot() {
                                     }
                                 }
                             } else {
-                                val tab = tabs[if (slot < 2) slot else slot - 1]
+                                val tab = tabs[if (slot < 3) slot else slot - 1]
                                 val badge = badgeText(counts[tab.badgeKey ?: tab.route] ?: 0)
                                 NavigationBarItem(
-                                    selected = currentRoute == tab.pattern,
+                                    selected = tab.matches(currentRoute),
                                     onClick = {
                                         navController.navigate(tab.route) {
                                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -262,7 +275,9 @@ fun AppRoot() {
                                             Icon(tab.icon, contentDescription = tab.label)
                                         }
                                     },
-                                    label = { Text(tab.label) },
+                                    label = {
+                                        Text(tab.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = Ozon.Blue,
                                         selectedTextColor = Ozon.Blue,
@@ -288,6 +303,8 @@ fun AppRoot() {
                 ItemsScreen(navController, b.arguments?.getString("tag") ?: "")
             }
             composable("storages") { StoragesScreen(navController) }
+            composable("products") { ProductsScreen(navController) }
+            composable("search") { SearchScreen(navController) }
 
             composable("storage/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { b ->
                 StorageDetailScreen(navController, b.arguments?.getString("id").orEmpty())
