@@ -487,6 +487,27 @@ interface BasketDao {
 }
 
 @Dao
+interface PeerDao {
+    @Query("SELECT * FROM peer_db WHERE deleted_at IS NULL ORDER BY created_at DESC")
+    fun observeAll(): Flow<List<PeerEntity>>
+
+    @Query("SELECT * FROM peer_db WHERE deleted_at IS NULL ORDER BY created_at DESC")
+    suspend fun all(): List<PeerEntity>
+
+    @Query("SELECT * FROM peer_db WHERE peer_device_id = :peerId AND deleted_at IS NULL LIMIT 1")
+    suspend fun byPeerDevice(peerId: String): PeerEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(p: PeerEntity)
+
+    @Query("UPDATE peer_db SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM peer_db WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
 interface BasketItemDao {
     @Query("SELECT * FROM basket_item WHERE basket_id = :basketId AND deleted_at IS NULL ORDER BY created_at")
     suspend fun byBasket(basketId: String): List<BasketItemEntity>

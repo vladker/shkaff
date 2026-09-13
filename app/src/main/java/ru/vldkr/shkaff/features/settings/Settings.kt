@@ -140,6 +140,13 @@ fun SettingsScreen(nav: NavController) {
             }
             item {
                 SettingRow(
+                    "Федерация (LAN-синхронизация)",
+                    "Обмен базой с другим устройством по локальной сети; доверие — роль и область по хранилищам",
+                    { nav.navigate("federation") }
+                )
+            }
+            item {
+                SettingRow(
                     "Принтеры",
                     "58-мм ESC/POS: TCP (IP:9100) и Bluetooth; тестовая печать",
                     { nav.navigate("printers") }

@@ -26,9 +26,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         StackEntity::class,
         StackMemberEntity::class,
         BasketEntity::class,
-        BasketItemEntity::class
+        BasketItemEntity::class,
+        PeerEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -51,10 +52,11 @@ abstract class ShkaffDatabase : RoomDatabase() {
     abstract fun stackMemberDao(): StackMemberDao
     abstract fun basketDao(): BasketDao
     abstract fun basketItemDao(): BasketItemDao
+    abstract fun peerDao(): PeerDao
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "12"
+        const val SCHEMA_VERSION = "13"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -248,10 +250,24 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v13 (M13 — US-G2): пир-базы — доверенные устройства для синхронизации по LAN.
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `peer_db` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `peer_device_id` TEXT NOT NULL, " +
+                        "`trust` TEXT NOT NULL, `last_synced_at` INTEGER NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, " +
+                        "`deleted_at` INTEGER, `device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_peer_db_peer_device_id` ON `peer_db` (`peer_device_id`)")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

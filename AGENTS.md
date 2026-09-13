@@ -23,7 +23,7 @@
 
 ## Модель данных
 
-- Сущности: `data/db/Entities.kt` — `storage`, `location`, `item`, `annotation`, `label_template`, `attribute_def`, `printer_profile`, `conflict_log`, `schema_meta`, `tag`, `draft`, `user`, `loan`, `action_log`, `stack`, `stack_member`, `basket`, `basket_item`.
+- Сущности: `data/db/Entities.kt` — `storage`, `location`, `item`, `annotation`, `label_template`, `attribute_def`, `printer_profile`, `conflict_log`, `schema_meta`, `tag`, `draft`, `user`, `loan`, `action_log`, `stack`, `stack_member`, `basket`, `basket_item`, `peer_db`.
 - У всех: `id: String` (UUID через `util/newId()`), `created_at`/`updated_at` (эпоха, мс), **мягкое удаление** `deleted_at: Long?`, `device_last_modified` (UUID устройства).
 - Иерархия: `storage` (само-вложенность) → `location` (`storage_id` + само-вложенность) → `item` (`location_id`). `annotation` привязана к `storage` и указывает на `location`.
 - Атрибуты: JSON-строка `Map<String,String>` через `AttrJson`; словарь типов в `attribute_def` (сиется в `Deps.seedDefaultAttributes()`, только если таблица пуста).
@@ -37,9 +37,18 @@
 - `sync/Backup.kt`: формат `"shkaff-backup"` v1 — **один JSON** (в zip лежит единственный файл `backup.json`). **Фото в бэкап не попадают** (PLAN.md говорит об обратном — не опираться).
 - `Backup.applyMerge` — `upsertAll` всех таблиц в одной транзакции.
 
+## Федерация (пир-синхронизация по LAN, US-G2)
+
+- `sync/PeerTrust.kt` — флаги доверия пир-базы: роль (US-G1) + область `all|some` по хранилищам (JSON в `peer_db.trust`).
+- `sync/PeerScope.kt` (чистый Kotlin) — обрезает `MergeInput` до доверенных хранилищ и их поддерева; вещь без ящика видна всегда; стеки/корзины/выдачи срезаются по вложенным объектам.
+- `sync/PeerServer.kt` — TCP-сервер (побайтовое чтение строк + байтовые кадры): `HELLO`/`PULL`/`PUSH`/`BYE`; PUSH принимают только роли с правом добавления; незнакомое устройство само становится пирам с доверием по умолчанию (`admin/all`).
+- `sync/PeerClient.kt` — клиент: `hello`/`pull`/`push`, каждое действие — отдельное соединение.
+- `sync/PeerSync.kt` — оркестрация: HELLO → PULL → merge (локальная выигрывает) → sanitize → apply или `MergeSession` (конфликты) → PUSH обратно.
+- UI: `features/federation/FederationScreen.kt` (маршрут `"federation"`, пункт в Настройках). Тесты: `PeerTrustTest`, `PeerScopeTest` (org.json в юнит-тестах — только под `RobolectricTestRunner`).
+
 ## Что уже есть / чего нет (не додумывать)
 
-- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки (`features/labels/LabelGenerator.kt`, ZXing, dpi по умолчанию 150), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**.
+- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки (`features/labels/LabelGenerator.kt`, ZXing, dpi по умолчанию 150), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**, пир-синхронизация по LAN с флагами доверия (US-G2, см. раздел «Федерация»).
 - ⚠️ **Мёртвые роуты:** `ScannerScreen`/`AnnotationScreen` навигают на `"labels/0/0"`, `LabelsScreen` — на `"templates"`, но роуты `labels/…`, `templates`, `scan`, `annotations/…` **не зарегистрированы в `NavHost` в `MainActivity.kt`**. Навигация на них упадёт; экраны сканера и разметки сейчас недостижимы. При подключении — добавить `composable(...)` в `MainActivity.kt`.
 - `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
 - Нет: печать (ESC/POS), TFLite/u2net, ML Kit, облачная синхронизация — только план в `PLAN.md`.

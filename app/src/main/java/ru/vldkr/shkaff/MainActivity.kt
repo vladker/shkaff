@@ -74,6 +74,7 @@ import ru.vldkr.shkaff.features.batch.BatchEntryScreen
 import ru.vldkr.shkaff.features.backup.BackupScreen
 import ru.vldkr.shkaff.features.fragment.FragmentScreen
 import ru.vldkr.shkaff.features.export.ExportScreen
+import ru.vldkr.shkaff.features.federation.FederationScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
 import ru.vldkr.shkaff.features.journal.JournalScreen
 import ru.vldkr.shkaff.features.labels.LabelsScreen
@@ -339,6 +340,7 @@ fun AppRoot() {
             }
             composable("templates") { TemplatesScreen(navController) }
             composable("backup") { BackupScreen(navController) }
+            composable("federation") { FederationScreen(navController) }
             composable("fragment") { FragmentScreen(navController) }
             composable("export") { ExportScreen(navController) }
             composable("conflicts") { ConflictsScreen(navController) }

@@ -305,6 +305,26 @@ data class BasketEntity(
     val device_last_modified: String = ""
 )
 
+// Пир-база (US-G2): доверенное устройство для синхронизации по LAN.
+// trust — JSON-флаг доверия: {"role":"admin","scope":"all"|"some","storages":[...]} —
+// что именно это устройство видит и может менять (роль из US-G1 + область по хранилищам).
+@Entity(tableName = "peer_db", indices = [Index("peer_device_id")])
+data class PeerEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val peer_device_id: String,
+    val trust: String = DEFAULT_TRUST,
+    val last_synced_at: Long = 0L,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+) {
+    companion object {
+        val DEFAULT_TRUST = """{"role":"admin","scope":"all"}"""
+    }
+}
+
 @Entity(tableName = "basket_item", indices = [Index("basket_id"), Index("item_id")])
 data class BasketItemEntity(
     @PrimaryKey val id: String,
