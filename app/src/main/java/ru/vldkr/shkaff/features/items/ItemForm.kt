@@ -96,6 +96,7 @@ class ItemFormVm(
     var description by mutableStateOf("")
     var locationId by mutableStateOf<String?>(null)
     var photoPath by mutableStateOf<String?>(null)
+    var barcodePhotoPath by mutableStateOf<String?>(null)
     var expiryDate by mutableStateOf("")
     var ean by mutableStateOf("")
     var attrs by mutableStateOf<Map<String, String>>(emptyMap())
@@ -174,6 +175,7 @@ class ItemFormVm(
                     description = it.description
                     locationId = it.location_id
                     photoPath = it.photo_path
+                    barcodePhotoPath = it.barcode_photo_path
                     expiryDate = it.expiry_date ?: ""
                     ean = it.ean ?: ""
                     attrs = AttrJson.toMap(it.attributes)
@@ -537,6 +539,7 @@ class ItemFormVm(
                 attributes = attrs,
                 locationId = locationId,
                 photoPath = photoPath,
+                barcodePhotoPath = barcodePhotoPath,
                 expiryDate = if (rawExpiry.isEmpty()) null else Expiry.normalize(rawExpiry),
                 ean = ean.trim().takeIf { it.isNotBlank() },
                 tags = tags,
@@ -578,7 +581,9 @@ class ItemFormVm(
         }
     }
 
-    fun downloadLinkPhoto(url: String) {
+    enum class PhotoTarget { MAIN, BARCODE }
+
+    fun downloadLinkPhoto(url: String, target: PhotoTarget = PhotoTarget.MAIN) {
         if (linkPhotoBusy.value) return
         if (url.isBlank()) {
             linkPhotoError.value = "Вставьте ссылку на картинку"
@@ -589,7 +594,10 @@ class ItemFormVm(
         viewModelScope.launch {
             try {
                 val f = ImageDownload.download(Deps.app, url)
-                setPhoto(f.absolutePath)
+                when (target) {
+                    PhotoTarget.MAIN -> setPhoto(f.absolutePath)
+                    PhotoTarget.BARCODE -> setBarcodePhoto(f.absolutePath)
+                }
                 linkPhotoDone.value = true
             } catch (e: Exception) {
                 linkPhotoError.value = e.message ?: "Не удалось скачать картинку"
@@ -613,12 +621,38 @@ class ItemFormVm(
         photoPath = null
     }
 
+    // Фото штрихкода — отдельная папка, чтобы не путать с основным фото вещи.
+    fun setBarcodePhoto(path: String) {
+        try {
+            val dest = File(Deps.app.filesDir, "barcode_photos/${newId()}.jpg")
+            dest.parentFile?.mkdirs()
+            val src = File(path)
+            if (src.exists()) {
+                if (dest.exists()) dest.delete()
+                src.copyTo(dest, overwrite = true)
+                barcodePhotoPath = dest.absolutePath
+                src.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun removeBarcodePhoto() {
+        barcodePhotoPath?.let {
+            try {
+                File(it).delete()
+            } catch (_: Exception) {
+            }
+        }
+        barcodePhotoPath = null
+    }
+
     // US-A4: автосохранение полного состояния формы под ключом "item/new" или "item/{id}".
     // Debounce 600 мс: отменяем предыдущий отложенный сейв, пока поля ещё меняются.
     private fun startAutosave() {
         viewModelScope.launch {
             var job: Job? = null
-            snapshotFlow { FormSnap(name, code, description, locationId, photoPath, expiryDate, ean, attrs, tags) }
+            snapshotFlow { FormSnap(name, code, description, locationId, photoPath, barcodePhotoPath, expiryDate, ean, attrs, tags) }
                 .collect {
                     job?.cancel()
                     job = launch {
@@ -631,7 +665,8 @@ class ItemFormVm(
 
     private data class FormSnap(
         val name: String, val code: String, val description: String,
-        val locationId: String?, val photoPath: String?, val expiryDate: String, val ean: String,
+        val locationId: String?, val photoPath: String?, val barcodePhotoPath: String?,
+        val expiryDate: String, val ean: String,
         val attrs: Map<String, String>, val tags: List<String>
     )
 
@@ -639,7 +674,8 @@ class ItemFormVm(
 
     private fun hasFormContent(): Boolean =
         name.isNotBlank() || code.isNotBlank() || description.isNotBlank() ||
-            locationId != null || photoPath != null || expiryDate.isNotBlank() || ean.isNotBlank() ||
+            locationId != null || photoPath != null || barcodePhotoPath != null ||
+            expiryDate.isNotBlank() || ean.isNotBlank() ||
             tags.isNotEmpty() || attrs.isNotEmpty()
 
     private fun formJson(): String {
@@ -647,6 +683,7 @@ class ItemFormVm(
         o.put("name", name).put("code", code).put("description", description)
         o.put("locationId", locationId ?: "")
         o.put("photoPath", photoPath ?: "")
+        o.put("barcodePhotoPath", barcodePhotoPath ?: "")
         o.put("expiryDate", expiryDate)
         o.put("ean", ean)
         val t = JSONArray()
@@ -665,6 +702,7 @@ class ItemFormVm(
         description = o.optString("description")
         locationId = o.optString("locationId").takeIf { it.isNotBlank() }
         if (o.has("photoPath")) photoPath = o.optString("photoPath").takeIf { it.isNotBlank() }
+        if (o.has("barcodePhotoPath")) barcodePhotoPath = o.optString("barcodePhotoPath").takeIf { it.isNotBlank() }
         expiryDate = o.optString("expiryDate")
         ean = o.optString("ean")
         tags = TagsJson.toList(o.optString("tags", ""))
@@ -804,6 +842,7 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     }
                 }
             }
+            BarcodePhotoField(vm)
             FieldRow("Описание") {
                 OutlinedTextField(
                     value = vm.description,
@@ -1149,13 +1188,83 @@ private fun PhotoField(vm: ItemFormVm) {
             }
         }
         if (showLinkDialog) {
-            LinkPhotoDialog(vm, onDismiss = { showLinkDialog = false })
+            LinkPhotoDialog(vm, target = ItemFormVm.PhotoTarget.MAIN, onDismiss = { showLinkDialog = false })
+        }
+    }
+}
+
+// Фото рыночного штрихкода — отдельное от основного фото вещи.
+@Composable
+private fun BarcodePhotoField(vm: ItemFormVm) {
+    val pickers = rememberPhotoPickers(
+        onCaptured = { f -> vm.setBarcodePhoto(f.absolutePath) },
+        onPicked = { f -> vm.setBarcodePhoto(f.absolutePath) }
+    )
+    var showLinkDialog by remember { mutableStateOf(false) }
+    FieldRow("Фото штрихкода") {
+        val path = vm.barcodePhotoPath
+        if (path == null) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { pickers.takePhoto() }) {
+                        Icon(Icons.Filled.CameraAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Снять")
+                    }
+                    OutlinedButton(
+                        onClick = { pickers.pickFromGallery() },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Из галереи")
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showLinkDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Link, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Из ссылки")
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                ItemPhoto(
+                    path,
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                Row(Modifier.padding(top = 8.dp)) {
+                    TextButton(onClick = { pickers.pickFromGallery() }) {
+                        Text("Заменить")
+                    }
+                    TextButton(onClick = { showLinkDialog = true }) {
+                        Text("Из ссылки")
+                    }
+                    TextButton(onClick = { vm.removeBarcodePhoto() }) {
+                        Text("Удалить", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        if (showLinkDialog) {
+            LinkPhotoDialog(vm, target = ItemFormVm.PhotoTarget.BARCODE, onDismiss = { showLinkDialog = false })
         }
     }
 }
 
 @Composable
-private fun LinkPhotoDialog(vm: ItemFormVm, onDismiss: () -> Unit) {
+private fun LinkPhotoDialog(
+    vm: ItemFormVm,
+    target: ItemFormVm.PhotoTarget,
+    onDismiss: () -> Unit
+) {
     var url by remember { mutableStateOf("") }
     val busy by vm.linkPhotoBusy.collectAsState()
     val err by vm.linkPhotoError.collectAsState()
@@ -1165,9 +1274,10 @@ private fun LinkPhotoDialog(vm: ItemFormVm, onDismiss: () -> Unit) {
             onDismiss()
         }
     }
+    val title = if (target == ItemFormVm.PhotoTarget.BARCODE) "Фото штрихкода из ссылки" else "Фото из ссылки"
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Фото из ссылки") },
+        title = { Text(title) },
         text = {
             Column(Modifier.fillMaxWidth()) {
                 Text(
@@ -1188,7 +1298,7 @@ private fun LinkPhotoDialog(vm: ItemFormVm, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(
-                onClick = { vm.downloadLinkPhoto(url) },
+                onClick = { vm.downloadLinkPhoto(url, target) },
                 enabled = !busy && url.isNotBlank()
             ) { Text(if (busy) "Скачиваем…" else "Скачать") }
         },

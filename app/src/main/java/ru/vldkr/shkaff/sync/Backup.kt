@@ -126,6 +126,7 @@ object Backup {
         put("id", e.id); put("name", e.name); put("code", e.code)
         put("description", e.description); put("attributes", e.attributes)
         put("location_id", e.location_id ?: ""); put("photo_path", e.photo_path ?: "")
+        put("barcode_photo_path", e.barcode_photo_path ?: "")
         put("volume_liters", e.volume_liters)
         put("weight_kg", e.weight_kg)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
@@ -141,6 +142,7 @@ object Backup {
         attributes = j.optString("attributes", "{}"),
         location_id = j.optString("location_id", "").takeIf { it.isNotBlank() },
         photo_path = j.optString("photo_path", "").takeIf { it.isNotBlank() },
+        barcode_photo_path = j.optString("barcode_photo_path", "").takeIf { it.isNotBlank() },
         volume_liters = j.optDouble("volume_liters", 0.0),
         weight_kg = j.optDouble("weight_kg", 0.0),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),

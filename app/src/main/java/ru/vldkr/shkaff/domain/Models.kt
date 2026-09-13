@@ -7,6 +7,7 @@ data class ItemData(
     val attributes: Map<String, String> = emptyMap(),
     val locationId: String? = null,
     val photoPath: String? = null,
+    val barcodePhotoPath: String? = null,
     val expiryDate: String? = null,
     val ean: String? = null,
     val tags: List<String> = emptyList(),

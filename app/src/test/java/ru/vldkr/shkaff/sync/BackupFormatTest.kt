@@ -57,6 +57,16 @@ class BackupFormatTest {
     }
 
     @Test
+    fun barcodePhotoSurvivesRoundTrip() {
+        val withPhoto = item.copy(barcode_photo_path = "/data/user/0/app/barcode_photos/x.jpg")
+        val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(withPhoto))))
+        assertEquals("/data/user/0/app/barcode_photos/x.jpg", back.items.single().barcode_photo_path)
+        val without = item.copy(barcode_photo_path = null)
+        val back2 = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(without))))
+        assertEquals(null, back2.items.single().barcode_photo_path)
+    }
+
+    @Test
     fun deletedRowSurvivesRoundTrip() {
         val gone = item.copy(deleted_at = 500L)
         val back = Backup.fromJson(Backup.toJson(MergeInput(items = listOf(gone))))

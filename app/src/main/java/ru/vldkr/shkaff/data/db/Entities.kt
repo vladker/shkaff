@@ -91,7 +91,9 @@ data class ItemEntity(
     // US-B2: оригинальный рыночный штрихкод вещи (EAN-8/EAN-13/UPC), заполняется
     // сканом или вручную; виден в карточке и в экспорте.
     val ean: String? = null,
-    val tags: String = "[]"
+    val tags: String = "[]",
+    // Отдельное фото рыночного штрихкода с упаковки (отдельно от основного photo_path).
+    val barcode_photo_path: String? = null
 )
 
 @Entity(

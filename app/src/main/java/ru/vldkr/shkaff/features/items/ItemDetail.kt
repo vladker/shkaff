@@ -298,6 +298,17 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
+            // Фото рыночного штрихкода (отдельное поле у вещи)
+            i.barcode_photo_path?.takeIf { it.isNotBlank() && File(it).exists() }?.let { p ->
+                ItemPhoto(
+                    p,
+                    Modifier
+                        .width(96.dp)
+                        .height(96.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .padding(top = 8.dp)
+                )
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
