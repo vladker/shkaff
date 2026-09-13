@@ -1,0 +1,60 @@
+package org.apache.commons.collections4;
+
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Set;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public interface MultiSet<E> extends Collection<E> {
+
+    /* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+    public interface Entry<E> {
+        boolean equals(Object obj);
+
+        int getCount();
+
+        E getElement();
+
+        int hashCode();
+    }
+
+    int add(E e, int i5);
+
+    @Override // java.util.Collection
+    boolean add(E e);
+
+    @Override // java.util.Collection
+    boolean containsAll(Collection<?> collection);
+
+    Set<Entry<E>> entrySet();
+
+    @Override // java.util.Collection
+    boolean equals(Object obj);
+
+    int getCount(Object obj);
+
+    @Override // java.util.Collection
+    int hashCode();
+
+    @Override // java.util.Collection, java.lang.Iterable
+    Iterator<E> iterator();
+
+    int remove(Object obj, int i5);
+
+    @Override // java.util.Collection
+    boolean remove(Object obj);
+
+    @Override // java.util.Collection
+    boolean removeAll(Collection<?> collection);
+
+    @Override // java.util.Collection
+    boolean retainAll(Collection<?> collection);
+
+    int setCount(E e, int i5);
+
+    @Override // java.util.Collection
+    int size();
+
+    Set<E> uniqueSet();
+}

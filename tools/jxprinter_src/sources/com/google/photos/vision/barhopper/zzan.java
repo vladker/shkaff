@@ -1,0 +1,21 @@
+package com.google.photos.vision.barhopper;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+public final class zzan {
+    public static int zza(int i5) {
+        if (i5 == 0) {
+            return 1;
+        }
+        if (i5 == 1) {
+            return 2;
+        }
+        if (i5 == 2) {
+            return 3;
+        }
+        if (i5 != 3) {
+            return i5 != 4 ? 0 : 5;
+        }
+        return 4;
+    }
+}

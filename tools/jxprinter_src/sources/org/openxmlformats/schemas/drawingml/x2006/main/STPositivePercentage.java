@@ -1,0 +1,25 @@
+package org.openxmlformats.schemas.drawingml.x2006.main;
+
+import org.apache.poi.schemas.ooxml.system.ooxml.TypeSystemHolder;
+import org.apache.xmlbeans.SchemaType;
+import org.apache.xmlbeans.XmlAnySimpleType;
+import org.apache.xmlbeans.impl.schema.SimpleTypeFactory;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes5.dex */
+public interface STPositivePercentage extends XmlAnySimpleType {
+    public static final SimpleTypeFactory<STPositivePercentage> Factory;
+    public static final SchemaType type;
+
+    static {
+        SimpleTypeFactory<STPositivePercentage> simpleTypeFactory = new SimpleTypeFactory<>(TypeSystemHolder.typeSystem, "stpositivepercentagedb9etype");
+        Factory = simpleTypeFactory;
+        type = simpleTypeFactory.getType();
+    }
+
+    Object getObjectValue();
+
+    SchemaType instanceType();
+
+    void setObjectValue(Object obj);
+}

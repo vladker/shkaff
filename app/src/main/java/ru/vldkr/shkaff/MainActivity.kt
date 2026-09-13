@@ -70,6 +70,7 @@ import ru.vldkr.shkaff.features.basket.BasketScreen
 import ru.vldkr.shkaff.features.dashboard.DashboardScreen
 import ru.vldkr.shkaff.features.items.ItemDetailScreen
 import ru.vldkr.shkaff.features.items.ItemFormScreen
+import ru.vldkr.shkaff.features.items.ItemWizardScreen
 import ru.vldkr.shkaff.features.batch.BatchEntryScreen
 import ru.vldkr.shkaff.features.backup.BackupScreen
 import ru.vldkr.shkaff.features.fragment.FragmentScreen
@@ -216,9 +217,9 @@ fun AppRoot() {
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clickable {
-                                            navController.navigate("item-form/0/0")
-                                        },
+                                         .clickable {
+                                             navController.navigate("item-wizard")
+                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Box(
@@ -323,7 +324,13 @@ fun AppRoot() {
                 )
             }
 
-            composable("batch") { BatchEntryScreen(navController) }
+            composable(
+                "batch?from={from}",
+                arguments = listOf(navArgument("from") { type = NavType.StringType; nullable = true })
+            ) { b ->
+                BatchEntryScreen(navController, b.arguments?.getString("from"))
+            }
+            composable("item-wizard") { ItemWizardScreen(navController) }
             composable("scan") { ScannerScreen(navController) }
             composable("annotations/{storageId}", arguments = listOf(navArgument("storageId") { type = NavType.StringType })) { b ->
                 AnnotationScreen(navController, b.arguments?.getString("storageId").orEmpty())

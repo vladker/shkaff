@@ -1,0 +1,29 @@
+package androidx.browser.browseractions;
+
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.View;
+import android.widget.LinearLayout;
+import androidx.annotation.NonNull;
+import androidx.annotation.RestrictTo;
+import androidx.browser.R;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes.dex */
+@RestrictTo({RestrictTo.Scope.LIBRARY_GROUP_PREFIX})
+@Deprecated
+public class BrowserActionsFallbackMenuView extends LinearLayout {
+    private final int mBrowserActionsMenuMaxWidthPx;
+    private final int mBrowserActionsMenuMinPaddingPx;
+
+    public BrowserActionsFallbackMenuView(@NonNull Context context, @NonNull AttributeSet attributeSet) {
+        super(context, attributeSet);
+        this.mBrowserActionsMenuMinPaddingPx = getResources().getDimensionPixelOffset(R.dimen.browser_actions_context_menu_min_padding);
+        this.mBrowserActionsMenuMaxWidthPx = getResources().getDimensionPixelOffset(R.dimen.browser_actions_context_menu_max_width);
+    }
+
+    @Override // android.widget.LinearLayout, android.view.View
+    public void onMeasure(int i5, int i6) {
+        super.onMeasure(View.MeasureSpec.makeMeasureSpec(Math.min(getResources().getDisplayMetrics().widthPixels - (this.mBrowserActionsMenuMinPaddingPx * 2), this.mBrowserActionsMenuMaxWidthPx), 1073741824), i6);
+    }
+}

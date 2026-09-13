@@ -1,0 +1,9 @@
+package com.google.gson;
+
+import java.lang.reflect.Type;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+public interface JsonSerializer<T> {
+    JsonElement serialize(T t6, Type type, JsonSerializationContext jsonSerializationContext);
+}

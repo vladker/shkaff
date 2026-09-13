@@ -348,7 +348,7 @@ private fun ServiceCodeCard(
 }
 
 @Composable
-private fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
+fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }

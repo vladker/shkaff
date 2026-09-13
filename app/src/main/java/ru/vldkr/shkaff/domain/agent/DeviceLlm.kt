@@ -21,6 +21,7 @@ object DeviceLlm {
         messages: List<ChatMessage>,
         onToken: (String) -> Unit = {},
         nMaxTokens: Int = N_MAX_TOKENS,
+        imagePath: String? = null,
     ): String = withContext(Dispatchers.IO) {
         val fileName = settings.model.trim()
         if (fileName.isEmpty()) {
@@ -51,11 +52,14 @@ object DeviceLlm {
         }
 
         val transcript = buildTranscript(messages.filter { it.role != "system" })
+        // Фото: явный параметр или imagePath, привязанный к одному из сообщений (vision).
+        val img = imagePath?.takeIf { it.isNotBlank() }
+            ?: messages.firstNotNullOfOrNull { it.imagePath }
         val sb = StringBuilder()
         val errMsg = AtomicReference<String?>(null)
         val rc = LlamaBridge.complete(
             prompt = transcript,
-            imagePath = null,
+            imagePath = img,
             nMaxTokens = nMaxTokens,
             cb = object : LlamaGenerationCallback {
                 override fun onToken(text: String) {
@@ -69,6 +73,9 @@ object DeviceLlm {
             },
         )
         val out = sb.toString().trim()
+        if (rc == LlamaBridge.ERR_NO_VISION) {
+            throw IllegalStateException("Эта модель не понимает фото. Скачайте vision-модель с mmproj (Qwen3-VL) в «Модели»")
+        }
         if (out.isEmpty()) {
             val reason = errMsg.get() ?: LlamaBridge.lastError().ifBlank {
                 if (rc == LlamaBridge.ABORTED) "генерация прервана" else "модель не ответила"

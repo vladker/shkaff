@@ -1,0 +1,35 @@
+package org.apache.poi.ss.formula.ptg;
+
+import A3.AbstractC0157z;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public final class PercentPtg extends ValueOperatorPtg {
+    private static final String PERCENT = "%";
+    public static final int SIZE = 1;
+    public static final PercentPtg instance = new PercentPtg();
+    public static final byte sid = 20;
+
+    private PercentPtg() {
+    }
+
+    @Override // org.apache.poi.ss.formula.ptg.OperationPtg
+    public int getNumberOfOperands() {
+        return 1;
+    }
+
+    @Override // org.apache.poi.ss.formula.ptg.Ptg
+    public byte getSid() {
+        return (byte) 20;
+    }
+
+    @Override // org.apache.poi.ss.formula.ptg.OperationPtg
+    public String toFormulaString(String[] strArr) {
+        return AbstractC0157z.s(new StringBuilder(), strArr[0], PERCENT);
+    }
+
+    @Override // org.apache.poi.ss.formula.ptg.Ptg, org.apache.poi.common.Duplicatable
+    public PercentPtg copy() {
+        return instance;
+    }
+}

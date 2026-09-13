@@ -1,0 +1,14 @@
+package org.apache.xmlbeans.impl.xpath;
+
+import org.apache.xmlbeans.XmlCursor;
+import org.apache.xmlbeans.XmlObject;
+import org.apache.xmlbeans.XmlOptions;
+import org.apache.xmlbeans.impl.store.Cur;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes5.dex */
+public interface XQuery {
+    XmlCursor cursorExecute(Cur cur, XmlOptions xmlOptions);
+
+    XmlObject[] objectExecute(Cur cur, XmlOptions xmlOptions);
+}

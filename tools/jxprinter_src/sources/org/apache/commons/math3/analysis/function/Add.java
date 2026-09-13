@@ -1,0 +1,12 @@
+package org.apache.commons.math3.analysis.function;
+
+import org.apache.commons.math3.analysis.BivariateFunction;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public class Add implements BivariateFunction {
+    @Override // org.apache.commons.math3.analysis.BivariateFunction
+    public double value(double d, double d6) {
+        return d + d6;
+    }
+}

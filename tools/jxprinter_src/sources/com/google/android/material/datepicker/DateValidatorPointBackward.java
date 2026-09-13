@@ -1,0 +1,67 @@
+package com.google.android.material.datepicker;
+
+import android.os.Parcel;
+import android.os.Parcelable;
+import androidx.annotation.NonNull;
+import java.util.Arrays;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes2.dex */
+public class DateValidatorPointBackward implements CalendarConstraints.DateValidator {
+    public static final Parcelable.Creator<DateValidatorPointBackward> CREATOR = new Parcelable.Creator<DateValidatorPointBackward>() { // from class: com.google.android.material.datepicker.DateValidatorPointBackward.1
+        /* JADX WARN: Can't rename method to resolve collision */
+        @Override // android.os.Parcelable.Creator
+        @NonNull
+        public DateValidatorPointBackward createFromParcel(@NonNull Parcel parcel) {
+            return new DateValidatorPointBackward(parcel.readLong());
+        }
+
+        /* JADX WARN: Can't rename method to resolve collision */
+        @Override // android.os.Parcelable.Creator
+        @NonNull
+        public DateValidatorPointBackward[] newArray(int i5) {
+            return new DateValidatorPointBackward[i5];
+        }
+    };
+    private final long point;
+
+    @NonNull
+    public static DateValidatorPointBackward before(long j6) {
+        return new DateValidatorPointBackward(j6);
+    }
+
+    @NonNull
+    public static DateValidatorPointBackward now() {
+        return before(UtcDates.getTodayCalendar().getTimeInMillis());
+    }
+
+    @Override // android.os.Parcelable
+    public int describeContents() {
+        return 0;
+    }
+
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        return (obj instanceof DateValidatorPointBackward) && this.point == ((DateValidatorPointBackward) obj).point;
+    }
+
+    public int hashCode() {
+        return Arrays.hashCode(new Object[]{Long.valueOf(this.point)});
+    }
+
+    @Override // com.google.android.material.datepicker.CalendarConstraints.DateValidator
+    public boolean isValid(long j6) {
+        return j6 <= this.point;
+    }
+
+    @Override // android.os.Parcelable
+    public void writeToParcel(@NonNull Parcel parcel, int i5) {
+        parcel.writeLong(this.point);
+    }
+
+    private DateValidatorPointBackward(long j6) {
+        this.point = j6;
+    }
+}

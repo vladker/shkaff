@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,8 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.AttrJson
+import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.printer.PrintManager
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
@@ -274,6 +277,26 @@ class BatchVm : ViewModel() {
         }
     }
 
+    // WP7: pre-fill серии из сохранённой вещи (мастер → «Серия»).
+    fun loadFromItem(itemId: String) {
+        viewModelScope.launch {
+            val e = Deps.items.byId(itemId) ?: return@launch
+            update {
+                it.copy(
+                    namePattern = e.name,
+                    description = e.description,
+                    locationId = e.location_id,
+                    tags = TagsJson.toList(e.tags),
+                    attrs = AttrJson.toMap(e.attributes),
+                    perItemKeys = emptySet(),
+                    count = "10",
+                    phase = Phase.SETUP,
+                    error = null
+                )
+            }
+        }
+    }
+
     init {
         viewModelScope.launch {
             Deps.attributes.observeAll().collect { all ->
@@ -307,12 +330,13 @@ class BatchVm : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BatchEntryScreen(nav: NavController) {
+fun BatchEntryScreen(nav: NavController, fromId: String? = null) {
     val vm: BatchVm = viewModel()
     val ui by vm.ui.collectAsState()
     val defs by vm.attrDefs.collectAsState()
     val locations by vm.locations.collectAsState()
     val ctx = LocalContext.current
+    LaunchedEffect(fromId) { if (fromId != null) vm.loadFromItem(fromId) }
     var showLocationPicker by remember { mutableStateOf(false) }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPrintPicker by remember { mutableStateOf(false) }

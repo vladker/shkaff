@@ -1,0 +1,27 @@
+package org.apache.logging.log4j;
+
+import java.io.Serializable;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public interface Marker extends Serializable {
+    Marker addParents(Marker... markerArr);
+
+    boolean equals(Object obj);
+
+    String getName();
+
+    Marker[] getParents();
+
+    boolean hasParents();
+
+    int hashCode();
+
+    boolean isInstanceOf(String str);
+
+    boolean isInstanceOf(Marker marker);
+
+    boolean remove(Marker marker);
+
+    Marker setParents(Marker... markerArr);
+}

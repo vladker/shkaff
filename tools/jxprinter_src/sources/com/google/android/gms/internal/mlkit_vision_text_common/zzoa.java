@@ -1,0 +1,22 @@
+package com.google.android.gms.internal.mlkit_vision_text_common;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes2.dex */
+public final class zzoa {
+    private zzob zza;
+    private Integer zzb;
+
+    public final zzoa zza(zzob zzobVar) {
+        this.zza = zzobVar;
+        return this;
+    }
+
+    public final zzoa zzb(Integer num) {
+        this.zzb = Integer.valueOf(num.intValue() & Integer.MAX_VALUE);
+        return this;
+    }
+
+    public final zzod zzd() {
+        return new zzod(this, null);
+    }
+}

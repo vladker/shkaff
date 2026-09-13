@@ -1,20 +1,28 @@
 package ru.vldkr.shkaff.domain.agent
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
 // Сообщение чата OpenAI-совместимого API: role = system|user|assistant|tool.
 // tool-роль несёт результат вызова (toolCallId ссылается на id в toolCalls ассистента).
+// imagePath — файл изображения (vision): для cloud/local сериализуется как image_url (data-URL),
+// для device передаётся в llama.cpp напрямую.
 data class ChatMessage(
     val role: String,
     val content: String? = null,
     val toolCalls: List<ToolCall> = emptyList(),
     val toolCallId: String? = null,
+    val imagePath: String? = null,
 )
 
 // Вызов инструмента, запрошенный моделью (function calling в OpenAI-формате).
@@ -96,7 +104,8 @@ object ChatClient {
                     }
                 })
             }
-            body.put("temperature", 0.2)
+            // Извлечение данных (карточка вещи, EAN, рекомендации) — нужна детерминированность.
+            body.put("temperature", 0.0)
 
             val url = endpoint(settings)
             val conn = URL(url).openConnection() as HttpURLConnection
@@ -153,9 +162,28 @@ object ChatClient {
     }
 
     // Сообщение → JSON тела запроса: role, content, tool_calls, tool_call_id.
+    // Если есть imagePath — content становится массивом [{type:text},{type:image_url}] (OpenAI vision).
     internal fun messageToJson(m: ChatMessage): JSONObject = JSONObject().apply {
         put("role", m.role)
-        if (m.content != null) put("content", m.content)
+        val img = m.imagePath?.takeIf { it.isNotBlank() }
+        val dataUrl = img?.let { readImageDataUrl(it) }
+        when {
+            dataUrl != null -> put(
+                "content", JSONArray().apply {
+                    if (!m.content.isNullOrBlank()) {
+                        put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", m.content)
+                        })
+                    }
+                    put(JSONObject().apply {
+                        put("type", "image_url")
+                        put("image_url", JSONObject().apply { put("url", dataUrl) })
+                    })
+                }
+            )
+            else -> if (m.content != null) put("content", m.content)
+        }
         if (m.toolCalls.isNotEmpty()) {
             put(
                 "tool_calls", JSONArray().apply {
@@ -177,6 +205,42 @@ object ChatClient {
             )
         }
         if (m.toolCallId != null) put("tool_call_id", m.toolCallId)
+    }
+
+    // Файл изображения → data-URL (base64) для OpenAI vision. null — если файла нет.
+    private fun readImageDataUrl(path: String): String? {
+        val f = File(path)
+        if (!f.isFile) return null
+        // Фото с телефона — full-res JPEG в несколько МБ; в base64 это сотни тысяч токенов,
+        // из-за чего пре-филл «зависает». Перед отправкой ужимаем до ~1024px (JPEG ~85).
+        // Если файл не декодируется (напр. HEIC), НЕ отсылаем full-res как есть —
+        // он «завесит» модель. Лучше явная ошибка, чем зависание.
+        val bytes = downscaleToJpeg(f, maxSide = 1024, quality = 85)
+        return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    // Декодируем файл с inSampleSize, при необходимости уменьшаем до maxSide и жмём JPEG.
+    private fun downscaleToJpeg(src: File, maxSide: Int, quality: Int): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(src.absolutePath, bounds)
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        if (longest <= 0) throw IllegalArgumentException(
+            "не удалось декодировать фото (возможно, HEIC или повреждённый файл)"
+        )
+        var sample = 1
+        while (longest / (sample * 2) >= maxSide) sample *= 2
+        val bmp = BitmapFactory.decodeFile(src.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IllegalArgumentException("не удалось прочитать фото")
+        val scaled = if (bmp.width > maxSide || bmp.height > maxSide) {
+            val scale = maxSide.toFloat() / maxOf(bmp.width, bmp.height)
+            val out = Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
+            if (out !== bmp) bmp.recycle()
+            out
+        } else bmp
+        val out = ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        scaled.recycle()
+        return out.toByteArray()
     }
 
     // Извлечение JSON-объекта из ответа: допускаем ```json … ``` и произвольный текст вокруг.

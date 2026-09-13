@@ -1,0 +1,55 @@
+package com.appdev.constant;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes.dex */
+public class DefaultRouteConstant {
+    public static final String ACTIVITY_AGREEMENT = "/standard/AgreementActivity";
+    public static final String ACTIVITY_ARTICLE_VIEW = "/standard/ArticleViewActivity";
+    public static final String ACTIVITY_BLUETOOTH_DEVICE_LIST = "/standard/BluetoothDeviceListActivity";
+    public static final String ACTIVITY_BOOT = "/standard/BootActivity";
+    public static final String ACTIVITY_CHANGEPASSWORD = "/standard/ChangePasswordActivity";
+    public static final String ACTIVITY_CHANGE_USERNAME_EMAIL = "/standard/ChangeUserNameEmailActivity";
+    public static final String ACTIVITY_CHANGE_USERNAME_PHONE = "/standard/ChangeUserNamePhoneActivity";
+    public static final String ACTIVITY_CLOUD_SPACE_CLOUD_LABEL_MANAGE = "/standard/CloudSpaceCloudLabelManageActivity";
+    public static final String ACTIVITY_CONNECT_PRINT_DEVICES = "/standard/ConnectPrintDevicesActivity";
+    public static final String ACTIVITY_CREATE_LABEL = "/standard/CreateLabelActivity";
+    public static final String ACTIVITY_CREATE_RECEIPT = "/standard/CreateReceiptActivity";
+    public static final String ACTIVITY_EDIT_LABEL = "/standard/EditLabelActivity";
+    public static final String ACTIVITY_EDIT_RECEIPT = "/standard/EditReceiptActivity";
+    public static final String ACTIVITY_FEEDBACK = "/standard/FeedbackActivity";
+    public static final String ACTIVITY_FEEDBACK_LIST = "/standard/FeedbackListActivity";
+    public static final String ACTIVITY_FORGET_SETTING_PASSWORD = "/standard/ForgetSettingPasswordActivity";
+    public static final String ACTIVITY_GUIDE = "/standard/GuideActivity";
+    public static final String ACTIVITY_HELP_CENTER = "/standard/HelpCenterActivity";
+    public static final String ACTIVITY_LANGUAGE_MANAGEMENT = "/standard/LanguageManagementActivity";
+    public static final String ACTIVITY_LOAD_FILE = "/standard/LoadFileActivity";
+    public static final String ACTIVITY_LOGIN = "/standard/LoginActivity";
+    public static final String ACTIVITY_MAIN = "/standard/MainActivity";
+    public static final String ACTIVITY_MATERIAL_LIBRARY = "/standard/MaterialLibraryActivity";
+    public static final String ACTIVITY_MATERIAL_LIBRARY_PAGE = "/standard/MaterialLibraryPageActivity";
+    public static final String ACTIVITY_MEMBER_BUY = "/standard/MemberBuyActivity";
+    public static final String ACTIVITY_MEMBER_CENTER = "/standard/MemberCenterActivity";
+    public static final String ACTIVITY_MINEQRCODE = "/standard/MineQRCodeActivity";
+    public static final String ACTIVITY_MODIFYNICKNAME = "/standard/ModifyNicknameActivity";
+    public static final String ACTIVITY_PAY_RESULT = "/standard/PayResultActivity";
+    public static final String ACTIVITY_PDF_FILE_LIST = "/standard/PDFFileListActivity";
+    public static final String ACTIVITY_PDF_PRINT = "/standard/PDFPrintActivity";
+    public static final String ACTIVITY_PDF_VIEW = "/standard/PDFViewActivity";
+    public static final String ACTIVITY_PERSONALINFOMATION = "/standard/PersonalInfomationActivity";
+    public static final String ACTIVITY_PHOTO_PRINT = "/standard/PhotoPrintActivity";
+    public static final String ACTIVITY_PICTURE_PRINT = "/standard/PicturePrintActivity";
+    public static final String ACTIVITY_PRINTER_TEMPLATE_EDIT = "/printerlabel/TemplateEditActivity";
+    public static final String ACTIVITY_PRINT_DEVICE_INFO = "/standard/PrintDeviceInfoActivity";
+    public static final String ACTIVITY_PRINT_PAGE = "/standard/PrintPageActivity";
+    public static final String ACTIVITY_PUBLISH_TO_INDUSTRY = "/printerlabel/PublishToIndustryActivity";
+    public static final String ACTIVITY_PUBLISH_TO_SQUARE = "/printerlabel/PublishToSquareActivity";
+    public static final String ACTIVITY_QUICK_PRINTING = "/standard/QuickPrintingActivity";
+    public static final String ACTIVITY_RECEIPT_EDIT = "/standard/ReceiptEditActivity";
+    public static final String ACTIVITY_RECEIPT_PRINT_PAGE = "/standard/ReceiptPrintPageActivity";
+    public static final String ACTIVITY_REGISTER = "/standard/RegisterActivity";
+    public static final String ACTIVITY_RESETPASSWORD = "/standard/ResetPasswordActivity";
+    public static final String ACTIVITY_SERVER_AGREEMENT = "/standard/ServerAgreementActivity";
+    public static final String ACTIVITY_SETTING_PASSWORD = "/standard/SettingPasswordActivity";
+    public static final String ACTIVITY_TEMP = "/standard/TempActivity";
+    public static final String ACTIVITY_VIDEO_VIEW = "/standard/VideoViewActivity";
+}

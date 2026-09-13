@@ -1,0 +1,29 @@
+package com.google.mlkit.common.sdkinternal;
+
+import androidx.annotation.NonNull;
+import com.google.android.gms.common.annotation.KeepForSdk;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+@KeepForSdk
+public class Constants {
+
+    @NonNull
+    @KeepForSdk
+    public static final String AUTOML_IMAGE_LABELING_LABELS_FILE_NAME = "labels.txt";
+
+    @NonNull
+    @KeepForSdk
+    public static final String AUTOML_IMAGE_LABELING_MANIFEST_JSON_FILE_NAME = "manifest.json";
+
+    @NonNull
+    @KeepForSdk
+    public static final String AUTOML_IMAGE_LABELING_MODEL_TYPE = "IMAGE_LABELING";
+
+    @NonNull
+    @KeepForSdk
+    public static final String MODEL_FILE_NAME = "model.tflite";
+
+    private Constants() {
+    }
+}

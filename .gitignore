@@ -45,6 +45,9 @@ coverage/
 htmlcov/
 .coverage
 
+# Large binary printer apps (keep locally, not in git)
+*.apk
+
 # Archives
 *.zip
 *.gz

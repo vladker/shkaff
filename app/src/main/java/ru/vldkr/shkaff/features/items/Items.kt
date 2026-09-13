@@ -141,7 +141,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
         floatingActionButton = {
             if (Access.can(role, Access.CREATE)) {
                 FloatingActionButton(
-                    onClick = { nav.navigate("item-form/0/0") },
+                    onClick = { nav.navigate("item-wizard") },
                     containerColor = Ozon.Blue,
                     contentColor = Ozon.TextPrimary
                 ) {

@@ -1,0 +1,26 @@
+package org.apache.commons.collections4.keyvalue;
+
+import java.util.Map;
+import org.apache.commons.collections4.KeyValue;
+import org.apache.commons.collections4.Unmodifiable;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public final class UnmodifiableMapEntry<K, V> extends AbstractMapEntry<K, V> implements Unmodifiable {
+    public UnmodifiableMapEntry(K k6, V v6) {
+        super(k6, v6);
+    }
+
+    @Override // org.apache.commons.collections4.keyvalue.AbstractMapEntry, org.apache.commons.collections4.keyvalue.AbstractKeyValue, java.util.Map.Entry
+    public V setValue(V v6) {
+        throw new UnsupportedOperationException("setValue() is not supported");
+    }
+
+    public UnmodifiableMapEntry(KeyValue<? extends K, ? extends V> keyValue) {
+        super(keyValue.getKey(), keyValue.getValue());
+    }
+
+    public UnmodifiableMapEntry(Map.Entry<? extends K, ? extends V> entry) {
+        super(entry.getKey(), entry.getValue());
+    }
+}

@@ -1,0 +1,26 @@
+package org.apache.commons.compress.harmony.pack200;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public class CPString extends CPConstant {
+    private final String string;
+    private final CPUTF8 utf8;
+
+    public CPString(CPUTF8 cputf8) {
+        this.utf8 = cputf8;
+        this.string = cputf8.getUnderlyingString();
+    }
+
+    @Override // java.lang.Comparable
+    public int compareTo(Object obj) {
+        return this.string.compareTo(((CPString) obj).string);
+    }
+
+    public int getIndexInCpUtf8() {
+        return this.utf8.getIndex();
+    }
+
+    public String toString() {
+        return this.string;
+    }
+}

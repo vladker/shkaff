@@ -1,0 +1,206 @@
+package org.openxmlformats.schemas.spreadsheetml.x2006.main;
+
+import org.apache.poi.schemas.ooxml.system.ooxml.TypeSystemHolder;
+import org.apache.xmlbeans.SchemaType;
+import org.apache.xmlbeans.XmlBoolean;
+import org.apache.xmlbeans.XmlObject;
+import org.apache.xmlbeans.impl.schema.DocumentFactory;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes6.dex */
+public interface CTXf extends XmlObject {
+    public static final DocumentFactory<CTXf> Factory;
+    public static final SchemaType type;
+
+    static {
+        DocumentFactory<CTXf> documentFactory = new DocumentFactory<>(TypeSystemHolder.typeSystem, "ctxf97f7type");
+        Factory = documentFactory;
+        type = documentFactory.getType();
+    }
+
+    CTCellAlignment addNewAlignment();
+
+    CTExtensionList addNewExtLst();
+
+    CTCellProtection addNewProtection();
+
+    CTCellAlignment getAlignment();
+
+    boolean getApplyAlignment();
+
+    boolean getApplyBorder();
+
+    boolean getApplyFill();
+
+    boolean getApplyFont();
+
+    boolean getApplyNumberFormat();
+
+    boolean getApplyProtection();
+
+    long getBorderId();
+
+    CTExtensionList getExtLst();
+
+    long getFillId();
+
+    long getFontId();
+
+    long getNumFmtId();
+
+    boolean getPivotButton();
+
+    CTCellProtection getProtection();
+
+    boolean getQuotePrefix();
+
+    long getXfId();
+
+    boolean isSetAlignment();
+
+    boolean isSetApplyAlignment();
+
+    boolean isSetApplyBorder();
+
+    boolean isSetApplyFill();
+
+    boolean isSetApplyFont();
+
+    boolean isSetApplyNumberFormat();
+
+    boolean isSetApplyProtection();
+
+    boolean isSetBorderId();
+
+    boolean isSetExtLst();
+
+    boolean isSetFillId();
+
+    boolean isSetFontId();
+
+    boolean isSetNumFmtId();
+
+    boolean isSetPivotButton();
+
+    boolean isSetProtection();
+
+    boolean isSetQuotePrefix();
+
+    boolean isSetXfId();
+
+    void setAlignment(CTCellAlignment cTCellAlignment);
+
+    void setApplyAlignment(boolean z6);
+
+    void setApplyBorder(boolean z6);
+
+    void setApplyFill(boolean z6);
+
+    void setApplyFont(boolean z6);
+
+    void setApplyNumberFormat(boolean z6);
+
+    void setApplyProtection(boolean z6);
+
+    void setBorderId(long j6);
+
+    void setExtLst(CTExtensionList cTExtensionList);
+
+    void setFillId(long j6);
+
+    void setFontId(long j6);
+
+    void setNumFmtId(long j6);
+
+    void setPivotButton(boolean z6);
+
+    void setProtection(CTCellProtection cTCellProtection);
+
+    void setQuotePrefix(boolean z6);
+
+    void setXfId(long j6);
+
+    void unsetAlignment();
+
+    void unsetApplyAlignment();
+
+    void unsetApplyBorder();
+
+    void unsetApplyFill();
+
+    void unsetApplyFont();
+
+    void unsetApplyNumberFormat();
+
+    void unsetApplyProtection();
+
+    void unsetBorderId();
+
+    void unsetExtLst();
+
+    void unsetFillId();
+
+    void unsetFontId();
+
+    void unsetNumFmtId();
+
+    void unsetPivotButton();
+
+    void unsetProtection();
+
+    void unsetQuotePrefix();
+
+    void unsetXfId();
+
+    XmlBoolean xgetApplyAlignment();
+
+    XmlBoolean xgetApplyBorder();
+
+    XmlBoolean xgetApplyFill();
+
+    XmlBoolean xgetApplyFont();
+
+    XmlBoolean xgetApplyNumberFormat();
+
+    XmlBoolean xgetApplyProtection();
+
+    STBorderId xgetBorderId();
+
+    STFillId xgetFillId();
+
+    STFontId xgetFontId();
+
+    STNumFmtId xgetNumFmtId();
+
+    XmlBoolean xgetPivotButton();
+
+    XmlBoolean xgetQuotePrefix();
+
+    STCellStyleXfId xgetXfId();
+
+    void xsetApplyAlignment(XmlBoolean xmlBoolean);
+
+    void xsetApplyBorder(XmlBoolean xmlBoolean);
+
+    void xsetApplyFill(XmlBoolean xmlBoolean);
+
+    void xsetApplyFont(XmlBoolean xmlBoolean);
+
+    void xsetApplyNumberFormat(XmlBoolean xmlBoolean);
+
+    void xsetApplyProtection(XmlBoolean xmlBoolean);
+
+    void xsetBorderId(STBorderId sTBorderId);
+
+    void xsetFillId(STFillId sTFillId);
+
+    void xsetFontId(STFontId sTFontId);
+
+    void xsetNumFmtId(STNumFmtId sTNumFmtId);
+
+    void xsetPivotButton(XmlBoolean xmlBoolean);
+
+    void xsetQuotePrefix(XmlBoolean xmlBoolean);
+
+    void xsetXfId(STCellStyleXfId sTCellStyleXfId);
+}

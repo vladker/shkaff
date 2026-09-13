@@ -73,6 +73,8 @@ import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.recommend.Recommend
 import ru.vldkr.shkaff.domain.recommend.RecommendCandidate
+import ru.vldkr.shkaff.domain.recommend.RecommendLlm
+import ru.vldkr.shkaff.domain.vision.ItemVision
 import ru.vldkr.shkaff.domain.recommend.StorageSuggestion
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
@@ -229,6 +231,56 @@ class ItemFormVm(
         }
     }
 
+    // ИИ-рекомендация места (мастер): топ с причинами; при выключенном ИИ — правило-фолбэк.
+    suspend fun aiRecommendLocations(): List<RecommendLlm.Recommendation> {
+        val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
+        val category = attrs[categoryKey]?.trim()?.takeIf { it.isNotEmpty() }
+        val volume = volumeLiters.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
+        val weight = weightKg.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
+        return RecommendLlm.recommend(
+            settings = Deps.agentSettings(),
+            itemName = name,
+            itemCategory = category,
+            volumeLiters = volume,
+            weightKg = weight,
+            candidates = buildAiCandidates(categoryKey),
+            top = 5,
+        )
+    }
+
+    private suspend fun buildAiCandidates(categoryKey: String): List<RecommendLlm.CandidateInfo> {
+        val categoriesByLoc = HashMap<String, Set<String>>()
+        Deps.items.all().forEach { it ->
+            val cat = AttrJson.toMap(it.attributes)[categoryKey]?.trim()?.takeIf { c -> c.isNotEmpty() }
+                ?: return@forEach
+            val prev = categoriesByLoc[it.location_id ?: ""] ?: emptySet()
+            categoriesByLoc[it.location_id ?: ""] = prev + cat
+        }
+        return locations.value.map { loc ->
+            val usage = Deps.locations.usage(loc.id)
+            RecommendLlm.CandidateInfo(
+                id = loc.id,
+                name = loc.label.ifBlank { loc.name }.ifBlank { "Ящик" },
+                freeLiters = usage.remainingVolume(),
+                freeKg = usage.remainingWeight(),
+                dontFillToBrim = usage.dontFillToBrim,
+                isFull = usage.isFull,
+                itemCount = Deps.items.countByLocation(loc.id),
+                presentCategories = (categoriesByLoc[loc.id] ?: emptySet()).toList(),
+                climate = climateOf(loc.attributes),
+            )
+        }
+    }
+
+    private fun climateOf(attrsJson: String?): Map<String, String> {
+        val m = AttrJson.toMap(attrsJson)
+        return m.filter { (k, _) ->
+            val lk = k.lowercase()
+            lk.contains("температур") || lk.contains("temperature") ||
+                lk.contains("влажн") || lk.contains("humidity")
+        }
+    }
+
     // US-B1: скан/ручной ввод EAN → данные из интернета (OpenFoodFacts, при неудаче — LLM).
     // В карточку попадают только подтверждённые пользователем поля.
     fun lookupEan() {
@@ -364,6 +416,41 @@ class ItemFormVm(
                 }
             } catch (e: Exception) {
                 smartSearchError.value = e.message ?: "Ошибка поиска"
+            }             finally {
+                smartSearchBusy.value = false
+                smartSearchStep.value = null
+            }
+        }
+    }
+
+    // «Заполнить с ИИ» (мастер): по фото и/или по коду (модели) → те же SmartField, что и поиск.
+    fun aiFill() {
+        if (photoPath.isNullOrBlank() && code.isBlank() && ean.isBlank() && name.isBlank()) {
+            smartSearchError.value = "Добавьте фото или введите название/код/штрихкод"
+            return
+        }
+        viewModelScope.launch {
+            smartSearchBusy.value = true
+            smartSearchStep.value = "Готовим запрос…"
+            smartSearchError.value = null
+            smartSearchResult.value = null
+            try {
+                val catalog = attrDefs.value.map { it.label }
+                val json = ItemVision.fill(
+                    settings = Deps.agentSettings(),
+                    photoPath = photoPath,
+                    model = code,
+                    ean = ean.ifBlank { null },
+                    name = name.ifBlank { null },
+                    attributeLabels = catalog,
+                    onStep = { smartSearchStep.value = it },
+                )
+                smartSearchStep.value = "Формируем предложения…"
+                val fields = buildSmartFields(json)
+                if (fields.isEmpty()) smartSearchError.value = "ИИ не вернул полезных полей"
+                else smartSearchResult.value = fields
+            } catch (e: Exception) {
+                smartSearchError.value = e.message ?: "Ошибка"
             } finally {
                 smartSearchBusy.value = false
                 smartSearchStep.value = null
@@ -994,7 +1081,7 @@ private fun EanLookupDialog(vm: ItemFormVm) {
 // US-B2: предложения ИИ по полям карточки: галочка — принять поле,
 // крестик — отклонить; «Принять всё» — все предложения сразу.
 @Composable
-private fun SmartSearchDialog(vm: ItemFormVm) {
+fun SmartSearchDialog(vm: ItemFormVm) {
     val rows by vm.smartSearchResult.collectAsState()
     val list = rows ?: return
     AlertDialog(
@@ -1053,7 +1140,7 @@ private fun SmartSearchDialog(vm: ItemFormVm) {
 }
 
 @Composable
-private fun TagChipsField(vm: ItemFormVm) {
+fun TagChipsField(vm: ItemFormVm) {
     val scope = rememberCoroutineScope()
     var newTag by remember { mutableStateOf("") }
     val dict by vm.tagDict.collectAsState()
@@ -1129,7 +1216,7 @@ private fun TagChipsField(vm: ItemFormVm) {
 // US-I5: фото вещи — как у товара в маркетплейсе: снимок камеры, файл из галереи
 // или картинка по ссылке (скачивается в базу, в поле остаётся файл, а не ссылка)
 @Composable
-private fun PhotoField(vm: ItemFormVm) {
+fun PhotoField(vm: ItemFormVm) {
     val pickers = rememberPhotoPickers(
         onCaptured = { f -> vm.setPhoto(f.absolutePath) },
         onPicked = { f -> vm.setPhoto(f.absolutePath) }

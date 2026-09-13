@@ -1,0 +1,24 @@
+package androidx.core.os;
+
+import android.os.Bundle;
+import android.util.Size;
+import android.util.SizeF;
+import androidx.annotation.RequiresApi;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes.dex */
+@RequiresApi(21)
+final class BundleApi21ImplKt {
+    public static final BundleApi21ImplKt INSTANCE = new BundleApi21ImplKt();
+
+    private BundleApi21ImplKt() {
+    }
+
+    public static final void putSize(Bundle bundle, String str, Size size) {
+        bundle.putSize(str, size);
+    }
+
+    public static final void putSizeF(Bundle bundle, String str, SizeF sizeF) {
+        bundle.putSizeF(str, sizeF);
+    }
+}

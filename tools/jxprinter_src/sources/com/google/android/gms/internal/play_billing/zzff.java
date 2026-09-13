@@ -1,0 +1,229 @@
+package com.google.android.gms.internal.play_billing;
+
+import androidx.collection.a;
+import java.util.AbstractList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.RandomAccess;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes2.dex */
+final class zzff extends zzfb implements RandomAccess, zzgu {
+    private static final boolean[] zza;
+    private boolean[] zzb;
+    private int zzc;
+
+    static {
+        boolean[] zArr = new boolean[0];
+        zza = zArr;
+        new zzff(zArr, 0, false);
+    }
+
+    public zzff() {
+        this(zza, 0, true);
+    }
+
+    private static int zzg(int i5) {
+        return Math.max(((i5 * 3) / 2) + 1, 10);
+    }
+
+    private final String zzh(int i5) {
+        return a.h(i5, this.zzc, "Index:", ", Size:");
+    }
+
+    private final void zzi(int i5) {
+        if (i5 < 0 || i5 >= this.zzc) {
+            throw new IndexOutOfBoundsException(zzh(i5));
+        }
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.List
+    public final /* synthetic */ void add(int i5, Object obj) {
+        int i6;
+        boolean zBooleanValue = ((Boolean) obj).booleanValue();
+        zza();
+        if (i5 < 0 || i5 > (i6 = this.zzc)) {
+            throw new IndexOutOfBoundsException(zzh(i5));
+        }
+        int i7 = i5 + 1;
+        boolean[] zArr = this.zzb;
+        int length = zArr.length;
+        if (i6 < length) {
+            System.arraycopy(zArr, i5, zArr, i7, i6 - i5);
+        } else {
+            boolean[] zArr2 = new boolean[zzg(length)];
+            System.arraycopy(this.zzb, 0, zArr2, 0, i5);
+            System.arraycopy(this.zzb, i5, zArr2, i7, this.zzc - i5);
+            this.zzb = zArr2;
+        }
+        this.zzb[i5] = zBooleanValue;
+        this.zzc++;
+        ((AbstractList) this).modCount++;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractCollection, java.util.Collection, java.util.List
+    public final boolean addAll(Collection collection) {
+        zza();
+        collection.getClass();
+        if (!(collection instanceof zzff)) {
+            return super.addAll(collection);
+        }
+        zzff zzffVar = (zzff) collection;
+        int i5 = zzffVar.zzc;
+        if (i5 == 0) {
+            return false;
+        }
+        int i6 = this.zzc;
+        if (Integer.MAX_VALUE - i6 < i5) {
+            throw new OutOfMemoryError();
+        }
+        int i7 = i6 + i5;
+        boolean[] zArr = this.zzb;
+        if (i7 > zArr.length) {
+            this.zzb = Arrays.copyOf(zArr, i7);
+        }
+        System.arraycopy(zzffVar.zzb, 0, this.zzb, this.zzc, zzffVar.zzc);
+        this.zzc = i7;
+        ((AbstractList) this).modCount++;
+        return true;
+    }
+
+    @Override // java.util.AbstractCollection, java.util.Collection, java.util.List
+    public final boolean contains(Object obj) {
+        return indexOf(obj) != -1;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.Collection, java.util.List
+    public final boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof zzff)) {
+            return super.equals(obj);
+        }
+        zzff zzffVar = (zzff) obj;
+        if (this.zzc != zzffVar.zzc) {
+            return false;
+        }
+        boolean[] zArr = zzffVar.zzb;
+        for (int i5 = 0; i5 < this.zzc; i5++) {
+            if (this.zzb[i5] != zArr[i5]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override // java.util.AbstractList, java.util.List
+    public final /* synthetic */ Object get(int i5) {
+        zzi(i5);
+        return Boolean.valueOf(this.zzb[i5]);
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.Collection, java.util.List
+    public final int hashCode() {
+        int iZza = 1;
+        for (int i5 = 0; i5 < this.zzc; i5++) {
+            iZza = (iZza * 31) + zzgv.zza(this.zzb[i5]);
+        }
+        return iZza;
+    }
+
+    @Override // java.util.AbstractList, java.util.List
+    public final int indexOf(Object obj) {
+        if (!(obj instanceof Boolean)) {
+            return -1;
+        }
+        boolean zBooleanValue = ((Boolean) obj).booleanValue();
+        int i5 = this.zzc;
+        for (int i6 = 0; i6 < i5; i6++) {
+            if (this.zzb[i6] == zBooleanValue) {
+                return i6;
+            }
+        }
+        return -1;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.List
+    public final /* bridge */ /* synthetic */ Object remove(int i5) {
+        zza();
+        zzi(i5);
+        boolean[] zArr = this.zzb;
+        boolean z6 = zArr[i5];
+        int i6 = this.zzc;
+        if (i5 < i6 - 1) {
+            System.arraycopy(zArr, i5 + 1, zArr, i5, (i6 - i5) - 1);
+        }
+        this.zzc--;
+        ((AbstractList) this).modCount++;
+        return Boolean.valueOf(z6);
+    }
+
+    @Override // java.util.AbstractList
+    public final void removeRange(int i5, int i6) {
+        zza();
+        if (i6 < i5) {
+            throw new IndexOutOfBoundsException("toIndex < fromIndex");
+        }
+        boolean[] zArr = this.zzb;
+        System.arraycopy(zArr, i6, zArr, i5, this.zzc - i6);
+        this.zzc -= i6 - i5;
+        ((AbstractList) this).modCount++;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.List
+    public final /* bridge */ /* synthetic */ Object set(int i5, Object obj) {
+        boolean zBooleanValue = ((Boolean) obj).booleanValue();
+        zza();
+        zzi(i5);
+        boolean[] zArr = this.zzb;
+        boolean z6 = zArr[i5];
+        zArr[i5] = zBooleanValue;
+        return Boolean.valueOf(z6);
+    }
+
+    @Override // java.util.AbstractCollection, java.util.Collection, java.util.List
+    public final int size() {
+        return this.zzc;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzgu
+    public final /* bridge */ /* synthetic */ zzgu zzd(int i5) {
+        if (i5 >= this.zzc) {
+            return new zzff(i5 == 0 ? zza : Arrays.copyOf(this.zzb, i5), this.zzc, true);
+        }
+        throw new IllegalArgumentException();
+    }
+
+    public final void zze(boolean z6) {
+        zza();
+        int i5 = this.zzc;
+        int length = this.zzb.length;
+        if (i5 == length) {
+            boolean[] zArr = new boolean[zzg(length)];
+            System.arraycopy(this.zzb, 0, zArr, 0, this.zzc);
+            this.zzb = zArr;
+        }
+        boolean[] zArr2 = this.zzb;
+        int i6 = this.zzc;
+        this.zzc = i6 + 1;
+        zArr2[i6] = z6;
+    }
+
+    public final boolean zzf(int i5) {
+        zzi(i5);
+        return this.zzb[i5];
+    }
+
+    private zzff(boolean[] zArr, int i5, boolean z6) {
+        super(z6);
+        this.zzb = zArr;
+        this.zzc = i5;
+    }
+
+    @Override // com.google.android.gms.internal.play_billing.zzfb, java.util.AbstractList, java.util.AbstractCollection, java.util.Collection, java.util.List
+    public final /* bridge */ /* synthetic */ boolean add(Object obj) {
+        zze(((Boolean) obj).booleanValue());
+        return true;
+    }
+}

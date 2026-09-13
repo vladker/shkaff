@@ -16,11 +16,13 @@ object Agent {
         messages: List<ChatMessage>,
         onToken: (String) -> Unit = {},
         nMaxTokens: Int = DeviceLlm.N_MAX_TOKENS,
+        imagePath: String? = null,
     ): String {
         require(messages.isNotEmpty()) { "Пустой список сообщений" }
         return if (isDevice(settings)) {
-            DeviceLlm.complete(settings, messages, onToken, nMaxTokens)
+            DeviceLlm.complete(settings, messages, onToken, nMaxTokens, imagePath)
         } else {
+            // cloud/local: изображение уже на сообщении (messageToJson сериализует image_url).
             ChatClient.complete(settings, messages)
         }
     }

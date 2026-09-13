@@ -1,0 +1,39 @@
+package org.apache.commons.collections4.sequence;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes4.dex */
+public class ReplacementsFinder<T> implements CommandVisitor<T> {
+    private final ReplacementsHandler<T> handler;
+    private final List<T> pendingInsertions = new ArrayList();
+    private final List<T> pendingDeletions = new ArrayList();
+    private int skipped = 0;
+
+    public ReplacementsFinder(ReplacementsHandler<T> replacementsHandler) {
+        this.handler = replacementsHandler;
+    }
+
+    @Override // org.apache.commons.collections4.sequence.CommandVisitor
+    public void visitDeleteCommand(T t6) {
+        this.pendingDeletions.add(t6);
+    }
+
+    @Override // org.apache.commons.collections4.sequence.CommandVisitor
+    public void visitInsertCommand(T t6) {
+        this.pendingInsertions.add(t6);
+    }
+
+    @Override // org.apache.commons.collections4.sequence.CommandVisitor
+    public void visitKeepCommand(T t6) {
+        if (this.pendingDeletions.isEmpty() && this.pendingInsertions.isEmpty()) {
+            this.skipped++;
+            return;
+        }
+        this.handler.handleReplacement(this.skipped, this.pendingDeletions, this.pendingInsertions);
+        this.pendingDeletions.clear();
+        this.pendingInsertions.clear();
+        this.skipped = 1;
+    }
+}

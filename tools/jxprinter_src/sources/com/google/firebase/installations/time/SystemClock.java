@@ -1,0 +1,22 @@
+package com.google.firebase.installations.time;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+public class SystemClock implements Clock {
+    private static SystemClock singleton;
+
+    private SystemClock() {
+    }
+
+    public static SystemClock getInstance() {
+        if (singleton == null) {
+            singleton = new SystemClock();
+        }
+        return singleton;
+    }
+
+    @Override // com.google.firebase.installations.time.Clock
+    public long currentTimeMillis() {
+        return System.currentTimeMillis();
+    }
+}

@@ -1,0 +1,20 @@
+package com.google.android.gms.internal.mlkit_common;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes2.dex */
+public class zzaa {
+    public static int zza(int i5, int i6) {
+        if (i6 < 0) {
+            throw new AssertionError("cannot store more than MAX_VALUE elements");
+        }
+        int i7 = i5 + (i5 >> 1) + 1;
+        if (i7 < i6) {
+            int iHighestOneBit = Integer.highestOneBit(i6 - 1);
+            i7 = iHighestOneBit + iHighestOneBit;
+        }
+        if (i7 < 0) {
+            return Integer.MAX_VALUE;
+        }
+        return i7;
+    }
+}

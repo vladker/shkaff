@@ -1,0 +1,78 @@
+package org.openxmlformats.schemas.wordprocessingml.x2006.main;
+
+import org.apache.poi.schemas.ooxml.system.ooxml.TypeSystemHolder;
+import org.apache.xmlbeans.SchemaType;
+import org.apache.xmlbeans.StringEnumAbstractBase;
+import org.apache.xmlbeans.XmlString;
+import org.apache.xmlbeans.impl.schema.SimpleTypeFactory;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes6.dex */
+public interface STTheme extends XmlString {
+    public static final SimpleTypeFactory<STTheme> Factory;
+    public static final int INT_MAJOR_ASCII = 3;
+    public static final int INT_MAJOR_BIDI = 2;
+    public static final int INT_MAJOR_EAST_ASIA = 1;
+    public static final int INT_MAJOR_H_ANSI = 4;
+    public static final int INT_MINOR_ASCII = 7;
+    public static final int INT_MINOR_BIDI = 6;
+    public static final int INT_MINOR_EAST_ASIA = 5;
+    public static final int INT_MINOR_H_ANSI = 8;
+    public static final Enum MAJOR_ASCII;
+    public static final Enum MAJOR_BIDI;
+    public static final Enum MAJOR_EAST_ASIA;
+    public static final Enum MAJOR_H_ANSI;
+    public static final Enum MINOR_ASCII;
+    public static final Enum MINOR_BIDI;
+    public static final Enum MINOR_EAST_ASIA;
+    public static final Enum MINOR_H_ANSI;
+    public static final SchemaType type;
+
+    /* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+    public static final class Enum extends StringEnumAbstractBase {
+        static final int INT_MAJOR_ASCII = 3;
+        static final int INT_MAJOR_BIDI = 2;
+        static final int INT_MAJOR_EAST_ASIA = 1;
+        static final int INT_MAJOR_H_ANSI = 4;
+        static final int INT_MINOR_ASCII = 7;
+        static final int INT_MINOR_BIDI = 6;
+        static final int INT_MINOR_EAST_ASIA = 5;
+        static final int INT_MINOR_H_ANSI = 8;
+        private static final long serialVersionUID = 1;
+        public static final StringEnumAbstractBase.Table table = new StringEnumAbstractBase.Table(new Enum[]{new Enum("majorEastAsia", 1), new Enum("majorBidi", 2), new Enum("majorAscii", 3), new Enum("majorHAnsi", 4), new Enum("minorEastAsia", 5), new Enum("minorBidi", 6), new Enum("minorAscii", 7), new Enum("minorHAnsi", 8)});
+
+        private Enum(String str, int i5) {
+            super(str, i5);
+        }
+
+        public static Enum forInt(int i5) {
+            return (Enum) table.forInt(i5);
+        }
+
+        public static Enum forString(String str) {
+            return (Enum) table.forString(str);
+        }
+
+        private Object readResolve() {
+            return forInt(intValue());
+        }
+    }
+
+    static {
+        SimpleTypeFactory<STTheme> simpleTypeFactory = new SimpleTypeFactory<>(TypeSystemHolder.typeSystem, "sttheme58b9type");
+        Factory = simpleTypeFactory;
+        type = simpleTypeFactory.getType();
+        MAJOR_EAST_ASIA = Enum.forString("majorEastAsia");
+        MAJOR_BIDI = Enum.forString("majorBidi");
+        MAJOR_ASCII = Enum.forString("majorAscii");
+        MAJOR_H_ANSI = Enum.forString("majorHAnsi");
+        MINOR_EAST_ASIA = Enum.forString("minorEastAsia");
+        MINOR_BIDI = Enum.forString("minorBidi");
+        MINOR_ASCII = Enum.forString("minorAscii");
+        MINOR_H_ANSI = Enum.forString("minorHAnsi");
+    }
+
+    StringEnumAbstractBase getEnumValue();
+
+    void setEnumValue(StringEnumAbstractBase stringEnumAbstractBase);
+}

@@ -1,0 +1,87 @@
+package io.flutter.embedding.engine.plugins;
+
+import android.content.Context;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import io.flutter.embedding.engine.FlutterEngine;
+import io.flutter.embedding.engine.FlutterEngineGroup;
+import io.flutter.plugin.common.BinaryMessenger;
+import io.flutter.plugin.platform.PlatformViewRegistry;
+import io.flutter.view.TextureRegistry;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+public interface FlutterPlugin {
+
+    /* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+    public interface FlutterAssets {
+        String getAssetFilePathByName(@NonNull String str);
+
+        String getAssetFilePathByName(@NonNull String str, @NonNull String str2);
+
+        String getAssetFilePathBySubpath(@NonNull String str);
+
+        String getAssetFilePathBySubpath(@NonNull String str, @NonNull String str2);
+    }
+
+    /* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+    public static class FlutterPluginBinding {
+        private final Context applicationContext;
+        private final BinaryMessenger binaryMessenger;
+        private final FlutterAssets flutterAssets;
+        private final FlutterEngine flutterEngine;
+        private final FlutterEngineGroup group;
+        private final PlatformViewRegistry platformViewRegistry;
+        private final TextureRegistry textureRegistry;
+
+        public FlutterPluginBinding(@NonNull Context context, @NonNull FlutterEngine flutterEngine, @NonNull BinaryMessenger binaryMessenger, @NonNull TextureRegistry textureRegistry, @NonNull PlatformViewRegistry platformViewRegistry, @NonNull FlutterAssets flutterAssets, @Nullable FlutterEngineGroup flutterEngineGroup) {
+            this.applicationContext = context;
+            this.flutterEngine = flutterEngine;
+            this.binaryMessenger = binaryMessenger;
+            this.textureRegistry = textureRegistry;
+            this.platformViewRegistry = platformViewRegistry;
+            this.flutterAssets = flutterAssets;
+            this.group = flutterEngineGroup;
+        }
+
+        @NonNull
+        public Context getApplicationContext() {
+            return this.applicationContext;
+        }
+
+        @NonNull
+        public BinaryMessenger getBinaryMessenger() {
+            return this.binaryMessenger;
+        }
+
+        @Nullable
+        public FlutterEngineGroup getEngineGroup() {
+            return this.group;
+        }
+
+        @NonNull
+        public FlutterAssets getFlutterAssets() {
+            return this.flutterAssets;
+        }
+
+        @NonNull
+        @Deprecated
+        public FlutterEngine getFlutterEngine() {
+            return this.flutterEngine;
+        }
+
+        @NonNull
+        public PlatformViewRegistry getPlatformViewRegistry() {
+            return this.platformViewRegistry;
+        }
+
+        @NonNull
+        public TextureRegistry getTextureRegistry() {
+            return this.textureRegistry;
+        }
+    }
+
+    void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding);
+
+    void onDetachedFromEngine(@NonNull FlutterPluginBinding flutterPluginBinding);
+}

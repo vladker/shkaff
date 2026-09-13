@@ -1,0 +1,103 @@
+package com.google.common.math;
+
+import androidx.collection.a;
+import com.google.common.annotations.Beta;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.base.Preconditions;
+import com.google.common.primitives.Doubles;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+@ElementTypesAreNonnullByDefault
+@Beta
+@GwtIncompatible
+public final class PairedStatsAccumulator {
+    private final StatsAccumulator xStats = new StatsAccumulator();
+    private final StatsAccumulator yStats = new StatsAccumulator();
+    private double sumOfProductsOfDeltas = 0.0d;
+
+    private static double ensureInUnitRange(double d) {
+        return Doubles.constrainToRange(d, -1.0d, 1.0d);
+    }
+
+    private double ensurePositive(double d) {
+        if (d > 0.0d) {
+            return d;
+        }
+        return Double.MIN_VALUE;
+    }
+
+    public void add(double d, double d6) {
+        this.xStats.add(d);
+        if (!Doubles.isFinite(d) || !Doubles.isFinite(d6)) {
+            this.sumOfProductsOfDeltas = Double.NaN;
+        } else if (this.xStats.count() > 1) {
+            this.sumOfProductsOfDeltas = ((d6 - this.yStats.mean()) * (d - this.xStats.mean())) + this.sumOfProductsOfDeltas;
+        }
+        this.yStats.add(d6);
+    }
+
+    public void addAll(PairedStats pairedStats) {
+        if (pairedStats.count() == 0) {
+            return;
+        }
+        this.xStats.addAll(pairedStats.xStats());
+        if (this.yStats.count() == 0) {
+            this.sumOfProductsOfDeltas = pairedStats.sumOfProductsOfDeltas();
+        } else {
+            this.sumOfProductsOfDeltas = a.A((pairedStats.yStats().mean() - this.yStats.mean()) * (pairedStats.xStats().mean() - this.xStats.mean()), pairedStats.count(), pairedStats.sumOfProductsOfDeltas(), this.sumOfProductsOfDeltas);
+        }
+        this.yStats.addAll(pairedStats.yStats());
+    }
+
+    public long count() {
+        return this.xStats.count();
+    }
+
+    public final LinearTransformation leastSquaresFit() {
+        Preconditions.checkState(count() > 1);
+        if (Double.isNaN(this.sumOfProductsOfDeltas)) {
+            return LinearTransformation.forNaN();
+        }
+        double dSumOfSquaresOfDeltas = this.xStats.sumOfSquaresOfDeltas();
+        if (dSumOfSquaresOfDeltas > 0.0d) {
+            return this.yStats.sumOfSquaresOfDeltas() > 0.0d ? LinearTransformation.mapping(this.xStats.mean(), this.yStats.mean()).withSlope(this.sumOfProductsOfDeltas / dSumOfSquaresOfDeltas) : LinearTransformation.horizontal(this.yStats.mean());
+        }
+        Preconditions.checkState(this.yStats.sumOfSquaresOfDeltas() > 0.0d);
+        return LinearTransformation.vertical(this.xStats.mean());
+    }
+
+    public final double pearsonsCorrelationCoefficient() {
+        Preconditions.checkState(count() > 1);
+        if (Double.isNaN(this.sumOfProductsOfDeltas)) {
+            return Double.NaN;
+        }
+        double dSumOfSquaresOfDeltas = this.xStats.sumOfSquaresOfDeltas();
+        double dSumOfSquaresOfDeltas2 = this.yStats.sumOfSquaresOfDeltas();
+        Preconditions.checkState(dSumOfSquaresOfDeltas > 0.0d);
+        Preconditions.checkState(dSumOfSquaresOfDeltas2 > 0.0d);
+        return ensureInUnitRange(this.sumOfProductsOfDeltas / Math.sqrt(ensurePositive(dSumOfSquaresOfDeltas * dSumOfSquaresOfDeltas2)));
+    }
+
+    public double populationCovariance() {
+        Preconditions.checkState(count() != 0);
+        return this.sumOfProductsOfDeltas / count();
+    }
+
+    public final double sampleCovariance() {
+        Preconditions.checkState(count() > 1);
+        return this.sumOfProductsOfDeltas / (count() - 1);
+    }
+
+    public PairedStats snapshot() {
+        return new PairedStats(this.xStats.snapshot(), this.yStats.snapshot(), this.sumOfProductsOfDeltas);
+    }
+
+    public Stats xStats() {
+        return this.xStats.snapshot();
+    }
+
+    public Stats yStats() {
+        return this.yStats.snapshot();
+    }
+}

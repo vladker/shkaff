@@ -139,7 +139,7 @@ fun DashboardScreen(nav: NavController) {
         floatingActionButton = {
             if (ui.canCreate) {
                 FloatingActionButton(
-                    onClick = { nav.navigate("item-form/0/0") },
+                    onClick = { nav.navigate("item-wizard") },
                     containerColor = Ozon.Blue,
                     contentColor = Ozon.TextPrimary
                 ) {
@@ -209,7 +209,7 @@ fun DashboardScreen(nav: NavController) {
                 item { SectionTitle("Быстрые действия") }
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickAction("Добавить вещь", Icons.Filled.Add, Modifier.weight(1f)) { nav.navigate("item-form/0/0") }
+                        QuickAction("Добавить вещь", Icons.Filled.Add, Modifier.weight(1f)) { nav.navigate("item-wizard") }
                         QuickAction("Хранилище", Icons.Filled.Storage, Modifier.weight(1f)) { nav.navigate("storage-form/0") }
                     }
                 }
@@ -415,7 +415,7 @@ private fun OzonSearch(nav: NavController) {
                 tint = Ozon.TextSecondary
             )
         }
-        IconButton(onClick = { nav.navigate("item-form/0/0") }) {
+        IconButton(onClick = { nav.navigate("item-wizard") }) {
             Icon(
                 Icons.Filled.PhotoCamera,
                 contentDescription = "Сфотографировать",

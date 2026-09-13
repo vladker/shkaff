@@ -1,0 +1,30 @@
+package com.google.firebase.crashlytics.internal.common;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+/* JADX INFO: compiled from: r8-map-id-ecf7e14176b8e73200efbc86dd80f717955f363e9b0ac3efdea3eedd88177748 */
+/* JADX INFO: loaded from: classes3.dex */
+public final class OnDemandCounter {
+    private final AtomicInteger recordedOnDemandExceptions = new AtomicInteger();
+    private final AtomicInteger droppedOnDemandExceptions = new AtomicInteger();
+
+    public int getDroppedOnDemandExceptions() {
+        return this.droppedOnDemandExceptions.get();
+    }
+
+    public int getRecordedOnDemandExceptions() {
+        return this.recordedOnDemandExceptions.get();
+    }
+
+    public void incrementDroppedOnDemandExceptions() {
+        this.droppedOnDemandExceptions.getAndIncrement();
+    }
+
+    public void incrementRecordedOnDemandExceptions() {
+        this.recordedOnDemandExceptions.getAndIncrement();
+    }
+
+    public void resetDroppedOnDemandExceptions() {
+        this.droppedOnDemandExceptions.set(0);
+    }
+}
