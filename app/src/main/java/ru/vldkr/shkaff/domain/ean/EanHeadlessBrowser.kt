@@ -33,13 +33,15 @@ class EanHeadlessBrowser(
         val ean: String? = null,
         val name: String? = null,
         val brand: String? = null,
-        val category: String? = null
+        val category: String? = null,
+        val partNumber: String? = null
     ) {
         fun toQueryString(): String {
             val parts = mutableListOf<String>()
             ean?.takeIf { it.isNotBlank() }?.let { parts += "штрихкод $it" }
             name?.takeIf { it.isNotBlank() }?.let { parts += it }
             brand?.takeIf { it.isNotBlank() }?.let { parts += "бренд $it" }
+            partNumber?.takeIf { it.isNotBlank() }?.let { parts += "партномер артикул $it" }
             category?.takeIf { it.isNotBlank() }?.let { parts += "категория $it" }
             return parts.joinToString(" ")
         }

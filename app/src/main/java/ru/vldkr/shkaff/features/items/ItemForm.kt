@@ -333,10 +333,11 @@ class ItemFormVm(
         val searchQuery = ru.vldkr.shkaff.domain.ean.EanHeadlessBrowser.SearchQuery(
             ean = ean.trim().takeIf { it.length >= 8 },
             name = name.trim().takeIf { it.isNotBlank() },
-            brand = brandValue().takeIf { it.isNotBlank() }
+            brand = brandValue().takeIf { it.isNotBlank() },
+            partNumber = partNumberValue().takeIf { it.isNotBlank() }
         )
         if (searchQuery.toQueryString().isBlank()) {
-            smartSearchError.value = "Введите название вещи или укажите бренд для поиска"
+            smartSearchError.value = "Для поиска введите название, рыночный штрихкод или партномер (номер модели)"
             return
         }
 
@@ -386,6 +387,17 @@ class ItemFormVm(
             .firstOrNull { it.contains("бренд", true) || it.contains("марка", true) }
             ?.substringAfter(":")?.trim()?.takeIf { it.isNotBlank() }
             .orEmpty()
+    }
+
+    // Партномер (номер модели): поле «Код / номер», а если оно пусто — атрибут
+    // с подходящим названием (Модель, Партномер, Артикул, Part number).
+    private fun partNumberValue(): String {
+        val code = code.trim().takeIf { it.isNotBlank() }
+        val labels = listOf("модель", "партномер", "парт-номер", "артикул", "part number", "номер модели")
+        val fromAttr = attrDefs.value.firstOrNull { def ->
+            labels.any { l -> def.label.equals(l, true) }
+        }?.let { def -> attrs[def.key]?.trim()?.takeIf { v -> v.isNotBlank() } }
+        return listOfNotNull(code, fromAttr).distinct().joinToString(" ")
     }
 
     // Все заполненные поля карточки (подпись → значение), включая пользовательские атрибуты.
@@ -726,24 +738,32 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                         placeholder = { Text("Например: Дрель Makita") },
                         singleLine = true
                     )
-                    if (vm.name.trim().isNotEmpty() || vm.attrs["brand"]?.trim()?.isNotEmpty() == true) {
-                        if (vm.smartSearchBusy.collectAsState().value) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    vm.smartSearchStep.collectAsState().value?.ifBlank { null }
-                                        ?: "Ищем через ИИ…",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(onClick = { vm.cancelSmartSearch() }) {
-                                    Text("Стоп")
-                                }
-                            }
-                        } else {
-                            TextButton(onClick = { vm.smartSearchItem() }, modifier = Modifier.align(Alignment.End)) {
-                                Text("Найти через headless браузер + ИИ")
+                    if (vm.smartSearchBusy.collectAsState().value) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                vm.smartSearchStep.collectAsState().value?.ifBlank { null }
+                                    ?: "Ищем через ИИ…",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { vm.cancelSmartSearch() }) {
+                                Text("Стоп")
                             }
                         }
+                    } else {
+                        OutlinedButton(
+                            onClick = { vm.smartSearchItem() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Text("Предзаполнить с помощью ИИ")
+                        }
+                        Text(
+                            "Находит по названию, рыночному штрихкоду или партномеру (номеру модели)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     vm.smartSearchError.collectAsState().value?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
