@@ -22,6 +22,11 @@ class StorageRepository(
 
     suspend fun count(): Int = dao.count()
 
+    // Пометить, что этикетка напечатана.
+    suspend fun markLabelled(id: String) {
+        dao.markLabelled(id, System.currentTimeMillis(), deviceId())
+    }
+
     suspend fun create(d: StorageData): StorageEntity {
         val now = System.currentTimeMillis()
         val e = StorageEntity(

@@ -34,6 +34,14 @@ class ItemRepository(
 
     suspend fun countByLocation(locationId: String): Int = dao.countByLocation(locationId)
 
+    // Вещи, которым ещё не напечатана этикетка — очередь печати.
+    suspend fun recentUnlabelled(limit: Int): List<ItemEntity> = dao.recentUnlabelled(limit)
+
+    // Пометить, что этикетка напечатана.
+    suspend fun markLabelled(id: String) {
+        dao.markLabelled(id, System.currentTimeMillis(), deviceId())
+    }
+
     suspend fun create(d: ItemData): ItemEntity {
         val now = System.currentTimeMillis()
         val e = ItemEntity(

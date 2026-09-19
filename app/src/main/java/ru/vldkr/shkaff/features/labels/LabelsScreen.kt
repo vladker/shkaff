@@ -8,6 +8,7 @@ import android.graphics.Color
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,9 +23,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,9 +53,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -61,6 +67,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import ru.vldkr.shkaff.data.AttrJson
+import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
@@ -89,9 +98,19 @@ import kotlin.math.roundToInt
  *        предпросмотр, быстрая/тестовая печать, сохранение зон как шаблоны.
  */
 class LabelsVm(
-    private val itemId: String?,
+    val entityKind: String = "item", // "item" | "location" | "storage" — что именно маркируем.
+    private val entityId: String?,
     private val templateId: String?
 ) : ViewModel() {
+
+    // Субъект этикетки: название, код (для QR) и карта атрибутов для рендера.
+    data class Subject(
+        val kind: String,
+        val id: String,
+        val name: String,
+        val code: String,
+        val attrs: Map<String, String>
+    )
 
     data class Zone(
         val name: String,
@@ -99,18 +118,21 @@ class LabelsVm(
         val layoutMode: String = "auto",
         val qrCount: Int = 1,
         val qrScale: Float = 1f,
-        val fontSize: Float = 12f
+        val fontSize: Float = 12f,
+        // Одна зона — одна вещь: id вещи, которую печатаем в этой области листа (null — зона пуста).
+        val itemId: String? = null
     )
 
     enum class SaveMode { OVERWRITE, SAVE_AS, SET_DEFAULT }
 
     data class Ui(
         // — этикетка (шаг 0) —
-        val item: ItemEntity? = null,
+        val subject: Subject? = null,
         val code: String = "",
         val name: String = "",
         val templates: List<LabelTemplateEntity> = emptyList(),
         val template: LabelTemplateEntity? = null,
+        val attrDefs: List<AttributeDefEntity> = emptyList(),
         val bitmap: Bitmap? = null,
         val savedMsg: String? = null,
         val profiles: List<PrinterProfileEntity> = emptyList(),
@@ -139,7 +161,13 @@ class LabelsVm(
         // — раскладка и печать (шаг 1) —
         val activeZone: Int = 0,
         val previewBmp: Bitmap? = null,
-        val createdNames: List<String> = emptyList()
+        val createdNames: List<String> = emptyList(),
+        // — вещи в зонах (батч) —
+        val unlabelled: List<ItemEntity> = emptyList(),
+        // Кэш вещей, назначенных в зоны (id → сущность): имена остаются видимыми,
+        // даже когда вещь уже вышла из очереди «без этикетки».
+        val itemCache: Map<String, ItemEntity> = emptyMap(),
+        val showAddDialog: Boolean = false
     )
 
     val ui = MutableStateFlow(Ui())
@@ -210,6 +238,23 @@ class LabelsVm(
     }
     fun setFormat(f: String) {
         update { it.copy(format = f, bitmap = null, savedMsg = null) }
+        regenerate()
+    }
+
+    /** Ключи атрибутов, отмеченные в шаблоне (template.label_attrs — JSON-массив ключей). */
+    fun selectedAttrKeys(): Set<String> =
+        ui.value.template?.let { AttrJson.parseOptions(it.label_attrs) }?.toSet() ?: emptySet()
+
+    /** Включить/выключить атрибут в наборе печатаемых и переписать template.label_attrs (порядок словаря). */
+    fun toggleAttr(key: String) {
+        val t = ui.value.template ?: return
+        val sel = selectedAttrKeys().toMutableSet()
+        if (key in sel) sel.remove(key) else sel.add(key)
+        val base = ui.value.attrDefs.map { it.key }.filter { it in sel }
+        val ordered = base + sel.filter { it !in base }
+        val arr = JSONArray()
+        ordered.forEach { arr.put(it) }
+        update { it.copy(template = t.copy(label_attrs = arr.toString()), bitmap = null, savedMsg = null) }
         regenerate()
     }
 
@@ -313,9 +358,56 @@ class LabelsVm(
         }
     }
 
+    // Атрибуты текущего субъекта (для печати на этикетке); пустая карта, если субъект не загружен.
+    private fun currentAttrs(): Map<String, String> =
+        ui.value.subject?.attrs ?: emptyMap()
+
+    // ==================== Вещи в зонах (батч: одна зона — одна вещь) ====================
+
+    /** Очередь вещей, которым ещё не напечатана этикетка — для заполнения зон. */
+    fun loadUnlabelled() {
+        viewModelScope.launch {
+            val list = Deps.items.recentUnlabelled(200).toMutableList()
+            // Текущая вещь (для которой открыт экран) всегда доступна к назначению.
+            val s = ui.value.subject
+            if (s != null && s.kind == "item") {
+                val cur = Deps.items.byId(s.id)
+                if (cur != null && list.none { it.id == cur.id }) list.add(0, cur)
+            }
+            update { it.copy(unlabelled = list, itemCache = list.associateBy { it.id }) }
+        }
+    }
+
+    fun openAddDialog() {
+        loadUnlabelled()
+        update { it.copy(showAddDialog = true) }
+    }
+
+    fun closeAddDialog() {
+        update { it.copy(showAddDialog = false) }
+    }
+
+    /** Назначить вещь активной зоне (одна зона — одна вещь; повторный выбор заменяет). */
+    fun assignItemToActiveZone(itemId: String) {
+        if (ui.value.step != 1) return
+        updateActive { it.copy(itemId = itemId) }
+        closeAddDialog()
+    }
+
+    /** Убрать вещь из зоны. */
+    fun clearZoneItem(i: Int) {
+        val list = ui.value.zones.toMutableList()
+        if (!list.indices.contains(i)) return
+        list[i] = list[i].copy(itemId = null)
+        update { it.copy(zones = list) }
+    }
+
+    /** Сколько зон заполнено вещью. */
+    fun filledZoneCount(): Int = ui.value.zones.count { it.itemId != null }
+
     fun regenerate() {
         val t = effectiveTemplate() ?: return
-        val bmp = LabelGenerator.generateLayout(t, ui.value.code, ui.value.name)
+        val bmp = LabelGenerator.generateLayout(t, ui.value.code, ui.value.name, attrs = currentAttrs())
         update { it.copy(bitmap = bmp, savedMsg = null) }
     }
 
@@ -400,6 +492,18 @@ class LabelsVm(
         }
     }
 
+    /** Прямоугольный выбор между двумя углами (тащ пальцем по шахматке). */
+    fun selectRect(a: Int, b: Int) {
+        if (ui.value.step != 0) return
+        val s = spec
+        val (ar, ac) = LabelGrid.rowOf(s, a) to LabelGrid.colOf(s, a)
+        val (br, bc) = LabelGrid.rowOf(s, b) to LabelGrid.colOf(s, b)
+        val cells = (minOf(ar, br)..maxOf(ar, br)).flatMap { r ->
+            (minOf(ac, bc)..maxOf(ac, bc)).map { c -> LabelGrid.cellIndex(s, r, c) }
+        }.toSet()
+        update { it.copy(selected = cells) }
+    }
+
     fun markAll() {
         if (ui.value.step != 0) return
         update { it.copy(selected = (0 until spec.rows * spec.cols).toSet()) }
@@ -470,7 +574,7 @@ class LabelsVm(
         val r = templateFor(z) ?: return
         val code = ui.value.code.ifBlank { "DEMO-123" }
         val name = ui.value.name.ifBlank { "Демо-вещь" }
-        val bmp = LabelGenerator.generateLayout(r.first, code, name, dpi = 150)
+        val bmp = LabelGenerator.generateLayout(r.first, code, name, dpi = 150, attrs = currentAttrs())
         update { it.copy(previewBmp = bmp) }
     }
 
@@ -491,6 +595,16 @@ class LabelsVm(
     }
 
     /** Печать активного содержимого кода в активной зоне (с её смещением). */
+    // Отметить субъект (вещь/ящик/хранилище) как «этикетка напечатана».
+    private suspend fun markSubjectLabelled() {
+        val s = ui.value.subject ?: return
+        when (s.kind) {
+            "location" -> Deps.locations.markLabelled(s.id)
+            "storage" -> Deps.storages.markLabelled(s.id)
+            else -> Deps.items.markLabelled(s.id)
+        }
+    }
+
     fun quickPrint() {
         val p = currentPrinter()
         if (p == null) { update { it.copy(printError = "Нет профиля принтера — создайте в разделе «Принтеры»") }; return }
@@ -502,7 +616,7 @@ class LabelsVm(
         viewModelScope.launch {
             try {
                 val r = templateFor(z) ?: throw IllegalStateException("не удалось построить шаблон зоны")
-                val bmp = LabelGenerator.generateLayout(r.first, ui.value.code, ui.value.name, dpi = LabelMath.DPI)
+                val bmp = LabelGenerator.generateLayout(r.first, ui.value.code, ui.value.name, dpi = LabelMath.DPI, attrs = currentAttrs())
                     ?: throw IllegalStateException("не удалось отрисовать этикетку")
                 val (oxMm, oyMm) = LabelGrid.regionOrigin(spec, r.second)
                 val res = PrintManager.printBitmap(
@@ -513,7 +627,10 @@ class LabelsVm(
                 )
                 val e = res.exceptionOrNull()
                 when {
-                    e == null -> update { it.copy(printMsg = "Отправлено на печать: ${PrintManager.describe(p)}") }
+                    e == null -> {
+                        markSubjectLabelled()
+                        update { it.copy(printMsg = "Отправлено на печать: ${PrintManager.describe(p)}") }
+                    }
                     else -> update { it.copy(printError = "Не удалось напечатать: ${e.message}") }
                 }
             } catch (e: Exception) {
@@ -578,6 +695,91 @@ class LabelsVm(
                 val e = res.exceptionOrNull()
                 when {
                     e == null -> update { it.copy(printMsg = "Напечатана пустая полоска ${mm} мм — проверьте смещение и вернитесь") }
+                    else -> update { it.copy(printError = "Не удалось напечатать: ${e.message}") }
+                }
+            } catch (e: Exception) {
+                update { it.copy(printError = e.message ?: "Ошибка печати") }
+            } finally {
+                update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /**
+     * Батч-печать: каждая заполненная зона печатает свою вещь в своей области листа.
+     * Собираем один растр на весь лист (зоны не пересекаются) и отправляем одним кадром —
+     * так позиционирование работает и для TSC, и для ESC/POS. Пустые зоны пропускаем.
+     */
+    fun printSheet() {
+        val p = currentPrinter()
+        if (p == null) { update { it.copy(printError = "Нет профиля принтера — создайте в разделе «Принтеры»") }; return }
+        if (ui.value.busy) return
+        if (filledZoneCount() == 0) { update { it.copy(printError = "Зоны пусты — добавьте вещи (кнопка «Добавить вещь»)") }; return }
+        update { it.copy(busy = true, printMsg = null, printError = null) }
+        viewModelScope.launch {
+            // Зона + шаблон/область + вещь для печати.
+            data class Job(val tmpl: LabelTemplateEntity, val region: GridRegion, val item: ItemEntity)
+            try {
+                val jobs = mutableListOf<Job>()
+                val skipped = mutableListOf<String>()
+                for (z in ui.value.zones) {
+                    val id = z.itemId
+                    if (id == null) continue
+                    val item = Deps.items.byId(id)
+                    if (item == null) { skipped += "${z.name}: вещь не найдена"; continue }
+                    val pair = templateFor(z)
+                    if (pair == null) { skipped += "${z.name}: нет области зоны (пустые координаты)"; continue }
+                    jobs += Job(pair.first, pair.second, item)
+                }
+                if (jobs.isEmpty()) throw IllegalStateException(skipped.joinToString("; ").ifBlank { "нет ни одной заполненной зоны" })
+
+                // Цвета из базового шаблона (логика как в PrintManager.printLabel).
+                val base = ui.value.template ?: ui.value.templates.firstOrNull()
+                val fg = LabelGenerator.parseColor(base?.text_color ?: "#000000")
+                val bg = LabelGenerator.parseColor(base?.bg_color ?: "#FFFFFF")
+                val dark = if (base?.invert == true) bg else fg
+                val light = if (base?.invert == true) fg else bg
+
+                // Размер листа — покрывает все области зон (ширина — не меньше бумаги).
+                val sheetW = maxOf(p.paper_width_mm, jobs.maxOf {
+                    LabelGrid.regionOrigin(spec, it.region).first + LabelGrid.regionMm(spec, it.region).first
+                })
+                val sheetH = jobs.maxOf {
+                    LabelGrid.regionOrigin(spec, it.region).second + LabelGrid.regionMm(spec, it.region).second
+                }
+                val sheet = Bitmap.createBitmap(
+                    LabelMath.px(sheetW).coerceAtLeast(32),
+                    LabelMath.px(sheetH).coerceAtLeast(16),
+                    Bitmap.Config.ARGB_8888
+                )
+                val canvas = Canvas(sheet)
+                canvas.drawColor(light)
+
+                val printedIds = mutableListOf<String>()
+                for (job in jobs) {
+                    val bmp = LabelGenerator.generateLayout(
+                        job.tmpl, job.item.code, job.item.name,
+                        dpi = LabelMath.DPI, attrs = AttrJson.toMap(job.item.attributes)
+                    )
+                    if (bmp != null) {
+                        val (oxMm, oyMm) = LabelGrid.regionOrigin(spec, job.region)
+                        canvas.drawBitmap(bmp, LabelMath.px(oxMm).toFloat(), LabelMath.px(oyMm).toFloat(), null)
+                        printedIds += job.item.id
+                    }
+                }
+                if (printedIds.isEmpty()) throw IllegalStateException("не удалось отрисовать ни одну этикетку")
+
+                val res = PrintManager.printBitmap(p, sheet, dark, light, widthMm = sheetW)
+                val e = res.exceptionOrNull()
+                when {
+                    e == null -> {
+                        for (id in printedIds) Deps.items.markLabelled(id)
+                        // Лист напечатан: очищаем назначения и обновляем очередь unlabeled.
+                        update { cur -> cur.copy(zones = cur.zones.map { z -> z.copy(itemId = null) }) }
+                        loadUnlabelled()
+                        val skipNote = if (skipped.isEmpty()) "" else " Пропущено: " + skipped.joinToString("; ")
+                        update { it.copy(printMsg = "Отправлено на печать: ${printedIds.size} вещь(ей) — ${PrintManager.describe(p)}.$skipNote") }
+                    }
                     else -> update { it.copy(printError = "Не удалось напечатать: ${e.message}") }
                 }
             } catch (e: Exception) {
@@ -677,20 +879,58 @@ class LabelsVm(
                 regenerate()
             }
         }
-        if (itemId != null) {
+        viewModelScope.launch {
+            // Словарь атрибутов субъекта (scope = item/storage/location + глобальные *). Пикер «Атрибуты на этикетке».
+            Deps.attributes.observeAll().collect { all ->
+                update { it.copy(attrDefs = all.filter { d -> d.scope == entityKind || d.scope == "*" }) }
+            }
+        }
+        if (entityId != null) {
             viewModelScope.launch {
-                Deps.items.byId(itemId)?.let { found ->
-                    // Код вещи → отсканированный → ULID (сохраняем, если вещь без кода).
-                    val code = found.code.ifBlank {
-                        ScanBus.lastCode?.also { ScanBus.lastCode = null }
-                    }.orEmpty().ifBlank { newUlid() }
-                    if (code != found.code) Deps.items.setCode(itemId, code)
-                    update { it.copy(item = found, code = code, name = found.name) }
-                    regenerate()
+                when (entityKind) {
+                    "location" -> Deps.locations.byId(entityId)?.let { f ->
+                        val name = f.name.ifBlank { f.label }.ifBlank { "Ящик" }
+                        val code = f.label.ifBlank { newUlid() }
+                        update {
+                            it.copy(
+                                subject = Subject("location", f.id, name, code, AttrJson.toMap(f.attributes)),
+                                code = code,
+                                name = name
+                            )
+                        }
+                        regenerate()
+                    }
+                    "storage" -> Deps.storages.byId(entityId)?.let { f ->
+                        val name = f.name.ifBlank { "Хранилище" }
+                        val code = f.code.ifBlank { newUlid() }
+                        update {
+                            it.copy(
+                                subject = Subject("storage", f.id, name, code, AttrJson.toMap(f.attributes)),
+                                code = code,
+                                name = name
+                            )
+                        }
+                        regenerate()
+                    }
+                    else -> Deps.items.byId(entityId)?.let { found ->
+                        // Код вещи → отсканированный → ULID (сохраняем, если вещь без кода).
+                        val code = found.code.ifBlank {
+                            ScanBus.lastCode?.also { ScanBus.lastCode = null }
+                        }.orEmpty().ifBlank { newUlid() }
+                        if (code != found.code) Deps.items.setCode(entityId, code)
+                        update {
+                            it.copy(
+                                subject = Subject("item", found.id, found.name, code, AttrJson.toMap(found.attributes)),
+                                code = code,
+                                name = found.name
+                            )
+                        }
+                        regenerate()
+                    }
                 }
             }
         }
-        if (ui.value.code.isEmpty() && ui.value.item == null) {
+        if (ui.value.code.isEmpty() && ui.value.subject == null) {
             val scanned = ScanBus.lastCode
             val code = scanned ?: newUlid()
             if (scanned != null) ScanBus.lastCode = null
@@ -699,11 +939,14 @@ class LabelsVm(
         }
     }
 
-    class Factory(private val itemId: String?, private val templateId: String?) :
-        ViewModelProvider.Factory {
+    class Factory(
+        private val entityKind: String = "item",
+        private val entityId: String?,
+        private val templateId: String?
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            LabelsVm(itemId, templateId) as T
+            LabelsVm(entityKind, entityId, templateId) as T
     }
 }
 
@@ -711,8 +954,8 @@ class LabelsVm(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
-    val vm: LabelsVm = viewModel(factory = LabelsVm.Factory(itemId, templateId))
+fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityKind: String = "item") {
+    val vm: LabelsVm = viewModel(factory = LabelsVm.Factory(entityKind, itemId, templateId))
     val ui by vm.ui.collectAsState()
     val ctx = LocalContext.current
     var showTemplatePicker by remember { mutableStateOf(false) }
@@ -726,7 +969,7 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (ui.item == null) "Этикетка" else "Этикетка: ${ui.item?.name}") },
+                title = { Text(if (ui.subject == null) "Этикетка" else "Этикетка: ${ui.subject?.name}") },
                 navigationIcon = {
                     IconButton(onClick = { if (ui.step > 0) vm.back() else nav.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
@@ -762,6 +1005,8 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                     )
                     Spacer(Modifier.height(16.dp))
                     BasicSettingsCard(vm, ui)
+                    Spacer(Modifier.height(16.dp))
+                    AttributePickerCard(vm, ui)
                     Spacer(Modifier.height(16.dp))
                     // Предпросмотр одиночной этикетки + действия
                     SectionTitle("Предпросмотр")
@@ -821,6 +1066,73 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                    }
+                    // Вещи в зонах: одна зона — одна вещь. Заполняем все или часть и печатаем лист.
+                    // Только для item-режима: у ящика/хранилища субъект один — сам объект.
+                    if (vm.entityKind == "item") {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SectionTitle("Вещи в зонах")
+                                ui.zones.forEachIndexed { i, z ->
+                                    val it = z.itemId?.let { id -> ui.itemCache[id] }
+                                    val isActive = i == ui.activeZone
+                                    // Тап по строке выбирает зону: «Добавить вещь» пойдёт именно в неё.
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else ComposeColor.Transparent)
+                                            .clickable { vm.selectActiveZone(i) }
+                                    ) {
+                                        Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                                            Text(
+                                                z.name,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                it?.name?.ifBlank { "Вещь" } ?: "пусто",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (it == null) MaterialTheme.colorScheme.onSurfaceVariant
+                                                else MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        if (it != null) {
+                                            TextButton(onClick = { vm.clearZoneItem(i) }) { Text("Снять") }
+                                        }
+                                        if (isActive) {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = "Выбрано",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "Добавлять вещь в зону: «${ui.zones.getOrNull(ui.activeZone)?.name ?: "—"}»",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { vm.openAddDialog() }, modifier = Modifier.weight(1f)) {
+                                        Text("Добавить вещь")
+                                    }
+                                    Button(
+                                        onClick = { vm.printSheet() },
+                                        enabled = !ui.busy && vm.filledZoneCount() > 0,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Печать листа (${vm.filledZoneCount()})")
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
                     }
                     val z = ui.zones.getOrNull(ui.activeZone)
                     val zr = z?.let { LabelGrid.regionOf(vm.spec, it.cells) }
@@ -953,6 +1265,14 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String) {
                 onDismiss = { vm.closeSaveDialog() }
             )
         }
+        if (ui.showAddDialog) {
+            AddItemDialog(
+                items = ui.unlabelled,
+                activeZone = ui.zones.getOrNull(ui.activeZone),
+                onPick = { vm.assignItemToActiveZone(it.id) },
+                onDismiss = { vm.closeAddDialog() }
+            )
+        }
     }
 }
 
@@ -1057,6 +1377,32 @@ private fun BasicSettingsCard(vm: LabelsVm, ui: LabelsVm.Ui) {
     }
 }
 
+/** Выбор атрибутов вещи, которые печатаются под кодом (из словаря scope=item). */
+@Composable
+private fun AttributePickerCard(vm: LabelsVm, ui: LabelsVm.Ui) {
+    val defs = ui.attrDefs
+    if (defs.isEmpty()) return
+    val selected = vm.selectedAttrKeys()
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Атрибуты на этикетке", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Какие атрибуты вещи печатать под кодом. Сохраняется в шаблон.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            defs.forEach { def ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = def.key in selected, onCheckedChange = { vm.toggleAttr(def.key) })
+                    Text(def.label, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
 /** Предпросмотр с линейками сверху (ширина) и слева (высота). */
 @Composable
 private fun LabelPreviewWithRulers(bitmap: Bitmap, widthMm: Double, heightMm: Double) {
@@ -1154,6 +1500,57 @@ private fun SaveTemplateDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
+}
+
+/** Выбор вещи из очереди «без этикетки» для назначения в активную зону. */
+@Composable
+private fun AddItemDialog(
+    items: List<ItemEntity>,
+    activeZone: LabelsVm.Zone?,
+    onPick: (ItemEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Добавить вещь" + (activeZone?.let { " → зона «${it.name}»" } ?: ""))
+        },
+        text = {
+            if (items.isEmpty()) {
+                Text(
+                    "Нет вещей без напечатанной этикетки. Создайте вещь или печатайте заново.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                Column {
+                    items.forEach { item ->
+                        TextButton(onClick = { onPick(item) }, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    item.name.ifBlank { "Вещь" },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (item.code.isNotBlank()) {
+                                    Text(
+                                        item.code,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
         }
     )
 }

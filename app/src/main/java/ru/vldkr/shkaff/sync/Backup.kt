@@ -73,6 +73,7 @@ object Backup {
         put("dont_fill_to_brim", e.dont_fill_to_brim)
         put("is_full", e.is_full)
         put("level", e.level)
+        put("labelled_at", e.labelled_at ?: 0)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -88,6 +89,7 @@ object Backup {
         dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
         is_full = j.optBoolean("is_full", false),
         level = j.optString("level", ""),
+        labelled_at = j.optLong("labelled_at", 0L).takeIf { it > 0 },
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -102,6 +104,7 @@ object Backup {
         put("dont_fill_to_brim", e.dont_fill_to_brim)
         put("is_full", e.is_full)
         put("level", e.level)
+        put("labelled_at", e.labelled_at ?: 0)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -117,6 +120,7 @@ object Backup {
         dont_fill_to_brim = j.optBoolean("dont_fill_to_brim", false),
         is_full = j.optBoolean("is_full", false),
         level = j.optString("level", ""),
+        labelled_at = j.optLong("labelled_at", 0L).takeIf { it > 0 },
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
@@ -134,6 +138,7 @@ object Backup {
         put("expiry_date", e.expiry_date ?: "")
         put("ean", e.ean ?: "")
         put("tags", e.tags)
+        put("labelled_at", e.labelled_at ?: 0)
     }
 
     private fun item(j: JSONObject): ItemEntity = ItemEntity(
@@ -150,7 +155,8 @@ object Backup {
         device_last_modified = j.optString("device", ""),
         expiry_date = j.optString("expiry_date", "").takeIf { it.isNotBlank() },
         ean = j.optString("ean", "").takeIf { it.isNotBlank() },
-        tags = j.optString("tags", "[]")
+        tags = j.optString("tags", "[]"),
+        labelled_at = j.optLong("labelled_at", 0L).takeIf { it > 0 }
     )
 
     private fun o(e: AnnotationEntity): JSONObject = JSONObject().apply {
@@ -182,6 +188,7 @@ object Backup {
         put("app_link", e.app_link)
         put("layout_mode", e.layout_mode); put("qr_count", e.qr_count); put("qr_scale", e.qr_scale)
         put("offset_x_mm", e.offset_x_mm); put("offset_y_mm", e.offset_y_mm)
+        put("label_attrs", e.label_attrs)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -204,6 +211,7 @@ object Backup {
         qr_scale = j.optDouble("qr_scale", 1.0),
         offset_x_mm = j.optDouble("offset_x_mm", 0.0),
         offset_y_mm = j.optDouble("offset_y_mm", 0.0),
+        label_attrs = j.optString("label_attrs", "[]"),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -173,6 +174,9 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { nav.navigate("labels/storage/$storageId/0") }) {
+                        Icon(Icons.Filled.Label, contentDescription = "Этикетка")
+                    }
                     if (Access.can(role, Access.EDIT)) {
                         IconButton(onClick = { nav.navigate("storage-form/$storageId") }) {
                             Icon(Icons.Filled.Edit, contentDescription = "Изменить")

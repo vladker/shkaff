@@ -1,9 +1,10 @@
 package ru.vldkr.shkaff.features.labels
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,9 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import java.io.File
 import ru.vldkr.shkaff.domain.labels.GridSpec
@@ -64,7 +71,7 @@ fun ZoneSetupCard(
             Text("Зоны (калибровка под принтер)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "1) Напечатайте шаблон-шахматку под свой принтер. " +
-                    "2) Отметьте клетки, где печать плотная. " +
+                    "2) Проведите пальцем по диагонали — выделится прямоугольная зона, где печать плотная (тап — одна клетка). " +
                     "3) «Сохранить зоны» — для каждой появится шаблон с её размером и позицией на листе; " +
                     "на шаге «Раскладка» выбирайте зону, в которой печатаете.",
                 style = MaterialTheme.typography.bodySmall,
@@ -132,11 +139,11 @@ fun ZoneSetupCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    "Отмечайте клетки рабочего листа (цвет — будущая зона):",
+                    "Проведите пальцем от угла к углу — между ними выделится прямоугольная зона. Тап — одна клетка:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                CheckerboardGrid(spec, ui.selected, ui.zones.map { it.cells }, vm::toggleCell)
+                CheckerboardGrid(spec, ui.selected, ui.zones.map { it.cells }, vm::toggleCell, vm::selectRect)
             }
             region?.let { r ->
                 val (w, h) = LabelGrid.regionMm(spec, r)
@@ -219,7 +226,9 @@ fun ZoneSetupCard(
 }
 
 /**
- * Кликабельная шахматка:
+ * Интерактивная шахматка (Canvas + жесты):
+ * - тащ пальцем от угла к углу — между ними формируется прямоугольная зона (живой предпросмотр);
+ * - тап — переключает одну клетку (точная доводка);
  * - клетки сохранённых зон — цвет своей зоны (полупрозрачный);
  * - рабочий выбор — цвет будущей (следующей) зоны;
  * - свободные клетки — нейтральная «застенка».
@@ -229,39 +238,71 @@ private fun CheckerboardGrid(
     spec: GridSpec,
     selected: Set<Int>,
     zones: List<Set<Int>>,
-    onCell: (Int) -> Unit
+    onCell: (Int) -> Unit,
+    onRect: (Int, Int) -> Unit
 ) {
     val cell = (spec.cellMm * 1.5).dp.coerceIn(14.dp, 36.dp)
-    val neutral = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val cellPx = with(LocalDensity.current) { cell.toPx() }
+    val scheme = MaterialTheme.colorScheme
+    val neutral = scheme.outlineVariant.copy(alpha = 0.5f)
     val nextColor = zoneColor(zones.size)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        for (r in 0 until spec.rows) {
-            Row {
-                for (c in 0 until spec.cols) {
-                    val idx = LabelGrid.cellIndex(spec, r, c)
-                    val zoneIdx = zones.indexOfFirst { idx in it }
-                    val fill: UiColor
-                    val borderC: UiColor
-                    if (zoneIdx >= 0) {
-                        val zc = zoneColor(zoneIdx)
-                        fill = zc.copy(alpha = 0.7f)
-                        borderC = zc
-                    } else if (idx in selected) {
-                        fill = nextColor.copy(alpha = 0.55f)
-                        borderC = nextColor
-                    } else {
-                        fill = neutral
-                        borderC = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+    // Палитра считана в composable-области: draw-лямбда Canvas не может вызывать @Composable.
+    val palette = listOf(
+        scheme.primary,
+        scheme.tertiary,
+        scheme.secondary,
+        scheme.error
+    )
+
+    fun cellAt(p: Offset): Int {
+        val c = (p.x / cellPx).toInt().coerceIn(0, spec.cols - 1)
+        val r = (p.y / cellPx).toInt().coerceIn(0, spec.rows - 1)
+        return r * spec.cols + c
+    }
+
+    Canvas(
+        modifier = Modifier
+            .size(cell * spec.cols, cell * spec.rows)
+            .pointerInput(spec) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    down.consume()
+                    val a = cellAt(down.position)
+                    var moved = false
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val ch = ev.changes.firstOrNull() ?: break
+                        if (ev.type == PointerEventType.Move) {
+                            moved = true
+                            ch.consume()
+                            onRect(a, cellAt(ch.position))
+                        } else {
+                            break // Up / Cancel
+                        }
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(cell)
-                            .background(if ((r + c) % 2 == 0) UiColor.Black else UiColor.White)
-                            .background(fill)
-                            .border(1.dp, borderC)
-                            .clickable { onCell(idx) }
-                    )
+                    if (!moved) onCell(a) // тап — переключить одну клетку
                 }
+            }
+    ) {
+        for (r in 0 until spec.rows) {
+            for (c in 0 until spec.cols) {
+                val idx = LabelGrid.cellIndex(spec, r, c)
+                val zoneIdx = zones.indexOfFirst { idx in it }
+                val left = c * cellPx
+                val top = r * cellPx
+                drawRect(
+                    if ((r + c) % 2 == 0) UiColor.Black else UiColor.White,
+                    Offset(left, top),
+                    Size(cellPx, cellPx)
+                )
+                val (fill, borderC) = when {
+                    zoneIdx >= 0 -> palette[zoneIdx % palette.size].copy(alpha = 0.7f) to
+                        palette[zoneIdx % palette.size]
+                    idx in selected -> nextColor.copy(alpha = 0.55f) to nextColor
+                    else -> neutral to scheme.outline.copy(alpha = 0.5f)
+                }
+                drawRect(fill, Offset(left, top), Size(cellPx, cellPx))
+                drawRect(borderC, Offset(left, top), Size(cellPx, cellPx), style = Stroke(width = 1.dp.toPx()))
             }
         }
     }

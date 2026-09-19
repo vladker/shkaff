@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -143,6 +144,9 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { nav.navigate("labels/location/$locationId/0") }) {
+                        Icon(Icons.Filled.Label, contentDescription = "Этикетка")
+                    }
                     if (Access.can(role, Access.EDIT)) {
                         IconButton(onClick = { nav.navigate("location-form/${l?.storage_id ?: "0"}/$locationId") }) {
                             Icon(Icons.Filled.Edit, contentDescription = "Изменить")

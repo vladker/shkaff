@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlaylistAdd
@@ -229,6 +230,14 @@ fun DashboardScreen(nav: NavController) {
                     ) {
                         QuickAction("Корзина извлечения", Icons.Filled.ShoppingBasket, Modifier.weight(1f)) { nav.navigate("basket") }
                         QuickAction("Серия вещей", Icons.Filled.PlaylistAdd, Modifier.weight(1f)) { nav.navigate("batch") }
+                    }
+                }
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        QuickAction("Этикетки", Icons.Filled.Label, Modifier.weight(1f)) { nav.navigate("labels/0/0") }
                     }
                 }
             }

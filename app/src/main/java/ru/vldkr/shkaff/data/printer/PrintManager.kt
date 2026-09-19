@@ -43,9 +43,10 @@ object PrintManager {
         profile: PrinterProfileEntity,
         template: LabelTemplateEntity,
         code: String,
-        name: String
+        name: String,
+        attrs: Map<String, String> = emptyMap()
     ): Result<Unit> {
-        val bmp = LabelGenerator.generateLayout(template, code, name, dpi = LabelMath.DPI)
+        val bmp = LabelGenerator.generateLayout(template, code, name, dpi = LabelMath.DPI, attrs = attrs)
             ?: return Result.failure(
                 IllegalStateException("Не удалось сгенерировать этикетку: пустой код или неизвестный формат")
             )

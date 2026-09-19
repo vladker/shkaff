@@ -362,6 +362,19 @@ fun AppRoot() {
                     b.arguments?.getString("templateId").orEmpty()
                 )
             }
+            // Этикетка ящика/хранилища: labels/{type}/{id}/{templateId}, type = location | storage | item.
+            composable("labels/{type}/{id}/{templateId}", arguments = listOf(
+                navArgument("type") { type = NavType.StringType },
+                navArgument("id") { type = NavType.StringType },
+                navArgument("templateId") { type = NavType.StringType }
+            )) { b ->
+                LabelsScreen(
+                    navController,
+                    b.arguments?.getString("id").orEmpty(),
+                    b.arguments?.getString("templateId").orEmpty(),
+                    entityKind = b.arguments?.getString("type").orEmpty().ifBlank { "item" }
+                )
+            }
             composable("templates") { TemplatesScreen(navController) }
             composable("backup") { BackupScreen(navController) }
             composable("federation") { FederationScreen(navController) }

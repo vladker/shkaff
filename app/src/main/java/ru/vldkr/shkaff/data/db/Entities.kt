@@ -31,6 +31,8 @@ data class StorageEntity(
     val is_full: Boolean = false,
     // Уровень иерархии (US-C1): город/склад/комната/шкаф/полка/коробка/пакет или свой.
     val level: String = "",
+    // Момент печати этикетки (null — ещё не напечатана).
+    val labelled_at: Long? = null,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -59,6 +61,8 @@ data class LocationEntity(
     val dont_fill_to_brim: Boolean = false,
     val is_full: Boolean = false,
     val level: String = "",
+    // Момент печати этикетки (null — ещё не напечатана).
+    val labelled_at: Long? = null,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
@@ -93,7 +97,9 @@ data class ItemEntity(
     val ean: String? = null,
     val tags: String = "[]",
     // Отдельное фото рыночного штрихкода с упаковки (отдельно от основного photo_path).
-    val barcode_photo_path: String? = null
+    val barcode_photo_path: String? = null,
+    // Момент печати этикетки (null — ещё не напечатана).
+    val labelled_at: Long? = null
 )
 
 @Entity(
@@ -152,6 +158,8 @@ data class LabelTemplateEntity(
     // при печати растр кладётся не в (0,0), а со сдвигом (TSC BITMAP offset).
     val offset_x_mm: Double = 0.0,
     val offset_y_mm: Double = 0.0,
+    // Какие атрибуты объекта печатать на этикетке (JSON-массив ключей).
+    val label_attrs: String = "[]",
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,

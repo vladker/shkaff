@@ -32,6 +32,11 @@ class LocationRepository(
 
     suspend fun countByStorage(storageId: String): Int = dao.countByStorage(storageId)
 
+    // Пометить, что этикетка напечатана.
+    suspend fun markLabelled(id: String) {
+        dao.markLabelled(id, System.currentTimeMillis(), deviceId())
+    }
+
     suspend fun create(d: LocationData): LocationEntity {
         val now = System.currentTimeMillis()
         val e = LocationEntity(

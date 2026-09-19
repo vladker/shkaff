@@ -12,6 +12,7 @@ import androidx.core.content.FileProvider
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
+import org.json.JSONArray
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.domain.labels.GridSpec
 import ru.vldkr.shkaff.domain.labels.LabelGrid
@@ -35,11 +36,43 @@ object LabelGenerator {
         else -> null
     }
 
-    fun renderText(template: LabelTemplateEntity, name: String, code: String): String =
-        template.text_content
+    // Ключи атрибутов, которые печатать на этикетке (JSON-массив в template.label_attrs).
+    fun labelAttrKeys(template: LabelTemplateEntity): List<String> {
+        val json = template.label_attrs
+        if (json.isBlank()) return emptyList()
+        return try {
+            val a = JSONArray(json)
+            (0 until a.length()).map { a.optString(it, "") }.filter { it.isNotBlank() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // Строки атрибутов, добавляются под базовый текст: «ключ: значение»,
+    // только для ключей, у объекта реально есть значение.
+    fun attrLines(template: LabelTemplateEntity, attrs: Map<String, String>): List<String> {
+        if (attrs.isEmpty()) return emptyList()
+        return labelAttrKeys(template)
+            .filter { it in attrs }
+            .map { "${it}: ${attrs[it]}" }
+            .filter { it.isNotBlank() }
+    }
+
+    fun renderText(
+        template: LabelTemplateEntity,
+        name: String,
+        code: String,
+        attrs: Map<String, String> = emptyMap()
+    ): String {
+        val base = template.text_content
             .replace("{name}", name)
             .replace("{code}", code)
             .replace("{id}", template.id)
+        val extra = attrLines(template, attrs)
+        if (extra.isEmpty()) return base
+        val b = base.trimEnd()
+        return if (b.isBlank()) extra.joinToString("\n") else "$b\n" + extra.joinToString("\n")
+    }
 
     fun encodeContent(template: LabelTemplateEntity, code: String): String =
         if (template.app_link) AppLink.urlFor(code) else code
@@ -48,7 +81,8 @@ object LabelGenerator {
         template: LabelTemplateEntity,
         code: String,
         name: String,
-        dpi: Int = 150
+        dpi: Int = 150,
+        attrs: Map<String, String> = emptyMap()
     ): Bitmap? {
         if (code.isBlank()) return null
         val fmt = barcodeFormat(template.format) ?: return null
@@ -62,7 +96,7 @@ object LabelGenerator {
             ((template.margin_mm * pxPerMm).toInt()).coerceAtLeast(2)
         else 2
 
-        val text = renderText(template, name, code)
+        val text = renderText(template, name, code, attrs)
         val showText = template.show_text && text.isNotBlank()
         val baseLines = if (showText)
             text.split('\n').map { it.trim() }.filter { it.isNotBlank() }
@@ -119,11 +153,12 @@ object LabelGenerator {
         template: LabelTemplateEntity,
         code: String,
         name: String,
-        dpi: Int = 150
+        dpi: Int = 150,
+        attrs: Map<String, String> = emptyMap()
     ): Bitmap? {
         if (code.isBlank()) return null
         if (template.layout_mode.equals("classic", ignoreCase = true) || template.layout_mode.isBlank()) {
-            return generate(template, code, name, dpi)
+            return generate(template, code, name, dpi, attrs)
         }
         val fmt = barcodeFormat(template.format) ?: return null
         val plan = LabelGrid.plan(
@@ -165,7 +200,7 @@ object LabelGenerator {
         plan.codeGithub?.let { drawCode(LabelGrid.GITHUB_URL, it) }
 
         if (template.show_text) {
-            val text = renderText(template, name, code)
+            val text = renderText(template, name, code, attrs)
             val baseLines = if (text.isNotBlank())
                 text.split('\n').map { it.trim() }.filter { it.isNotBlank() }
             else emptyList()
