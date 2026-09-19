@@ -64,7 +64,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import ru.vldkr.shkaff.features.agent.AgentScreen
-import ru.vldkr.shkaff.features.agent.LabelGridScreen
 import ru.vldkr.shkaff.features.agent.VolumeEstimateScreen
 import ru.vldkr.shkaff.features.annotations.AnnotationScreen
 import ru.vldkr.shkaff.features.actions.ActionsScreen
@@ -372,7 +371,6 @@ fun AppRoot() {
             composable("printers") { PrintersScreen(navController) }
             composable("agent") { AgentScreen(navController) }
             composable("agent-volumes") { VolumeEstimateScreen(navController) }
-            composable("agent-label-grid") { LabelGridScreen(navController) }
             composable("llm-models") { ModelStoreScreen(navController) }
 
             composable("attrdefs") { AttrDefsScreen(navController) }

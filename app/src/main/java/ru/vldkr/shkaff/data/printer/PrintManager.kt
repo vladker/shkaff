@@ -54,7 +54,12 @@ object PrintManager {
         val dark = if (template.invert) bg else fg
         val light = if (template.invert) fg else bg
         // Печатать с реальным размером этикетки, а не на всю ширину бумаги.
-        return printBitmap(profile, bmp, dark, light, widthMm = template.width_mm)
+        // Шаблон-зона: растр со сдвигом offset_x/y (мм → px), чтобы зона легла не в (0,0) листа.
+        return printBitmap(
+            profile, bmp, dark, light, widthMm = template.width_mm,
+            offsetXpx = LabelMath.px(template.offset_x_mm),
+            offsetYpx = LabelMath.px(template.offset_y_mm)
+        )
     }
 
     // Печать готового bitmap (например, калибровочной сетки) с порогами тёмлого/светлого.

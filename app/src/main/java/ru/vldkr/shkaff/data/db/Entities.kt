@@ -148,6 +148,10 @@ data class LabelTemplateEntity(
     val qr_count: Int = 1,
     // Коэффициент размера кода: 1.0 — вписать в область, 0.5 — вдвое меньше и т.д.
     val qr_scale: Double = 1.0,
+    // Позиция области этикетки на листе (мм от левого верхнего угла) — для шаблонов-зон:
+    // при печати растр кладётся не в (0,0), а со сдвигом (TSC BITMAP offset).
+    val offset_x_mm: Double = 0.0,
+    val offset_y_mm: Double = 0.0,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,

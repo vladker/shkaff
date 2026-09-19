@@ -181,6 +181,7 @@ object Backup {
         put("text_position", e.text_position); put("show_number", e.show_number)
         put("app_link", e.app_link)
         put("layout_mode", e.layout_mode); put("qr_count", e.qr_count); put("qr_scale", e.qr_scale)
+        put("offset_x_mm", e.offset_x_mm); put("offset_y_mm", e.offset_y_mm)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -201,6 +202,8 @@ object Backup {
         layout_mode = j.optString("layout_mode", "classic"),
         qr_count = j.optInt("qr_count", 1),
         qr_scale = j.optDouble("qr_scale", 1.0),
+        offset_x_mm = j.optDouble("offset_x_mm", 0.0),
+        offset_y_mm = j.optDouble("offset_y_mm", 0.0),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")

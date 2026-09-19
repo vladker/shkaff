@@ -295,7 +295,7 @@ fun AgentScreen(nav: NavController) {
             }
             item {
                 OutlinedButton(
-                    onClick = { nav.navigate("agent-label-grid") },
+                    onClick = { nav.navigate("labels/0/0") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp)
