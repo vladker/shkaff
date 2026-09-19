@@ -3,6 +3,7 @@ package ru.vldkr.shkaff.features.items
 import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,20 +12,26 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +59,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import ru.vldkr.shkaff.data.catalog.AttributeCatalog
+import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.printer.PrintManager
@@ -64,6 +73,7 @@ import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.features.scan.ScanCameraPreview
 import ru.vldkr.shkaff.util.newUlid
 import ru.vldkr.shkaff.ui.components.AttrFields
+import ru.vldkr.shkaff.ui.components.CategoryDropdown
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -442,63 +452,255 @@ private fun InfoStep(vm: ItemFormVm, onBack: () -> Unit, onNext: () -> Unit) {
     }
 }
 
+// Состав полей на этапе «Поля» — что показывать после выбора категории.
+private enum class ConfirmMode(val label: String) {
+    NONE("Без заполнения"),
+    MIN("Минимум"),
+    FULL("Расширенный"),
+    FREE("Свободный"),
+}
+
 @Composable
-private fun ConfirmStep(vm: ItemFormVm, defs: List<ru.vldkr.shkaff.data.db.AttributeDefEntity>, onBack: () -> Unit, onNext: () -> Unit) {
+private fun ConfirmStep(vm: ItemFormVm, defs: List<AttributeDefEntity>, onBack: () -> Unit, onNext: () -> Unit) {
+    val categoryKey = defs.firstOrNull { it.label == "Категория" || it.key == "category" }?.key ?: "category"
+    val selectedCategory = vm.attrs[categoryKey]?.trim().orEmpty()
+
+    var mode by remember { mutableStateOf(ConfirmMode.NONE) }
+    // Свободный режим: ключи полей, которые добавил пользователь.
+    var freeKeys by remember { mutableStateOf(emptySet<String>()) }
+    var showAddField by remember { mutableStateOf(false) }
+
+    // Поля, относящиеся к выбранной категории (общие поля имеют category == "*").
+    val inCategory = defs
+        .filter { it.key != categoryKey && (it.category == "*" || it.category == selectedCategory) }
+        .sortedBy { it.sort_order }
+
+    // Минимум: обязательные поля категории + общие «рекомендуемые» (бренд, модель и т.п.).
+    val visible: List<AttributeDefEntity> = when (mode) {
+        ConfirmMode.NONE -> emptyList()
+        ConfirmMode.MIN -> inCategory.filter { it.tier == "min" || (it.category == "*" && it.tier == "rec") }
+        ConfirmMode.FULL -> inCategory
+        ConfirmMode.FREE -> inCategory.filter { it.key in freeKeys }
+    }
+
+    fun setAttr(key: String, value: String) {
+        vm.attrs = if (value.isEmpty()) vm.attrs - key else vm.attrs + (key to value)
+    }
+    val onAttrChange: (String, String) -> Unit = { k, v -> setAttr(k, v) }
+
     Text(
-        "Проверьте поля. Измените вручную или примите предложение ИИ.",
+        "Выберите категорию и состав полей.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Spacer(Modifier.height(12.dp))
-    FieldRow("Описание") {
-        Column {
-            OutlinedTextField(value = vm.description, onValueChange = { vm.description = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Комментарий") })
-            if (!vm.photoPath.isNullOrBlank()) {
-                if (vm.descAiBusy.collectAsState().value) {
-                    Text(
-                        vm.descAiStep.collectAsState().value ?: "ИИ пишет описание…",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                } else {
-                    OutlinedButton(onClick = { vm.aiDescription() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        Text("Описание с ИИ по фото")
-                    }
-                }
-                vm.descAiError.collectAsState().value?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
+    CategoryDropdown(
+        options = AttributeCatalog.itemCategories,
+        value = selectedCategory
+    ) { v -> setAttr(categoryKey, v) }
+
+    Text("Состав полей", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+    ) {
+        ConfirmMode.entries.forEach { m ->
+            FilterChip(
+                selected = mode == m,
+                onClick = { mode = m },
+                label = { Text(m.label) },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+        }
+    }
+
+    when (mode) {
+        ConfirmMode.NONE -> Text(
+            if (vm.name.isNotBlank()) "Добавим вещь как «${vm.name}» — с категорией, без остальных полей."
+            else "Вещь будет добавлена с названием и категорией — без остальных полей.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
+        ConfirmMode.MIN -> {
+            if (visible.isNotEmpty()) {
+                AttrFields(visible, vm.attrs, onChange = onAttrChange)
+            } else {
+                Text(
+                    "Для этой категории нет специальных полей — общие поля ниже.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        ConfirmMode.FULL -> {
+            val min = visible.filter { it.tier == "min" }
+            val rec = visible.filter { it.tier == "rec" }
+            val free = visible.filter { it.tier == "free" }
+            if (min.isNotEmpty()) {
+                SectionTitle("Минимум")
+                AttrFields(min, vm.attrs, onChange = onAttrChange)
+            }
+            if (rec.isNotEmpty()) {
+                SectionTitle("Рекомендуемые")
+                AttrFields(rec, vm.attrs, onChange = onAttrChange)
+            }
+            if (free.isNotEmpty()) {
+                SectionTitle("Свободные")
+                AttrFields(free, vm.attrs, onChange = onAttrChange)
+            }
+            if (visible.isEmpty()) {
+                Text(
+                    "Для этой категории нет специальных полей — общие поля ниже.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        ConfirmMode.FREE -> {
+            OutlinedButton(onClick = { showAddField = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Добавить поле")
+            }
+            if (visible.isNotEmpty()) {
+                AttrFields(visible, vm.attrs, onRemove = { d -> freeKeys = freeKeys - d.key }, onChange = onAttrChange)
+            } else {
+                Text(
+                    "Пока ни одного поля. Добавьте нужные через «Добавить поле».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FieldRow("Объём (л)") {
-            OutlinedTextField(
-                value = vm.volumeLiters, onValueChange = { vm.volumeLiters = it },
-                modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
-            )
+
+    if (mode != ConfirmMode.NONE) {
+        Spacer(Modifier.height(8.dp))
+        FieldRow("Описание") {
+            Column {
+                OutlinedTextField(value = vm.description, onValueChange = { vm.description = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Комментарий") })
+                if (!vm.photoPath.isNullOrBlank()) {
+                    if (vm.descAiBusy.collectAsState().value) {
+                        Text(
+                            vm.descAiStep.collectAsState().value ?: "ИИ пишет описание…",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        OutlinedButton(onClick = { vm.aiDescription() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Text("Описание с ИИ по фото")
+                        }
+                    }
+                    vm.descAiError.collectAsState().value?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
-        FieldRow("Масса (кг)") {
-            OutlinedTextField(
-                value = vm.weightKg, onValueChange = { vm.weightKg = it },
-                modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FieldRow("Объём (л)") {
+                OutlinedTextField(
+                    value = vm.volumeLiters, onValueChange = { vm.volumeLiters = it },
+                    modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
+                )
+            }
+            FieldRow("Масса (кг)") {
+                OutlinedTextField(
+                    value = vm.weightKg, onValueChange = { vm.weightKg = it },
+                    modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
+                )
+            }
         }
-    }
-    FieldRow("Срок годности") {
-        OutlinedTextField(value = vm.expiryDate, onValueChange = { vm.expiryDate = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("ДД.ММ.ГГГГ") }, singleLine = true)
-    }
-    TagChipsField(vm)
-    if (defs.isNotEmpty()) {
-        SectionTitle("Атрибуты")
-        AttrFields(defs, vm.attrs) { k, v ->
-            vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
+        FieldRow("Срок годности") {
+            OutlinedTextField(value = vm.expiryDate, onValueChange = { vm.expiryDate = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("ДД.ММ.ГГГГ") }, singleLine = true)
         }
+        TagChipsField(vm)
     }
+
     Spacer(Modifier.height(16.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Назад") }
         Button(onClick = onNext, modifier = Modifier.weight(2f)) { Text("Далее") }
     }
+
+    if (showAddField) {
+        AddFieldDialog(
+            defs = inCategory.sortedBy { it.label },
+            onPick = { d -> freeKeys = freeKeys + d.key },
+            onDismiss = { showAddField = false }
+        )
+    }
+}
+
+// Свободный режим: поиск и добавление полей из справочника.
+@Composable
+private fun AddFieldDialog(
+    defs: List<AttributeDefEntity>,
+    onPick: (AttributeDefEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val q = query.trim()
+    val filtered = if (q.isEmpty()) {
+        defs
+    } else {
+        defs.filter { it.label.contains(q, ignoreCase = true) || it.key.contains(q, ignoreCase = true) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Добавить поле") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Поиск по названию…") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) }
+                )
+                Spacer(Modifier.height(8.dp))
+                if (filtered.isEmpty()) {
+                    Text(
+                        "Ничего не найдено.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                    ) {
+                        items(filtered, key = { it.id }) { def ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPick(def) }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(def.label, style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        "${def.category} · ${def.tier}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        }
+    )
 }
 
 @Composable

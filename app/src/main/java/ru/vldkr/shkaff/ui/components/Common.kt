@@ -7,16 +7,22 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -144,15 +150,56 @@ fun CategoryPicker(
     }
 }
 
+// Категория — выпадающий список (этап «Поля» мастера добавления).
+@Composable
+fun CategoryDropdown(
+    options: List<String>,
+    value: String,
+    onChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.weight(1f)) {
+            Text(value.ifBlank { "Без категории" }, modifier = Modifier.weight(1f), maxLines = 1)
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        if (value.isNotEmpty()) {
+            TextButton(onClick = { onChange("") }) { Text("Сбросить") }
+        }
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(text = { Text("Без категории") }, onClick = { expanded = false; onChange("") })
+        options.forEach { opt ->
+            DropdownMenuItem(text = { Text(opt) }, onClick = { expanded = false; onChange(opt) })
+        }
+    }
+}
+
 @Composable
 fun AttrFields(
     defs: List<AttributeDefEntity>,
     values: Map<String, String>,
+    onRemove: ((AttributeDefEntity) -> Unit)? = null,
     onChange: (String, String) -> Unit
 ) {
     if (defs.isEmpty()) return
     Column(Modifier.fillMaxWidth()) {
         defs.forEach { def ->
+            if (onRemove != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { onRemove(def) }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Убрать поле")
+                    }
+                }
+            }
             val v = values[def.key] ?: ""
             when (def.type) {
                 "number" -> FieldRow(def.label, def.required) {
