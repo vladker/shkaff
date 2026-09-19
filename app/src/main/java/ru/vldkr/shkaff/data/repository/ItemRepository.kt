@@ -37,6 +37,9 @@ class ItemRepository(
     // Вещи, которым ещё не напечатана этикетка — очередь печати.
     suspend fun recentUnlabelled(limit: Int): List<ItemEntity> = dao.recentUnlabelled(limit)
 
+    // Каталог вещей: от самой недавно добавленной к самым давним.
+    suspend fun recentCreated(limit: Int): List<ItemEntity> = dao.recentCreated(limit)
+
     // Пометить, что этикетка напечатана.
     suspend fun markLabelled(id: String) {
         dao.markLabelled(id, System.currentTimeMillis(), deviceId())

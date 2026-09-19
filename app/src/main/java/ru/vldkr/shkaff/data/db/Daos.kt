@@ -154,6 +154,10 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE deleted_at IS NULL AND labelled_at IS NULL ORDER BY created_at DESC LIMIT :limit")
     suspend fun recentUnlabelled(limit: Int): List<ItemEntity>
 
+    // Каталог вещей: от самой недавно добавленной к самым давним.
+    @Query("SELECT * FROM item WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT :limit")
+    suspend fun recentCreated(limit: Int): List<ItemEntity>
+
     // Пометить, что этикетке напечатана.
     @Query("UPDATE item SET labelled_at = :at, updated_at = :at, device_last_modified = :dev WHERE id = :id")
     suspend fun markLabelled(id: String, at: Long, dev: String)
