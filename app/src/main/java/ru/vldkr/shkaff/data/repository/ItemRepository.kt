@@ -156,6 +156,13 @@ class ItemRepository(
         e?.let { Deps.actionLog.log("delete", "item", id, mapOf("name" to it.name)) }
     }
 
+    // Undo: возврат вещи после мягкого удаления.
+    suspend fun restore(id: String) {
+        val e = dao.byId(id)
+        dao.restore(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("restore", "item", id, mapOf("name" to it.name)) }
+    }
+
     suspend fun hardDelete(id: String) {
         dao.hardDelete(id)
     }

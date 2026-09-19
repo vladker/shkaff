@@ -44,6 +44,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -89,6 +91,7 @@ import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.StatusBadge
 import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.ui.components.itemStatuses
+import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.formatDate
 import java.io.File
@@ -153,6 +156,11 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
     fun softDelete() {
         viewModelScope.launch { Deps.items.softDelete(itemId) }
     }
+
+    // Undo (US-L21): возврат вещи после мягкого удаления.
+    fun restore() {
+        viewModelScope.launch { Deps.items.restore(itemId) }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -171,9 +179,11 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     var tab by remember { mutableIntStateOf(0) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val i = item
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(i?.name ?: "Вещь") },
@@ -499,8 +509,15 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
             confirmButton = {
                 TextButton(onClick = {
                     showDelete = false
-                    vm.softDelete()
-                    nav.popBackStack()
+                    scope.launch {
+                        val name = i?.name ?: ""
+                        vm.softDelete()
+                        // US-L21: даём 5 секунд на «ОТМЕНИТЬ»; если не отменили — уходим.
+                        val undone = snackbarHostState.undo("«$name» удалена") {
+                            vm.restore()
+                        }
+                        if (!undone) nav.popBackStack()
+                    }
                 }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {

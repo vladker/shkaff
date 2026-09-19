@@ -67,6 +67,7 @@ import ru.vldkr.shkaff.domain.agent.DeviceLlm
 import ru.vldkr.shkaff.domain.agent.LlmDiscovery
 import ru.vldkr.shkaff.domain.agent.LlmRuntime
 import ru.vldkr.shkaff.domain.agent.WebTools
+import ru.vldkr.shkaff.ui.theme.Ozon
 
 data class AgentMsg(val role: String, val content: String)
 
@@ -212,6 +213,15 @@ fun AgentScreen(nav: NavController) {
     var sApiKey by remember { mutableStateOf(settings.apiKey) }
     var sModel by remember { mutableStateOf(settings.model) }
 
+    // Индикатор LLM (US-L): онлайн (cloud/local) или офлайн (модель на устройстве).
+    val llmOnline = !Agent.isDevice(settings)
+    val llmLabel = when {
+        !llmOnline -> "Офлайн (Локальная модель)"
+        settings.provider.trim().lowercase() == Agent.PROVIDER_LOCAL -> "Онлайн (Локальная сеть)"
+        else -> "Онлайн (Qwen API)"
+    }
+    val llmColor = if (llmOnline) MaterialTheme.colorScheme.tertiary else Ozon.Orange
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -274,6 +284,25 @@ fun AgentScreen(nav: NavController) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 12.dp, bottom = 12.dp)
         ) {
+            // Индикатор LLM: онлайн (зелёный) / офлайн (оранжевый).
+            item {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(llmColor)
+                    )
+                    Text(
+                        llmLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = llmColor
+                    )
+                }
+            }
             item { Text(
                 "Помогает по вашей базе: «где лежит мука», «что скоро истечёт», «куда положить банку 2 л».\n" +
                 "Умеет искать в интернете (web_search, web_fetch) — спрашивайте про цены, характеристики и аналоги.\n" +

@@ -50,6 +50,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -1017,6 +1019,9 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
     val anyFillBusy = smartBusy || pageBusy || shotBusy
 
     val locName = vm.locationName()
+    // US-O8: автофокус на «Название» при создании новой вещи
+    val nameFocus = remember { FocusRequester() }
+    LaunchedEffect(loaded) { if (loaded && isNew) nameFocus.requestFocus() }
 
     Scaffold(
         topBar = {
@@ -1067,7 +1072,9 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     OutlinedTextField(
                         value = vm.name,
                         onValueChange = { vm.name = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(nameFocus),
                         placeholder = { Text("Например: Дрель Makita") },
                         singleLine = true
                     )

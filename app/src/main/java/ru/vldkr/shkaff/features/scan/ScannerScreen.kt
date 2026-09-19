@@ -9,6 +9,8 @@ import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -121,6 +123,15 @@ object BarcodeScanner {
             Handler(Looper.getMainLooper()).postDelayed({ tg.release() }, 300)
         }
     }
+
+    // US-L22: тактильный отклик — CONFIRM (успех) / REJECT (ошибка, «не та коробка»).
+    fun haptic(view: View, success: Boolean = true) {
+        runCatching {
+            view.performHapticFeedback(
+                if (success) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.REJECT
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,6 +148,8 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
     ) { granted -> hasPermission = granted }
     var detected by remember { mutableStateOf<String?>(null) }
     val borderColor = MaterialTheme.colorScheme.primary
+    // US-L22: View для performHapticFeedback (CONFIRM/REJECT).
+    val hapticView = remember { View(ctx) }
 
     Scaffold(
         topBar = {
@@ -169,6 +182,7 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
             } else {
                 ScanCameraPreview(enabled = detected == null) { code ->
                     BarcodeScanner.beep()
+                    BarcodeScanner.haptic(hapticView, success = true) // US-L22: успех
                     detected = code
                 }
                 Box(

@@ -52,6 +52,7 @@ import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.util.ScanBus
@@ -67,6 +68,8 @@ class ItemsVm : ViewModel() {
     val tagFilter = MutableStateFlow("")
     val tagOptions = MutableStateFlow<List<String>>(emptyList())
     val loansByItem = MutableStateFlow<Map<String, LoanEntity>>(emptyMap())
+    // US-O8: true до первой выдачи списка — показываем skeleton.
+    val loading = MutableStateFlow(true)
 
     val list = combine(allItems, query, tagFilter) { all, q, tag ->
         val t = q.trim()
@@ -87,7 +90,10 @@ class ItemsVm : ViewModel() {
 
     init {
         viewModelScope.launch {
-            Deps.items.observeAll().collect { allItems.value = it }
+            Deps.items.observeAll().collect {
+                allItems.value = it
+                loading.value = false
+            }
         }
         viewModelScope.launch {
             Deps.tags.observeAll().collect { tags ->
@@ -109,6 +115,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
     val list by vm.list.collectAsState()
     val tagOptions by vm.tagOptions.collectAsState()
     val loans by vm.loansByItem.collectAsState()
+    val loading by vm.loading.collectAsState()
     val locations = LocationMap()
     // «0» — служебное значение для роута items/{tag}, когда тега нет
     val effectiveTag = if (tag.isEmpty() || tag == "0") "" else tag
@@ -203,10 +210,19 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     }
                 }
             }
-            if (list.isEmpty()) {
-                EmptyState(
-                    if (queryText.isBlank()) "Список пуст. Добавьте первую вещь." else "Ничего не найдено по «$queryText»."
-                )
+            if (loading) {
+                ListSkeleton(rows = 6)
+            } else if (list.isEmpty()) {
+                if (queryText.isBlank()) {
+                    val canAdd = Access.can(role, Access.CREATE)
+                    EmptyState(
+                        "Список пуст.",
+                        actionLabel = if (canAdd) "Добавить вещь" else null,
+                        onAction = if (canAdd) { { nav.navigate("item-wizard") } } else null
+                    )
+                } else {
+                    EmptyState("Ничего не найдено по «$queryText».")
+                }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),

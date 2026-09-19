@@ -42,13 +42,21 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.pullToRefreshIndicator
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +84,7 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.LocationMap
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.itemStatus
@@ -98,10 +107,14 @@ class DashboardVm : ViewModel() {
     )
 
     val ui = MutableStateFlow(Ui())
+    // US-O8: true на время первой загрузки и pull-to-refresh — показываем skeleton.
+    val loading = MutableStateFlow(true)
 
     fun refresh() {
         viewModelScope.launch {
-            val items = Deps.items.all()
+            loading.value = true
+            try {
+                val items = Deps.items.all()
             // US-I5: топ-5 тегов по числу вещей
             val tagMap = mutableMapOf<String, Int>()
             for (i in items) {
@@ -125,14 +138,24 @@ class DashboardVm : ViewModel() {
                 canCreate = Access.can(role, Access.CREATE),
                 activeProfile = Deps.users.activeUser()?.name
             )
+            } finally {
+                loading.value = false
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(nav: NavController) {
     val vm: DashboardVm = viewModel()
     val ui by vm.ui.collectAsState()
+    val loading by vm.loading.collectAsState()
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    val pullState = rememberPullToRefreshState()
+    // US-O8: skeleton только на первой загрузке без данных (не при pull-to-refresh).
+    val showSkeleton = loading && ui.itemsCount == 0 && ui.recent.isEmpty()
     LaunchedEffect(Unit) { vm.refresh() }
     val locations = LocationMap()
 
@@ -149,12 +172,40 @@ fun DashboardScreen(nav: NavController) {
             }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
-        ) {
+        if (showSkeleton) {
+            Column(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ListSkeleton(rows = 5)
+            }
+        } else {
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .pullToRefresh(
+                            enabled = true,
+                            state = pullState,
+                            isRefreshing = refreshing,
+                            onRefresh = {
+                                scope.launch {
+                                    refreshing = true
+                                    vm.refresh()
+                                    refreshing = false
+                                }
+                            }
+                        )
+                        .pullToRefreshIndicator(
+                            state = pullState,
+                            isRefreshing = refreshing
+                        ),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
+                ) {
             item {
                 DashboardHeader(
                     ui.activeProfile,
@@ -280,7 +331,13 @@ fun DashboardScreen(nav: NavController) {
             }
             item { SectionTitle("Недавно добавленные") }
             if (ui.recent.isEmpty()) {
-                item { EmptyState("Пока нет вещей.\nДобавьте первую — с номером, фото и ящиком хранения.") }
+                item {
+                    EmptyState(
+                        "Пока нет вещей.\nДобавьте первую — с номером, фото и ящиком хранения.",
+                        actionLabel = if (ui.canCreate) "Добавить вещь" else null,
+                        onAction = if (ui.canCreate) { { nav.navigate("item-wizard") } } else null
+                    )
+                }
             } else {
                 item {
                     LazyRow(
@@ -297,6 +354,8 @@ fun DashboardScreen(nav: NavController) {
                             )
                         }
                     }
+                }
+            }
                 }
             }
         }

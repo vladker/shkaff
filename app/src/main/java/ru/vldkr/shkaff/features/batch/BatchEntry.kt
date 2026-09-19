@@ -44,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -419,6 +421,9 @@ fun BatchEntryScreen(nav: NavController, fromId: String? = null) {
 @Composable
 private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntity>, onPickLocation: () -> Unit) {
     val tagDict by vm.tagDict.collectAsState()
+    // US-O8: автофокус на шаблоне названия при входе в SETUP
+    val nameFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { nameFocus.requestFocus() }
     Column(
         Modifier
             .fillMaxSize()
@@ -435,7 +440,9 @@ private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntit
             OutlinedTextField(
                 value = ui.namePattern,
                 onValueChange = { vm.setName(it) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(nameFocus),
                 placeholder = { Text("Напр.: Гвозди 3×70 или Батарея AA {n}") },
                 supportingText = { Text("{n} — номер позиции в серии") },
                 singleLine = true

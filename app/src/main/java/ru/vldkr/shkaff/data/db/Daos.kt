@@ -20,6 +20,10 @@ interface StorageDao {
     @Query("UPDATE storage SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
     suspend fun softDelete(id: String, now: Long, dev: String)
 
+    // Отмена мягкого удаления (Undo, US-L21).
+    @Query("UPDATE storage SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun restore(id: String, now: Long, dev: String)
+
     @Query("DELETE FROM storage WHERE id = :id")
     suspend fun hardDelete(id: String)
 
@@ -65,6 +69,10 @@ interface LocationDao {
 
     @Query("UPDATE location SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
     suspend fun softDelete(id: String, now: Long, dev: String)
+
+    // Отмена мягкого удаления (Undo, US-L21).
+    @Query("UPDATE location SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun restore(id: String, now: Long, dev: String)
 
     @Query("DELETE FROM location WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -117,6 +125,10 @@ interface ItemDao {
 
     @Query("UPDATE item SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
     suspend fun softDelete(id: String, now: Long, dev: String)
+
+    // Отмена мягкого удаления (Undo, US-L21).
+    @Query("UPDATE item SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun restore(id: String, now: Long, dev: String)
 
     @Query("DELETE FROM item WHERE id = :id")
     suspend fun hardDelete(id: String)

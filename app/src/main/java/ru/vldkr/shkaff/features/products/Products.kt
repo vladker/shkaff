@@ -156,13 +156,16 @@ fun ProductsScreen(nav: NavController) {
                 )
             )
             if (list.isEmpty()) {
-                EmptyState(
-                    if (queryText.isBlank()) {
-                        "Продуктов пока нет. Продукт — вещь с рыночным штрихкодом (EAN)."
-                    } else {
-                        "Ничего не найдено по «$queryText»."
-                    }
-                )
+                if (queryText.isBlank()) {
+                    val canAdd = Access.can(role, Access.CREATE)
+                    EmptyState(
+                        "Продуктов пока нет.\nПродукт — вещь с рыночным штрихкодом (EAN).",
+                        actionLabel = if (canAdd) "Добавить продукт" else null,
+                        onAction = if (canAdd) { { nav.navigate("item-wizard") } } else null
+                    )
+                } else {
+                    EmptyState("Ничего не найдено по «$queryText».")
+                }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),

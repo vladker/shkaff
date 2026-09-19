@@ -1,20 +1,31 @@
 package ru.vldkr.shkaff.ui.components
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -24,6 +35,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +51,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -62,19 +77,37 @@ fun SectionTitle(text: String) {
 }
 
 @Composable
-fun EmptyState(text: String) {
+fun EmptyState(
+    text: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Box(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 40.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            // US-O8: пустое состояние подсказывает, что делать дальше
+            if (actionLabel != null && onAction != null) {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onAction,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Text(actionLabel)
+                }
+            }
+        }
     }
 }
 
@@ -559,4 +592,77 @@ fun CrumbPath(chain: List<String>) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 4.dp)
     )
+}
+
+// US-L21: Undo деструктивного действия — Snackbar «ОТМЕНИТЬ» на ~5 секунд.
+// showSnackbar с длительностью Long (≈5.5с) сам закрывается по таймауту или по нажатию
+// действия. Возвращает true, если пользователь успел нажать «ОТМЕНИТЬ» (тогда onUndo
+// уже выполнен, напр. restore).
+suspend fun SnackbarHostState.undo(
+    message: String,
+    onUndo: suspend () -> Unit
+): Boolean {
+    val result = showSnackbar(
+        message = message,
+        actionLabel = "ОТМЕНИТЬ",
+        duration = SnackbarDuration.Long
+    )
+    return if (result == SnackbarResult.ActionPerformed) {
+        onUndo()
+        true
+    } else {
+        false
+    }
+}
+
+// US-O8: skeleton loading (shimmer) без новых зависимостей — пульсирующий блок.
+@Composable
+fun ShimmerBar(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shimmerAlpha"
+    )
+    Box(
+        modifier
+            .alpha(alpha)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
+    )
+}
+
+// US-O8: skeleton строки списка вещей — фото 1:1 + две строки текста.
+@Composable
+fun ItemSkeletonRow(modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ShimmerBar(Modifier.size(56.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f).padding(vertical = 3.dp)) {
+            ShimmerBar(Modifier.fillMaxWidth().height(14.dp))
+            Spacer(Modifier.height(6.dp))
+            ShimmerBar(Modifier.width(160.dp).height(12.dp))
+        }
+    }
+}
+
+// US-O8: список skeleton-строк вместо «Загрузка…».
+@Composable
+fun ListSkeleton(rows: Int = 5, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        repeat(rows) { ItemSkeletonRow() }
+    }
+}
+
+// US-O8: единое состояние экрана (Loading | Success | Error) вместо набора MutableStateFlow.
+sealed interface UiState<out T> {
+    data object Loading : UiState<Nothing>
+    data class Error(val message: String) : UiState<Nothing>
+    data class Success<T>(val data: T) : UiState<T>
 }

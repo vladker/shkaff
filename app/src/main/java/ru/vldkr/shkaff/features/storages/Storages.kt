@@ -96,8 +96,13 @@ fun StoragesScreen(nav: NavController) {
         }
     ) { padding ->
         if (rows.isEmpty()) {
+            val canCreate = Access.can(role, Access.CREATE)
             Column(Modifier.padding(padding).padding(16.dp)) {
-                EmptyState("Добавьте первое хранилище: шкаф, стеллаж, комод.\nХранилища можно вкладывать друг в друга, потом — ящики и вещи внутри.")
+                EmptyState(
+                    "Хранилищ пока нет.\nДобавьте первое: шкаф, стеллаж, комод. Хранилища можно вкладывать друг в друга, потом — ящики и вещи внутри.",
+                    actionLabel = if (canCreate) "Создать хранилище" else null,
+                    onAction = if (canCreate) { { nav.navigate("storage-form/0") } } else null
+                )
             }
         } else {
             LazyColumn(

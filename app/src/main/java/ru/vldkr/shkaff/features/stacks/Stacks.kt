@@ -107,8 +107,13 @@ fun StacksScreen(nav: NavController) {
         }
     ) { padding ->
         if (rows.isEmpty()) {
+            val canCreate = Access.can(role, Access.CREATE)
             Column(Modifier.padding(padding).padding(16.dp)) {
-                EmptyState("Стеки — группы вещей или хранилищ с собственным номером.\nОбъекты остаются на своих местах: стек не переносит, а группирует.")
+                EmptyState(
+                    "Стеков пока нет.\nСтек — группа вещей или хранилищ с собственным номером. Объекты остаются на своих местах: стек не переносит, а группирует.",
+                    actionLabel = if (canCreate) "Создать стек" else null,
+                    onAction = if (canCreate) { { showCreate = true } } else null
+                )
             }
         } else {
             LazyColumn(

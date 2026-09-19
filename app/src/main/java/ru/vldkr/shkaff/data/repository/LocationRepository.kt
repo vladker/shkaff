@@ -101,6 +101,13 @@ class LocationRepository(
         e?.let { Deps.actionLog.log("delete", "location", id, mapOf("name" to it.label.ifBlank { it.name })) }
     }
 
+    // Undo: возврат ящика после мягкого удаления.
+    suspend fun restore(id: String) {
+        val e = dao.byId(id)
+        dao.restore(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("restore", "location", id, mapOf("name" to it.label.ifBlank { it.name })) }
+    }
+
     suspend fun hardDelete(id: String) {
         dao.hardDelete(id)
     }

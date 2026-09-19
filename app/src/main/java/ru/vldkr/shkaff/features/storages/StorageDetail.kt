@@ -28,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -36,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +66,7 @@ import ru.vldkr.shkaff.ui.components.CapacitySection
 import ru.vldkr.shkaff.ui.components.CrumbPath
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.util.FormBus
 import ru.vldkr.shkaff.util.formatDate
 
@@ -88,8 +92,12 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
         viewModelScope.launch {
             Deps.storages.observeAll().collect { all ->
                 val byId = all.associateBy { it.id }
-                storage.value = byId[storageId]
-                breadcrumb.value = Levels.chainToRoot(byId[storageId]?.parent_id, byId, { it.name }, { it.parent_id })
+                val cur = byId[storageId]
+                if (cur != null) {
+                    // US-L21: во время окна Undo хранилище остаётся на экране даже после soft-delete.
+                    storage.value = cur
+                    breadcrumb.value = Levels.chainToRoot(cur.parent_id, byId, { it.name }, { it.parent_id })
+                }
             }
         }
         viewModelScope.launch {
@@ -125,6 +133,11 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
 
     fun softDelete() {
         viewModelScope.launch { Deps.storages.softDelete(storageId) }
+    }
+
+    // Undo (US-L21): возврат хранилища после мягкого удаления.
+    fun restore() {
+        viewModelScope.launch { Deps.storages.restore(storageId) }
     }
 
     init {
@@ -164,7 +177,10 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
     var showLend by remember { mutableStateOf(false) }
 
     val s = storage
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(s?.name ?: "Хранилище") },
@@ -282,7 +298,14 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                 }
             }
             if (locRows.isEmpty()) {
-                item { EmptyState("Ящиков пока нет.\nНажмите «+», чтобы добавить первый ящик. Ящики можно вкладывать друг в друга.") }
+                val canAdd = Access.can(role, Access.CREATE)
+                item {
+                    EmptyState(
+                        "Ящиков пока нет.\nЯщики можно вкладывать друг в друга.",
+                        actionLabel = if (canAdd) "Добавить ящик" else null,
+                        onAction = if (canAdd) { { nav.navigate("location-form/$storageId/0") } } else null
+                    )
+                }
             } else {
                 items(locRows, key = { it.location.id }) { r ->
                     val l = r.location
@@ -331,8 +354,15 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                 confirmButton = {
                     TextButton(onClick = {
                         showDelete = false
-                        vm.softDelete()
-                        nav.popBackStack()
+                        scope.launch {
+                            val name = s?.name ?: "Хранилище"
+                            vm.softDelete()
+                            // US-L21: даём 5 секунд на «ОТМЕНИТЬ»; если не отменили — уходим.
+                            val undone = snackbarHostState.undo("«$name» удалено") {
+                                vm.restore()
+                            }
+                            if (!undone) nav.popBackStack()
+                        }
                     }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {

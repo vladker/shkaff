@@ -26,6 +26,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -34,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +62,7 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemRow
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.rememberRole
+import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.util.FormBus
 
 class LocationDetailVm(val locationId: String) : ViewModel() {
@@ -112,6 +116,11 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
     fun softDelete() {
         viewModelScope.launch { Deps.locations.softDelete(locationId) }
     }
+
+    // Undo (US-L21): возврат ящика после мягкого удаления.
+    fun restore() {
+        viewModelScope.launch { Deps.locations.restore(locationId) }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,7 +136,10 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
     val role = rememberRole()
 
     val l = location
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -244,7 +256,14 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
             }
             item { SectionTitle("Вещи (${items.size})") }
             if (items.isEmpty()) {
-                item { EmptyState("В ящике пока пусто.\nНажмите «+», чтобы положить первую вещь.") }
+                val canAdd = Access.can(role, Access.CREATE)
+                item {
+                    EmptyState(
+                        "В ящике пока пусто.",
+                        actionLabel = if (canAdd) "Добавить вещь" else null,
+                        onAction = if (canAdd) { { nav.navigate("item-form/0/$locationId") } } else null
+                    )
+                }
             } else {
                 items(items, key = { it.id }) { it ->
                     ItemRow(it, l?.label?.ifBlank { l.name }, { nav.navigate("item/${it.id}") })
@@ -260,10 +279,19 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                 confirmButton = {
                     TextButton(onClick = {
                         showDelete = false
-                        vm.softDelete()
-                        val sid = l?.storage_id
-                        if (sid != null) nav.navigate("storage/$sid") { popUpTo("dashboard") }
-                        else nav.popBackStack()
+                        scope.launch {
+                            val name = l?.let { it.label.ifBlank { it.name }.ifBlank { "Ящик" } } ?: "Ящик"
+                            vm.softDelete()
+                            // US-L21: даём 5 секунд на «ОТМЕНИТЬ»; если не отменили — уходим к хранилищу.
+                            val undone = snackbarHostState.undo("«$name» удалён") {
+                                vm.restore()
+                            }
+                            if (!undone) {
+                                val sid = l?.storage_id
+                                if (sid != null) nav.navigate("storage/$sid") { popUpTo("dashboard") }
+                                else nav.popBackStack()
+                            }
+                        }
                     }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {

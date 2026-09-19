@@ -101,6 +101,13 @@ class StorageRepository(
         e?.let { Deps.actionLog.log("delete", "storage", id, mapOf("name" to it.name)) }
     }
 
+    // Undo: возврат хранилища после мягкого удаления.
+    suspend fun restore(id: String) {
+        val e = dao.byId(id)
+        dao.restore(id, System.currentTimeMillis(), deviceId())
+        e?.let { Deps.actionLog.log("restore", "storage", id, mapOf("name" to it.name)) }
+    }
+
     suspend fun hardDelete(id: String) {
         dao.hardDelete(id)
     }

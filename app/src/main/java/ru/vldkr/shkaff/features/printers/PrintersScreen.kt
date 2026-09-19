@@ -385,7 +385,11 @@ fun PrintersScreen(nav: NavController) {
 
             if (ui.profiles.isEmpty()) {
                 item {
-                    EmptyState("Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — классический канал печати (RFCOMM); BLE — только для совместимых GATT-принтеров; USB — принтер по кабелю Type-C.")
+                    EmptyState(
+                        "Принтеры не добавлены.\nTCP — IP-адрес и порт 9100; Bluetooth — классический канал печати (RFCOMM); BLE — только для совместимых GATT-принтеров; USB — принтер по кабелю Type-C.",
+                        actionLabel = "Добавить принтер",
+                        onAction = { editing = null; formOpen = true }
+                    )
                 }
             }
 
