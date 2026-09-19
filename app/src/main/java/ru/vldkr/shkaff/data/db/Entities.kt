@@ -179,7 +179,11 @@ data class AttributeDefEntity(
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,
-    val device_last_modified: String = ""
+    val device_last_modified: String = "",
+    // Категория, для которой применяется атрибут; "*" — все категории.
+    val category: String = "*",
+    // Уровень обязательности: min (обязательно) | rec (рекомендуется) | free (свободно).
+    val tier: String = "free"
 )
 
 @Entity(tableName = "printer_profile")

@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import java.io.ByteArrayOutputStream
@@ -105,5 +106,37 @@ class BackupFormatTest {
     @Test(expected = IllegalArgumentException::class)
     fun wrongFormatRejected() {
         Backup.fromJson("""{"format":"other","version":1}""")
+    }
+
+    @Test
+    fun attributeDefCategoryTierSurviveRoundTrip() {
+        val def = AttributeDefEntity(
+            id = "a1", scope = "item", key = "material", label = "Материал",
+            type = "text", options = "[]", sort_order = 2, required = false,
+            created_at = 1L, updated_at = 2L, deleted_at = null, device_last_modified = "dev",
+            category = "Инструменты", tier = "min"
+        )
+        val back = Backup.fromJson(Backup.toJson(MergeInput(attributeDefs = listOf(def))))
+        val d = back.attributeDefs.single()
+        assertEquals("a1", d.id)
+        assertEquals("Инструменты", d.category)
+        assertEquals("min", d.tier)
+    }
+
+    @Test
+    fun oldAttributeDefGetsDefaults() {
+        val json = """
+            {
+              "format": "shkaff-backup",
+              "version": 1,
+              "attribute_defs": [
+                {"id":"a1","scope":"item","key":"material","label":"Материал","type":"text","options":"[]","sort_order":2,"required":false,"created_at":1,"updated_at":2,"device_last_modified":"dev"}
+              ]
+            }
+        """.trimIndent()
+        val back = Backup.fromJson(json)
+        val d = back.attributeDefs.single()
+        assertEquals("*", d.category)
+        assertEquals("rec", d.tier)
     }
 }

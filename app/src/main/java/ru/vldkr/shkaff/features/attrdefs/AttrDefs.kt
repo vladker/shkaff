@@ -36,6 +36,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import ru.vldkr.shkaff.data.catalog.AttributeCatalog
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -52,7 +53,8 @@ class AttrDefsVm : ViewModel() {
         var label: String = "",
         var type: String = "text",
         var options: String = "",
-        var required: Boolean = false
+        var category: String = "*",
+        var tier: String = "rec"
     )
 
     val draft = MutableStateFlow(Draft())
@@ -73,6 +75,9 @@ class AttrDefsVm : ViewModel() {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val key = d.key.trim()
+            val category = d.category.trim().ifBlank { "*" }
+            val tier = if (d.tier in listOf("min", "rec", "free")) d.tier else "rec"
+            val required = tier == "min"
             val existing = defs.value.firstOrNull { it.scope == d.scope && it.key == key }
             val options = if (d.type == "select") {
                 org.json.JSONArray(d.options.split("|").map { it.trim() }.filter { it.isNotEmpty() }).toString()
@@ -83,7 +88,9 @@ class AttrDefsVm : ViewModel() {
                         label = d.label.trim(),
                         type = d.type,
                         options = options,
-                        required = d.required,
+                        category = category,
+                        tier = tier,
+                        required = required,
                         updated_at = now,
                         device_last_modified = Deps.deviceId
                     )
@@ -97,12 +104,14 @@ class AttrDefsVm : ViewModel() {
                         label = d.label.trim(),
                         type = d.type,
                         options = options,
-                        required = d.required,
+                        required = required,
                         sort_order = 0,
                         created_at = now,
                         updated_at = now,
                         deleted_at = null,
-                        device_last_modified = Deps.deviceId
+                        device_last_modified = Deps.deviceId,
+                        category = category,
+                        tier = tier
                     )
                 )
             }
@@ -158,6 +167,8 @@ fun AttrDefsScreen(nav: NavController) {
                     if (draft.type == "select") {
                         AttrFieldRow("Варианты через |", draft.options) { vm.draft.value = draft.copy(options = it) }
                     }
+                    TierChipRow(draft.tier, { vm.draft.value = draft.copy(tier = it) })
+                    AttrFieldRow("Категория (пусто — все)", draft.category, { vm.draft.value = draft.copy(category = it) })
                     error?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                     }
@@ -177,7 +188,7 @@ fun AttrDefsScreen(nav: NavController) {
                     Column(Modifier.weight(1f)) {
                         Text(d.label, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "${d.scope} · ${d.key} · ${d.type}",
+                            "${d.scope} · ${d.key} · ${d.type} · ${d.category} · ${AttributeCatalog.tierLabel(d.tier)}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -209,6 +220,20 @@ private fun ScopeChip(scope: String, selected: String, onClick: () -> Unit) {
 private fun TypeChipRow(current: String, onChange: (String) -> Unit) {
     Row {
         listOf("text" to "Текст", "number" to "Число", "select" to "Список", "bool" to "Флаг", "date" to "Дата").forEach { (v, l) ->
+            androidx.compose.material3.FilterChip(
+                selected = current == v,
+                onClick = { onChange(v) },
+                label = { Text(l) },
+                modifier = Modifier.padding(end = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TierChipRow(current: String, onChange: (String) -> Unit) {
+    Row {
+        listOf("min" to "Минимум", "rec" to "Рекомендуемые", "free" to "Свободные").forEach { (v, l) ->
             androidx.compose.material3.FilterChip(
                 selected = current == v,
                 onClick = { onChange(v) },

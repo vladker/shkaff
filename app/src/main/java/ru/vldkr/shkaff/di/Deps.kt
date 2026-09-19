@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.runBlocking
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
+import ru.vldkr.shkaff.data.catalog.AttributeCatalog
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
@@ -85,6 +86,7 @@ object Deps {
         modelStore = ModelStore(app)
         seedDefaultAttributes()
         seedClimateAttributeDefs()
+        seedAttributeCatalogOnce()
         seedDefaultTemplate()
         backfillExpiryDates()
         seedTagDictionaryOnce()
@@ -181,14 +183,14 @@ object Deps {
         val now = System.currentTimeMillis()
         val dev = deviceId
         val defs = listOf(
-            AttributeDefEntity(newId(), "*", "note", "Заметка", "text", "[]", 0, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "item", "category", "Категория", "select", """["Электроника","Инструменты","Канцелярия","Запчасти","Прочее"]""", 1, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "item", "material", "Материал", "text", "[]", 2, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "item", "size", "Размер", "text", "[]", 3, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "item", "price", "Цена", "number", "[]", 4, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "item", "purchase_date", "Дата покупки", "date", "[]", 5, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "storage", "room", "Комната", "text", "[]", 1, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "location", "zone", "Зона", "text", "[]", 1, false, now, now, null, dev)
+            AttributeDefEntity(newId(), "*", "note", "Заметка", "text", "[]", 0, false, now, now, null, dev, "*", "free"),
+            AttributeDefEntity(newId(), "item", "category", "Категория", "select", AttributeCatalog.itemCategoriesJson(), 1, true, now, now, null, dev, "*", "min"),
+            AttributeDefEntity(newId(), "item", "material", "Материал", "text", "[]", 2, false, now, now, null, dev, "*", "rec"),
+            AttributeDefEntity(newId(), "item", "size", "Размер", "text", "[]", 3, false, now, now, null, dev, "*", "rec"),
+            AttributeDefEntity(newId(), "item", "price", "Цена", "number", "[]", 4, false, now, now, null, dev, "*", "rec"),
+            AttributeDefEntity(newId(), "item", "purchase_date", "Дата покупки", "date", "[]", 5, false, now, now, null, dev, "*", "free"),
+            AttributeDefEntity(newId(), "storage", "room", "Комната", "text", "[]", 1, false, now, now, null, dev, "*", "rec"),
+            AttributeDefEntity(newId(), "location", "zone", "Зона", "text", "[]", 1, false, now, now, null, dev, "*", "rec")
         )
         for (d in defs) db.attributeDao().upsert(d)
     }
@@ -200,11 +202,92 @@ object Deps {
         val now = System.currentTimeMillis()
         val dev = deviceId
         val defs = listOf(
-            AttributeDefEntity(newId(), "storage", "temperature_c", "Температура, °C", "number", "[]", 2, false, now, now, null, dev),
-            AttributeDefEntity(newId(), "storage", "humidity_pct", "Влажность, %", "number", "[]", 3, false, now, now, null, dev)
+            AttributeDefEntity(newId(), "storage", "temperature_c", "Температура, °C", "number", "[]", 2, false, now, now, null, dev, "*", "rec"),
+            AttributeDefEntity(newId(), "storage", "humidity_pct", "Влажность, %", "number", "[]", 3, false, now, now, null, dev, "*", "rec")
         )
         for (d in defs) db.attributeDao().upsert(d)
         meta().upsert(SchemaMetaEntity("climateDefsSeeded", "1"))
+    }
+
+    // Справочник атрибутов (категории + уровни min/rec/free) досевается один раз.
+    // Существующие пользовательские атрибуты не затираются.
+    private fun seedAttributeCatalogOnce() {
+        if (meta().get("attrCatalogV2Seeded") == "1") return
+        val now = System.currentTimeMillis()
+        val dev = deviceId
+        val dao = db.attributeDao()
+        val allRows = runBlocking { dao.allWithDeleted() }
+        val live = allRows.filter { it.deleted_at == null }
+        val allByKey = allRows.associateBy { Pair(it.scope, it.key) }
+
+        // Категория вещей: обязательный select по справочнику.
+        // Если пользователь удалил атрибут — восстанавливаем его, чтобы форма вещи работала.
+        val itemCategory = live.firstOrNull { it.scope == "item" && it.key == "category" }
+            ?: allRows.firstOrNull { it.scope == "item" && it.key == "category" }
+        if (itemCategory != null) {
+            dao.upsert(itemCategory.copy(
+                options = AttributeCatalog.itemCategoriesJson(),
+                category = "*",
+                tier = "min",
+                required = true,
+                deleted_at = null,
+                updated_at = now,
+                device_last_modified = dev
+            ))
+        } else {
+            dao.upsert(AttributeDefEntity(
+                id = newId(), scope = "item", key = "category", label = "Категория",
+                type = "select", options = AttributeCatalog.itemCategoriesJson(),
+                sort_order = 1, required = true, created_at = now, updated_at = now,
+                deleted_at = null, device_last_modified = dev, category = "*", tier = "min"
+            ))
+        }
+
+        // Категория хранилищ: обязательный select по справочнику.
+        val storageCategory = live.firstOrNull { it.scope == "storage" && it.key == "category" }
+            ?: allRows.firstOrNull { it.scope == "storage" && it.key == "category" }
+        if (storageCategory != null) {
+            dao.upsert(storageCategory.copy(
+                options = AttributeCatalog.storageCategoriesJson(),
+                category = "*",
+                tier = "min",
+                required = true,
+                deleted_at = null,
+                updated_at = now,
+                device_last_modified = dev
+            ))
+        } else {
+            dao.upsert(AttributeDefEntity(
+                id = newId(), scope = "storage", key = "category", label = "Категория",
+                type = "select", options = AttributeCatalog.storageCategoriesJson(),
+                sort_order = 1, required = true, created_at = now, updated_at = now,
+                deleted_at = null, device_last_modified = dev, category = "*", tier = "min"
+            ))
+        }
+
+        for (s in AttributeCatalog.specs) {
+            val k = s.scope to s.key
+            // Мягко удалённые пользователем атрибуты не восстанавливаем.
+            if (allByKey.containsKey(k)) continue
+            dao.upsert(AttributeDefEntity(
+                id = newId(),
+                scope = s.scope,
+                key = s.key,
+                label = s.label,
+                type = s.type,
+                options = AttributeCatalog.optionsJson(s.options),
+                sort_order = s.sort_order,
+                required = s.tier == "min",
+                created_at = now,
+                updated_at = now,
+                deleted_at = null,
+                device_last_modified = dev,
+                category = s.category,
+                tier = s.tier
+            ))
+        }
+
+        meta().upsert(SchemaMetaEntity("attrCatalogV2Seeded", "1"))
     }
 
     private fun seedDefaultTemplate() {

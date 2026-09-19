@@ -113,6 +113,38 @@ fun FieldRow(
 fun parseOptions(json: String?): List<String> = AttrJson.parseOptions(json)
 
 @Composable
+fun CategoryPicker(
+    options: List<String>,
+    value: String,
+    onChange: (String) -> Unit,
+    blankLabel: String = "Без категории"
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            FilterChip(
+                selected = value.isEmpty(),
+                onClick = { onChange("") },
+                label = { Text(blankLabel) },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            options.forEach { opt ->
+                FilterChip(
+                    selected = value == opt,
+                    onClick = { onChange(if (value == opt) "" else opt) },
+                    label = { Text(opt) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun AttrFields(
     defs: List<AttributeDefEntity>,
     values: Map<String, String>,

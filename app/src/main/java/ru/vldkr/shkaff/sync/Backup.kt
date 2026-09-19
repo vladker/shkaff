@@ -50,6 +50,7 @@ object Backup {
         put("id", e.id); put("scope", e.scope); put("key", e.key); put("label", e.label)
         put("type", e.type); put("options", e.options)
         put("sort_order", e.sort_order); put("required", e.required)
+        put("category", e.category); put("tier", e.tier)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -59,6 +60,7 @@ object Backup {
         key = j.getString("key"), label = j.getString("label"),
         type = j.optString("type", "text"), options = j.optString("options", "[]"),
         sort_order = j.optInt("sort_order", 0), required = j.optBoolean("required", false),
+        category = j.optString("category", "*"), tier = j.optString("tier", "rec"),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")

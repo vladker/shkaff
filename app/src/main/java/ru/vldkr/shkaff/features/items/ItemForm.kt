@@ -65,6 +65,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
+import ru.vldkr.shkaff.data.catalog.AttributeCatalog
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
@@ -81,10 +82,12 @@ import ru.vldkr.shkaff.domain.vision.ItemVision
 import ru.vldkr.shkaff.domain.recommend.StorageSuggestion
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
+import ru.vldkr.shkaff.ui.components.CategoryPicker
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.components.parseOptions
 import ru.vldkr.shkaff.util.ImageDownload
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.util.newId
@@ -1249,9 +1252,45 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
             }
             TagChipsField(vm)
             if (defs.isNotEmpty()) {
-                SectionTitle("Атрибуты")
-                AttrFields(defs, vm.attrs) { k, v ->
-                    vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
+                val categoryKey = defs.firstOrNull { it.label == "Категория" || it.key == "category" }?.key ?: "category"
+                val categoryDef = defs.firstOrNull { it.key == categoryKey }
+                val selectedCategory = vm.attrs[categoryKey]?.trim()?.takeIf { it.isNotEmpty() } ?: ""
+                val categoryOptions = (categoryDef?.let { parseOptions(it.options) } ?: emptyList())
+                    .ifEmpty { AttributeCatalog.itemCategories }
+                SectionTitle("Категория")
+                CategoryPicker(
+                    options = categoryOptions,
+                    value = selectedCategory,
+                    onChange = { v ->
+                        vm.attrs = if (v.isEmpty()) vm.attrs - categoryKey else vm.attrs + (categoryKey to v)
+                    }
+                )
+
+                val visible = defs.filter { def ->
+                    def.key != categoryKey && (def.category == "*" || def.category == selectedCategory)
+                }
+                fun tierDefs(tier: String) = visible.filter { it.tier == tier }.sortedBy { it.sort_order }
+                val min = tierDefs("min")
+                val rec = tierDefs("rec")
+                val free = tierDefs("free")
+
+                if (min.isNotEmpty()) {
+                    SectionTitle("Минимум")
+                    AttrFields(min, vm.attrs) { k, v ->
+                        vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
+                    }
+                }
+                if (rec.isNotEmpty()) {
+                    SectionTitle("Рекомендуемые")
+                    AttrFields(rec, vm.attrs) { k, v ->
+                        vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
+                    }
+                }
+                if (free.isNotEmpty()) {
+                    SectionTitle("Свободные")
+                    AttrFields(free, vm.attrs) { k, v ->
+                        vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
+                    }
                 }
             }
             error?.let {
