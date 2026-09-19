@@ -175,7 +175,7 @@ class LabelsVm(
         val zones: List<Zone> = emptyList(),
         // — раскладка и печать (шаг 1) —
         val activeZone: Int = 0,
-        val previewBmp: Bitmap? = null,
+        val sheetBmp: Bitmap? = null,
         val createdNames: List<String> = emptyList(),
         // — вещи в зонах (батч) —
         // Кэш вещей для пикера и назначенных в зоны (id → сущность): имена остаются видимыми.
@@ -530,17 +530,18 @@ class LabelsVm(
         zones[i] = list[i].copy(itemId = itemId)
         val cache = ui.value.itemCache.toMutableMap()
         ui.value.catalog.firstOrNull { it.id == itemId }?.let { cache[it.id] = it }
-        val isActive = i == ui.value.activeZone
         update { it.copy(zones = zones, itemCache = cache, pickerZone = null) }
-        if (isActive) refreshPreview()
+        refreshPreview() // весь лист меняется — обновляем при любом выборе
     }
 
     /** Убрать вещь из зоны. */
     fun clearZoneItem(i: Int) {
+        if (ui.value.step != 1) return
         val list = ui.value.zones.toMutableList()
         if (!list.indices.contains(i)) return
         list[i] = list[i].copy(itemId = null)
         update { it.copy(zones = list) }
+        refreshPreview()
     }
 
     /** Сколько зон заполнено вещью. */
@@ -679,19 +680,18 @@ class LabelsVm(
 
     fun next() {
         if (ui.value.step != 0 || ui.value.zones.isEmpty()) return
-        update { it.copy(step = 1, activeZone = 0, previewBmp = null) }
+        update { it.copy(step = 1, activeZone = 0, sheetBmp = null) }
         refreshPreview()
     }
 
     fun back() {
         if (ui.value.step != 1) return
-        update { it.copy(step = 0, previewBmp = null) }
+        update { it.copy(step = 0, sheetBmp = null) }
     }
 
     fun selectActiveZone(i: Int) {
         if (ui.value.step != 1) return
-        update { it.copy(activeZone = i) }
-        refreshPreview()
+        update { it.copy(activeZone = i) } // подсвечивание зоны — композиционное, битмап не пересобираем
     }
 
     private fun updateActive(fn: (Zone) -> Zone) {
@@ -709,17 +709,41 @@ class LabelsVm(
     fun setQrScale(s: Float) { updateActive { it.copy(qrScale = s) } }
     fun setZoneFontSize(v: Float) { updateActive { it.copy(fontSize = v) } }
 
+    /**
+     * Предпросмотр всей этикетки: канвас = sizeW×sizeH, каждая зона рендерится так же,
+     * как при печати (тот же шаблон/область из templateFor). В батч-режиме пустая зона
+     * остаётся пустой (как на листе печати); для ящика/хранилища зона без вещи показывает
+     * субъект (или демо) — как быстрая печать.
+     */
     fun refreshPreview() {
         if (ui.value.step != 1) return
-        val z = active() ?: return
-        val r = templateFor(z) ?: return
-        // Вещь зоны (если назначена) — иначе субъект экрана или демо.
-        val item = zoneItem(ui.value.activeZone)
-        val code = item?.code?.ifBlank { null } ?: ui.value.code.ifBlank { "DEMO-123" }
-        val name = item?.name?.ifBlank { null } ?: ui.value.name.ifBlank { "Демо-вещь" }
-        val attrs = item?.let { AttrJson.toMap(it.attributes) } ?: currentAttrs()
-        val bmp = LabelGenerator.generateLayout(r.first, code, name, dpi = 150, attrs = attrs)
-        update { it.copy(previewBmp = bmp) }
+        val u = ui.value
+        val base = u.template ?: u.templates.firstOrNull() ?: return
+        val fg = LabelGenerator.parseColor(base.text_color)
+        val bg = LabelGenerator.parseColor(base.bg_color)
+        val light = if (base.invert == true) fg else bg
+        val (sheetW, sheetH) = sheetSize()
+        val sheet = Bitmap.createBitmap(
+            LabelMath.px(sheetW).coerceAtLeast(32),
+            LabelMath.px(sheetH).coerceAtLeast(16),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(sheet)
+        canvas.drawColor(light)
+        u.zones.forEachIndexed { i, z ->
+            val pair = templateFor(z) ?: return@forEachIndexed
+            val item = zoneItem(i)
+            if (item == null && entityKind == "item") return@forEachIndexed
+            val code = item?.code?.ifBlank { null } ?: u.code.ifBlank { "DEMO-123" }
+            val name = item?.name?.ifBlank { null } ?: u.name.ifBlank { "Демо-вещь" }
+            val attrs = item?.let { AttrJson.toMap(it.attributes) } ?: currentAttrs()
+            val bmp = LabelGenerator.generateLayout(pair.first, code, name, dpi = LabelMath.DPI, attrs = attrs)
+            if (bmp != null) {
+                val (oxMm, oyMm) = LabelGrid.regionOrigin(spec, pair.second)
+                canvas.drawBitmap(bmp, LabelMath.px(oxMm).toFloat(), LabelMath.px(oyMm).toFloat(), null)
+            }
+        }
+        update { it.copy(sheetBmp = sheet) }
     }
 
     /** Шаблон зоны: базовый с размером/положением под выбранную область. */
@@ -1225,11 +1249,10 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
                         }
                         Spacer(Modifier.height(8.dp))
                     }
-                    // Вещи в зонах: визуальный лист — зона = её область на бумаге (буквы A, B, C…).
-                    // Только для item-режима: у ящика/хранилища субъект один — сам объект.
+                    // Вся этикетка: зоны напечатаны как в printSheet, тап по зоне — выбор вещи в неё.
+                    SheetPreview(vm, ui)
+                    Spacer(Modifier.height(8.dp))
                     if (vm.entityKind == "item") {
-                        SheetBuilder(vm, ui)
-                        Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { vm.openZonePicker(ui.activeZone) }, modifier = Modifier.weight(1f)) {
                                 Text("Добавить вещь")
@@ -1292,21 +1315,6 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
                                 steps = 17
                             )
                         }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    // Предпросмотр зоны
-                    ui.previewBmp?.let { bmp ->
-                        SectionTitle("Предпросмотр зоны")
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(bmp.width.toFloat() / bmp.height)
-                                .padding(vertical = 8.dp)
-                        ) {
-                            LabelPreviewWithRulers(bitmap = bmp, widthMm = zw, heightMm = zh)
-                        }
-                    } ?: Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                        Text("Нет зоны для предпросмотра", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
                     }
                     Spacer(Modifier.height(8.dp))
                     ui.savedMsg?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
@@ -1654,13 +1662,13 @@ private fun rememberGlow(): Float {
 }
 
 /**
- * Визуальный канвас этикетки: канвас = размер указанной этикетки (sizeW×sizeH),
- * зоны лежат внутри по своим областям (как при печати). Пропорции — реальные,
- * на экране канвас вписан в ширину (без скролла). Буквы A, B, C… — подсказка
- * «вещь для зоны B». Тап по зоне — выбор вещи в неё.
+ * Предпросмотр всей этикетки: канвас = размер этикетки (sizeW×sizeH), зоны
+ * напечатаны так же, как в printSheet (renderSheetPreview). Пропорции — реальные,
+ * на экране канвас вписан в ширину (без скролла). Поверх — кликабельные области
+ * зон: тап — выбрать вещь в зону, активная зона подсвечена.
  */
 @Composable
-private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
+private fun SheetPreview(vm: LabelsVm, ui: LabelsVm.Ui) {
     val (sheetW, sheetH) = vm.sheetSize()
     val ratio = (sheetW / sheetH).toFloat()
     val zonesCount = ui.zones.size
@@ -1673,7 +1681,7 @@ private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
     ) {
         Column(Modifier.padding(8.dp)) {
             Text(
-                "Этикетка ${sheetW.toInt()}×${sheetH.toInt()} мм — $zonesHint",
+                "Этикетка ${sheetW.toInt()}×${sheetH.toInt()} мм — $zonesHint · тап по зоне: вещь для неё",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1686,6 +1694,14 @@ private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
                     .background(MaterialTheme.colorScheme.surface)
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
             ) {
+                ui.sheetBmp?.let { bmp ->
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Предпросмотр этикетки",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.FillBounds
+                    )
+                }
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val maxW = constraints.maxWidth
                     val maxH = constraints.maxHeight
@@ -1695,15 +1711,15 @@ private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
                             val region = LabelGrid.regionOf(vm.spec, z.cells) ?: return@forEachIndexed
                             val (ox, oy) = LabelGrid.regionOrigin(vm.spec, region)
                             val (zw, zh) = LabelGrid.regionMm(vm.spec, region)
-                            ZoneBlock(
+                            ZoneOverlay(
                                 vm = vm,
                                 index = i,
-                                zone = z,
                                 active = i == ui.activeZone,
+                                filled = z.itemId != null,
                                 modifier = Modifier
                                     .offset(x = (ox * scale).dp, y = (oy * scale).dp)
                                     .size(width = (zw * scale).dp, height = (zh * scale).dp)
-                                    .padding(3.dp)
+                                    .padding(2.dp)
                             )
                         }
                     }
@@ -1713,16 +1729,18 @@ private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
     }
 }
 
-/** Зона на визуальном листе: буква, вещь (или «пусто»), «✕» и «+». */
+/**
+ * Область зоны поверх предпросмотра: буква A, B, C…; активная зона подсвечена;
+ * пустая — с «+». Тап — пикер вещи (в диалоге можно и убрать назначенную).
+ */
 @Composable
-private fun ZoneBlock(
+private fun ZoneOverlay(
     vm: LabelsVm,
     index: Int,
-    zone: LabelsVm.Zone,
     active: Boolean,
+    filled: Boolean,
     modifier: Modifier
 ) {
-    val item = vm.zoneItem(index)
     val glow = rememberGlow()
     val border = if (active) MaterialTheme.colorScheme.primary.copy(alpha = glow)
     else MaterialTheme.colorScheme.outlineVariant
@@ -1730,38 +1748,28 @@ private fun ZoneBlock(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(
-                if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
                 else ComposeColor.Transparent
             )
             .border(1.dp, border, RoundedCornerShape(6.dp))
             .clickable { vm.openZonePicker(index) }
     ) {
-        Column(Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    vm.zoneLetter(index),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.weight(1f))
-                IconButton(
-                    onClick = { vm.clearZoneItem(index) },
-                    enabled = item != null,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Убрать вещь", modifier = Modifier.size(16.dp))
-                }
-                IconButton(onClick = { vm.openZonePicker(index) }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Filled.Add, contentDescription = "Добавить вещь", modifier = Modifier.size(16.dp))
-                }
-            }
-            Text(
-                item?.name?.ifBlank { "Вещь" } ?: "пусто",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (item == null) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+        Text(
+            vm.zoneLetter(index),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(2.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+        )
+        if (!filled) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Добавить вещь",
+                modifier = Modifier.align(Alignment.Center).size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -1780,6 +1788,19 @@ private fun ZonePickerDialog(
         title = { Text("Вещь для зоны ${vm.zoneLetter(zoneIndex)}") },
         text = {
             Column {
+                vm.zoneItem(zoneIndex)?.let { cur ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            cur.name.ifBlank { cur.code },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        TextButton(onClick = { vm.clearZoneItem(zoneIndex); onDismiss() }) { Text("Убрать") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 OutlinedTextField(
                     value = ui.catalogQuery,
                     onValueChange = { vm.setCatalogQuery(it) },
