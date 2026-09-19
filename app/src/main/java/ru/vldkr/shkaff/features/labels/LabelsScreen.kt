@@ -486,20 +486,11 @@ class LabelsVm(
         return ui.value.itemCache[id]
     }
 
-    /** Размер листа (мм) — покрывает все области зон, ширина не меньше бумаги принтера. */
+    /** Размер канваса (мм) — размер указанной этикетки (sizeW×sizeH); зоны лежат внутри неё. */
     fun sheetSize(): Pair<Double, Double> {
-        val zs = ui.value.zones
-        var w = currentPrinter()?.paper_width_mm
-            ?: (ui.value.sizeW.toDoubleOrNull() ?: 58.0)
-        var h = 0.0
-        for (z in zs) {
-            val region = LabelGrid.regionOf(spec, z.cells) ?: continue
-            val (ox, oy) = LabelGrid.regionOrigin(spec, region)
-            val (zw, zh) = LabelGrid.regionMm(spec, region)
-            w = maxOf(w, ox + zw)
-            h = maxOf(h, oy + zh)
-        }
-        return w to maxOf(h, 1.0)
+        val u = ui.value
+        return (u.sizeW.toDoubleOrNull() ?: 58.0).coerceIn(20.0, 100.0) to
+            (u.sizeH.toDoubleOrNull() ?: 40.0).coerceIn(20.0, 100.0)
     }
 
     /** Открыть пикер вещи для зоны [i]. */
@@ -1663,20 +1654,26 @@ private fun rememberGlow(): Float {
 }
 
 /**
- * Визуальный лист: зоны разложены по своим областям на бумаге (как при печати),
- * буквы A, B, C… — для подсказки «вещь для зоны B». Тап по зоне — выбор вещи в неё.
+ * Визуальный канвас этикетки: канвас = размер указанной этикетки (sizeW×sizeH),
+ * зоны лежат внутри по своим областям (как при печати). Пропорции — реальные,
+ * на экране канвас вписан в ширину (без скролла). Буквы A, B, C… — подсказка
+ * «вещь для зоны B». Тап по зоне — выбор вещи в неё.
  */
 @Composable
 private fun SheetBuilder(vm: LabelsVm, ui: LabelsVm.Ui) {
     val (sheetW, sheetH) = vm.sheetSize()
-    val ratio = (sheetW / sheetH).toFloat().coerceIn(0.3f, 3.0f)
+    val ratio = (sheetW / sheetH).toFloat()
+    val zonesCount = ui.zones.size
+    val zonesHint = if (zonesCount > 1) "зоны ${vm.zoneLetter(0)}..${vm.zoneLetter(zonesCount - 1)}"
+    else if (zonesCount == 1) "зона ${vm.zoneLetter(0)}"
+    else "зоны не заданы"
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
     ) {
         Column(Modifier.padding(8.dp)) {
             Text(
-                "Лист ${sheetW.toInt()}×${sheetH.toInt()} мм — зоны ${vm.zoneLetter(0)}..${vm.zoneLetter(ui.zones.size - 1)}",
+                "Этикетка ${sheetW.toInt()}×${sheetH.toInt()} мм — $zonesHint",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
