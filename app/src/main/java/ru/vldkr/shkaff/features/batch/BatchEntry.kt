@@ -228,7 +228,7 @@ class BatchVm : ViewModel() {
             update { it.copy(galleryMsg = null, printMsg = null, printError = null) }
             var ok = 0
             for (e in u.created) {
-                val bmp = LabelGenerator.generate(t, e.code, e.name) ?: continue
+                val bmp = LabelGenerator.generateLayout(t, e.code, e.name) ?: continue
                 val uri = LabelGenerator.saveToGallery(
                     ctx, bmp,
                     "${LabelGenerator.sanitizeFileName(e.name)}_${e.code}.png"

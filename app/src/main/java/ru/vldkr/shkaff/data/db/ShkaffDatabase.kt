@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BasketItemEntity::class,
         PeerEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -56,7 +56,7 @@ abstract class ShkaffDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "14"
+        const val SCHEMA_VERSION = "15"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -271,10 +271,19 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v15 (калибровка этикеток): адаптивная раскладка, два кода, коэффициент размера кода.
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE label_template ADD COLUMN layout_mode TEXT NOT NULL DEFAULT 'classic'")
+                db.execSQL("ALTER TABLE label_template ADD COLUMN qr_count INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE label_template ADD COLUMN qr_scale REAL NOT NULL DEFAULT 1.0")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

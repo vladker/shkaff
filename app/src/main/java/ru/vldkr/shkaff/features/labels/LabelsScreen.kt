@@ -280,7 +280,7 @@ class LabelsVm(
 
     fun regenerate() {
         val t = effectiveTemplate() ?: return
-        val bmp = LabelGenerator.generate(t, ui.value.code, ui.value.name)
+        val bmp = LabelGenerator.generateLayout(t, ui.value.code, ui.value.name)
         update { it.copy(bitmap = bmp, savedMsg = null) }
     }
 

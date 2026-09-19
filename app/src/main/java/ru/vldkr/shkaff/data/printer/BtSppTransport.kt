@@ -48,7 +48,11 @@ class BtSppTransport(
                 os.flush()
                 val buf = readFully(s.inputStream)
                 fun hex(b: Byte): String = "%02X".format(b.toInt() and 0xFF)
-                PrinterProbe(cmdModeHex = hex(buf[11]), dpiTypeHex = hex(buf[10]))
+                PrinterProbe(
+                    cmdModeHex = hex(buf[11]),
+                    dpiTypeHex = hex(buf[10]),
+                    rawHex = buf.joinToString(" ") { hex(it) }
+                )
             }
         }.mapSecurity()
     }

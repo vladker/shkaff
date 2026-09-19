@@ -23,6 +23,29 @@ class TspPosTest {
     }
 
     @Test
+    fun labelWidthMmSetsSizeButRasterStaysNarrow() {
+        // 232 px (29 мм) — зона на бумаге 58 мм: SIZE по ширине бумаги, BITMAP — 29 байт
+        val bits = ByteArray(29 * 8)
+        java.util.Arrays.fill(bits, 0xFF.toByte())
+        val out = TspPos.label(232, 8, bits, labelWidthMm = 58)
+        val head = "SIZE 58 mm,1 mm\nSPEED 5\nDENSITY 40\nCLS\nDIRECTION 0\nBITMAP 0,0,29,8,0,".toByteArray(Charsets.US_ASCII)
+        assertArrayEquals(head, out.copyOf(head.size))
+    }
+
+    @Test
+    fun labelWithOffsetPositionsRasterOnSheet() {
+        val bits = ByteArray(25 * 8)
+        java.util.Arrays.fill(bits, 0xFF.toByte())
+        val out = TspPos.label(200, 8, bits, labelWidthMm = 58, offsetXpx = 56, offsetYpx = 16)
+        val s = out.toString(Charsets.US_ASCII)
+        org.junit.Assert.assertTrue(s.startsWith("SIZE 58 mm,1 mm\nSPEED 5\nDENSITY 40\nCLS\nDIRECTION 0\n"))
+        org.junit.Assert.assertTrue(s.contains("BITMAP 56,16,25,8,0,"))
+        // без сдвига — (0,0)
+        val plain = TspPos.label(200, 8, bits, labelWidthMm = 58).toString(Charsets.US_ASCII)
+        org.junit.Assert.assertTrue(plain.contains("BITMAP 0,0,25,8,0,"))
+    }
+
+    @Test
     fun copiesRepeatsPrint() {
         val bits = ByteArray(8)
         val out = TspPos.label(8, 8, bits, copies = 2)

@@ -523,7 +523,7 @@ private fun LabelStep(
     val name = vm.name
     val bmp = remember(sel, code, name) {
         if (sel != null && code.isNotBlank()) {
-            runCatching { LabelGenerator.generate(sel, code, name) }.getOrNull()
+            runCatching { LabelGenerator.generateLayout(sel, code, name) }.getOrNull()
         } else null
     }
 

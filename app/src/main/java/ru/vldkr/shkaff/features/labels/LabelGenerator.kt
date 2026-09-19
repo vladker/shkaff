@@ -13,6 +13,9 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.domain.labels.GridSpec
+import ru.vldkr.shkaff.domain.labels.LabelGrid
+import ru.vldkr.shkaff.domain.labels.RectMm
 import ru.vldkr.shkaff.domain.links.AppLink
 import java.io.File
 import java.io.FileOutputStream
@@ -107,6 +110,143 @@ object LabelGenerator {
         return out
     }
 
+    /**
+     * Адаптивная раскладка (layout_mode = auto/v/h): код вписывается в область,
+     * текст — в оставшуюся полосу, с обрезкой до ширины полосы.
+     * layout_mode = "classic" — обычный generate().
+     */
+    fun generateLayout(
+        template: LabelTemplateEntity,
+        code: String,
+        name: String,
+        dpi: Int = 150
+    ): Bitmap? {
+        if (code.isBlank()) return null
+        if (template.layout_mode.equals("classic", ignoreCase = true) || template.layout_mode.isBlank()) {
+            return generate(template, code, name, dpi)
+        }
+        val fmt = barcodeFormat(template.format) ?: return null
+        val plan = LabelGrid.plan(
+            template.width_mm, template.height_mm, template.margin_mm,
+            template.layout_mode, template.qr_count, template.qr_scale
+        )
+        val pxPerMm = dpi / 25.4f
+        val W = ((template.width_mm * pxPerMm).toInt()).coerceAtLeast(16)
+        val H = ((template.height_mm * pxPerMm).toInt()).coerceAtLeast(16)
+        val bg = parseColor(template.bg_color)
+        val fg = parseColor(template.text_color)
+        val isSquare = fmt == BarcodeFormat.QR_CODE || fmt == BarcodeFormat.DATA_MATRIX
+
+        val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(bg)
+
+        fun boxPx(r: RectMm) = (r.w * pxPerMm).toInt().coerceAtLeast(8) to (r.h * pxPerMm).toInt().coerceAtLeast(8)
+
+        fun drawCode(payload: String, r: RectMm) {
+            val (bw, bh) = boxPx(r)
+            val matrix = try {
+                if (isSquare) {
+                    val s = minOf(bw, bh)
+                    MultiFormatWriter().encode(payload, fmt, s, s)
+                } else {
+                    MultiFormatWriter().encode(payload, fmt, bw, bh)
+                }
+            } catch (e: Exception) {
+                return
+            }
+            val bmp = matrixToBitmap(matrix, fg, bg, template.invert)
+            val offX = (r.x * pxPerMm).toInt() + (bw - bmp.width) / 2
+            val offY = (r.y * pxPerMm).toInt() + (bh - bmp.height) / 2
+            canvas.drawBitmap(bmp, offX.toFloat(), offY.toFloat(), null)
+        }
+
+        drawCode(encodeContent(template, code), plan.codeItem)
+        plan.codeGithub?.let { drawCode(LabelGrid.GITHUB_URL, it) }
+
+        if (template.show_text) {
+            val text = renderText(template, name, code)
+            val baseLines = if (text.isNotBlank())
+                text.split('\n').map { it.trim() }.filter { it.isNotBlank() }
+            else emptyList()
+            val showNumber = template.show_number && !template.text_content.contains("{code}")
+            val lines = if (showNumber && baseLines.none { it == code }) baseLines + code else baseLines
+            if (lines.isNotEmpty()) {
+                val fontPx = ((maxOf(LabelGrid.MIN_FONT_PT, template.font_size) * 25.4f / 72f) * pxPerMm).toInt().coerceIn(8, 800)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+                paint.color = fg
+                paint.textSize = fontPx.toFloat()
+                paint.textAlign = Paint.Align.CENTER
+                val maxW = (plan.text.w * pxPerMm).toInt().coerceAtLeast(8)
+                val lineH = (fontPx * 1.5f).toInt()
+                val boxH = (plan.text.h * pxPerMm).toInt()
+                val maxLines = (boxH / lineH).coerceAtLeast(0)
+                // Перенос по словам: не вписавшееся по ширине продолжается на следующей строке.
+                val wrapped = lines.flatMap { wrap(paint, it, maxW) }
+                val shown = wrapped.take(maxLines).toMutableList()
+                if (shown.size == maxLines && wrapped.size > maxLines && maxLines > 0) {
+                    val last = shown.removeAt(shown.size - 1)
+                    shown.add(truncate(paint, last, maxW))
+                }
+                val blockH = shown.size * lineH
+                var y = (plan.text.y * pxPerMm).toInt() + ((boxH - blockH) / 2).coerceAtLeast(0)
+                val cx = (plan.text.x + plan.text.w / 2).toFloat() * pxPerMm
+                for (line in shown) {
+                    canvas.drawText(line, cx, y.toFloat(), paint)
+                    y += lineH
+                }
+            }
+        }
+        return out
+    }
+
+    /** Переносит строку по словам: возвращает строки, не шире maxWidthPx. */
+    fun wrap(paint: Paint, text: String, maxWidthPx: Int): List<String> {
+        if (paint.measureText(text) <= maxWidthPx) return listOf(text)
+        val out = mutableListOf<String>()
+        var cur = StringBuilder()
+        for (word in text.split(" ")) {
+            val pieces = if (paint.measureText(word) <= maxWidthPx) listOf(word)
+            else hardBreak(paint, word, maxWidthPx)
+            for (p in pieces) {
+                when {
+                    cur.isEmpty() -> cur.append(p)
+                    paint.measureText(cur.toString() + " " + p) <= maxWidthPx -> cur.append(' ').append(p)
+                    else -> {
+                        out.add(cur.toString())
+                        cur = StringBuilder(p)
+                    }
+                }
+            }
+        }
+        if (cur.isNotEmpty()) out.add(cur.toString())
+        return out
+    }
+
+    /** Ломает слишком длинное слово посимвольно. */
+    private fun hardBreak(paint: Paint, text: String, maxWidthPx: Int): List<String> {
+        val out = mutableListOf<String>()
+        var rest = text
+        while (paint.measureText(rest) > maxWidthPx) {
+            var n = rest.length
+            while (n > 0 && paint.measureText(rest.substring(0, n)) > maxWidthPx) n--
+            if (n <= 0) n = 1
+            out.add(rest.substring(0, n))
+            rest = rest.substring(n)
+        }
+        if (rest.isNotEmpty()) out.add(rest)
+        return out
+    }
+
+    /** Обрезает строку по ширине, подставляя многоточие. */
+    fun truncate(paint: Paint, text: String, maxWidthPx: Int): String {
+        if (paint.measureText(text) <= maxWidthPx) return text
+        val ell = "…"
+        var n = text.length
+        while (n > 0 && paint.measureText(text.substring(0, n) + ell) > maxWidthPx) n--
+        return if (n <= 0) ell else text.substring(0, n) + ell
+    }
+
     private fun matrixToBitmap(m: BitMatrix, fg: Int, bg: Int, invert: Boolean): Bitmap {
         val dark = if (invert) bg else fg
         val light = if (invert) fg else bg
@@ -117,6 +257,29 @@ object LabelGenerator {
         for (y in 0 until h) {
             for (x in 0 until w) row[x] = if (m.get(x, y)) dark else light
             bmp.setPixels(row, 0, w, 0, y, w, 1)
+        }
+        return bmp
+    }
+
+    // Калибровочная сетка: шахматка (чередующиеся чёрные/белые клетки без зазоров).
+    // Пользователь по напечатанной копии отмечает пальцем, какая зона печати плотная.
+    fun renderGrid(spec: GridSpec, dpi: Int = 150): Bitmap {
+        val pxPerMm = dpi / 25.4f
+        val cellPx = (spec.cellMm * pxPerMm).toInt().coerceAtLeast(8)
+        val marginPx = (spec.marginMm * pxPerMm).toInt()
+        val W = (spec.cols * cellPx + marginPx * 2).coerceAtLeast(16)
+        val H = (spec.rows * cellPx + marginPx * 2).coerceAtLeast(16)
+        val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.WHITE)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        for (r in 0 until spec.rows) {
+            for (c in 0 until spec.cols) {
+                if ((r + c) % 2 != 0) continue
+                val x = (marginPx + c * cellPx).toFloat()
+                val y = (marginPx + r * cellPx).toFloat()
+                canvas.drawRect(x, y, x + cellPx, y + cellPx, p)
+            }
         }
         return bmp
     }

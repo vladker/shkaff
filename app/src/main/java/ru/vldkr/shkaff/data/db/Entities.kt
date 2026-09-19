@@ -141,6 +141,13 @@ data class LabelTemplateEntity(
     val show_number: Boolean = true,
     // US-I3: QR/штрихкод кодирует HTTPS-ссылку приложения (deep-link), а не просто код.
     val app_link: Boolean = false,
+    // Раскладка этикетки: "classic" (код по центру, текст сверху/внизу),
+    // "auto" (по форме области), "v" (код сверху, текст снизу), "h" (код сбоку, текст рядом).
+    val layout_mode: String = "classic",
+    // Сколько кодов печатать: 1 (вещь) или 2 (вещь + ссылка на репозиторий).
+    val qr_count: Int = 1,
+    // Коэффициент размера кода: 1.0 — вписать в область, 0.5 — вдвое меньше и т.д.
+    val qr_scale: Double = 1.0,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,

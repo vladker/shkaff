@@ -4,7 +4,9 @@ package ru.vldkr.shkaff.data.printer
 // в каком режиме команд она работает — "01" = ESC/POS, "02" = TSC (TSPL).
 data class PrinterProbe(
     val cmdModeHex: String?,
-    val dpiTypeHex: String?
+    val dpiTypeHex: String?,
+    // Полный ответ JXIG (hex) — содержит статусы принтера (бумага, крышка, ошибки).
+    val rawHex: String? = null
 )
 
 // Канал отправки данных на принтер (или «гарантированный путь» — Share)

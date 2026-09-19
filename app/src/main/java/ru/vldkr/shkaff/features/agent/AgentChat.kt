@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -290,6 +291,18 @@ fun AgentScreen(nav: NavController) {
                     Icon(Icons.Filled.Inventory2, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Оценить объёмы вещей")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = { nav.navigate("agent-label-grid") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                ) {
+                    Icon(Icons.Filled.Label, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Настроить этикетку по сетке")
                 }
             }
             items(messages) { m -> Bubble(m) }

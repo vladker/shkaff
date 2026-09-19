@@ -8,14 +8,19 @@ import kotlin.math.roundToInt
 // 1 строка данных без zlib), PRINT 1,1 на копию. 8 точек/мм (203 dpi).
 object TspPos {
 
+    // labelWidthMm — ширина этикетки в SIZE (обычно ширина бумаги принтера;
+    // растр может быть уже — тогда контент занимает левую часть, остальное белое).
     fun label(
         widthPx: Int,
         heightPx: Int,
         bits: ByteArray,
-        copies: Int = 1
+        copies: Int = 1,
+        labelWidthMm: Int? = null,
+        offsetXpx: Int = 0,
+        offsetYpx: Int = 0
     ): ByteArray {
         require(widthPx > 0 && heightPx > 0) { "Битовый растр пуст" }
-        val wMm = (widthPx / 8f).roundToInt().coerceAtLeast(1)
+        val wMm = labelWidthMm ?: (widthPx / 8f).roundToInt().coerceAtLeast(1)
         val hMm = (heightPx / 8f).roundToInt().coerceAtLeast(1)
         val bpr = Raster.bytesPerRow(widthPx)
         require(bits.size == bpr * heightPx) { "Размер растра не совпадает с пикселями" }
@@ -28,7 +33,8 @@ object TspPos {
         out.write(line("CLS"))
         out.write(line("DIRECTION 0"))
         repeat(copies) {
-            out.write("BITMAP 0,0,$bpr,$heightPx,0,".toByteArray(Charsets.US_ASCII))
+            // offsetX/Y — сдвиг растрового вывода (зона на листе); в точкех.
+            out.write("BITMAP $offsetXpx,$offsetYpx,$bpr,$heightPx,0,".toByteArray(Charsets.US_ASCII))
             out.write(inv)
             out.write(byteArrayOf(0x0A))
             out.write(line("PRINT 1,1"))
