@@ -72,10 +72,15 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
+import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.capacity.BRIM_RESERVE_RATIO
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.util.Expiry
@@ -90,6 +95,10 @@ import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.ui.theme.Ozon
 
+// Стандартная переносная коробка: 60×40×40 см = 96 л.
+// Используется в метриках «объём, кор.» и «кор. к закупке».
+private const val BOX_LITERS = 96.0
+
 class DashboardVm : ViewModel() {
 
     data class Ui(
@@ -103,7 +112,19 @@ class DashboardVm : ViewModel() {
         val overdueLoans: Int = 0,
         val loansByItem: Map<String, LoanEntity> = emptyMap(),
         val canCreate: Boolean = true,
-        val activeProfile: String? = null
+        val activeProfile: String? = null,
+        // ── Метрики «Сводка» ──
+        val draftsCount: Int = 0,
+        val noLocationCount: Int = 0,
+        val avitoValue: Double = 0.0,
+        val totalWeightKg: Double = 0.0,
+        val totalVolumeLiters: Double = 0.0,
+        val boxesCount: Int = 0,
+        val repairCount: Int = 0,
+        val expiredCount: Int = 0,
+        val freeCapacityLiters: Double = 0.0,
+        val hasCapacity: Boolean = false,
+        val boxesToBuy: Int = 0
     )
 
     val ui = MutableStateFlow(Ui())
@@ -138,6 +159,74 @@ class DashboardVm : ViewModel() {
             val attention = items.filter { it.location_id != null && it.needsAttention() }.sortedByDescending { it.updated_at }
             val rest = items.filter { it.location_id != null && !it.needsAttention() }
             val orderedItems = noLocation + attention + rest.shuffled()
+
+            // ── Метрики «Сводка» ──
+            val draftsCount = Deps.drafts.count()
+            val noLocationCount = noLocation.size
+            // Состояние «требует ремонта» — фиксированный набор значений атрибута condition.
+            val repairStates = setOf("Б/у, с дефектом", "На запчасти")
+            var avitoValue = 0.0
+            var repairCount = 0
+            var expiredCount = 0
+            var totalVolumeLiters = 0.0
+            var totalWeightKg = 0.0
+            for (i in items) {
+                totalVolumeLiters += i.volume_liters
+                totalWeightKg += i.weight_kg
+                val attrs = AttrJson.toMap(i.attributes)
+                avitoValue += attrs["avito_price"]?.toDoubleOrNull() ?: 0.0
+                if (attrs["condition"] in repairStates) repairCount++
+                val exp = i.expiry_date?.let { Expiry.parse(it) }
+                if (exp != null && Expiry.daysUntil(exp, today) < 0) expiredCount++
+            }
+            val boxesCount = if (totalVolumeLiters > 0)
+                kotlin.math.ceil(totalVolumeLiters / BOX_LITERS).toInt() else 0
+
+            // Свободное место: сумма остатка объёма «внутренних» ящиков с ёмкостью.
+            // Ящик внутри ящика не учитывается дважды: считаем только самое внутреннее
+            // звено, где задана ёмкость, — его лимит уже покрывает вложенные.
+            val locations = Deps.locations.observeAll().first()
+            val locById = locations.associateBy { it.id }
+            fun effLimit(l: LocationEntity): Double? = l.capacity_volume?.let {
+                if (it <= 0) null else if (l.dont_fill_to_brim) it * BRIM_RESERVE_RATIO else it
+            }
+            fun isCountable(l: LocationEntity): Boolean {
+                if (effLimit(l) == null) return false
+                var p = l.parent_id
+                while (p != null) {
+                    val a = locById[p] ?: break
+                    if (effLimit(a) != null) return false
+                    p = a.parent_id
+                }
+                return true
+            }
+            val countable = locations.filter { isCountable(it) }
+            val countableIds = countable.mapTo(mutableSetOf()) { it.id }
+            fun ownerBox(locationId: String?): String? {
+                var p = locationId
+                while (p != null) {
+                    if (p in countableIds) return p
+                    p = locById[p]?.parent_id
+                }
+                return null
+            }
+            val usedInCountable = mutableMapOf<String, Double>()
+            for (i in items) {
+                val owner = ownerBox(i.location_id) ?: continue
+                usedInCountable[owner] = (usedInCountable[owner] ?: 0.0) + i.volume_liters
+            }
+            var freeCapacityLiters = 0.0
+            var totalCapacityLiters = 0.0
+            for (l in countable) {
+                val lim = effLimit(l) ?: continue
+                totalCapacityLiters += lim
+                freeCapacityLiters += (lim - (usedInCountable[l.id] ?: 0.0)).coerceAtLeast(0.0)
+            }
+            val hasCapacity = countable.isNotEmpty()
+            // К закупке: дефицит объёма сверх суммарной ёмкости ящиков, в коробках.
+            val deficit = (totalVolumeLiters - totalCapacityLiters).coerceAtLeast(0.0)
+            val boxesToBuy = if (deficit > 0) kotlin.math.ceil(deficit / BOX_LITERS).toInt() else 0
+
             ui.value = Ui(
                 itemsCount = items.size,
                 locationsCount = Deps.locations.count(),
@@ -149,7 +238,18 @@ class DashboardVm : ViewModel() {
                 overdueLoans = loans.count { it.due_at != null && it.due_at < now },
                 loansByItem = itemLoans,
                 canCreate = Access.can(role, Access.CREATE),
-                activeProfile = Deps.users.activeUser()?.name
+                activeProfile = Deps.users.activeUser()?.name,
+                draftsCount = draftsCount,
+                noLocationCount = noLocationCount,
+                avitoValue = avitoValue,
+                totalWeightKg = totalWeightKg,
+                totalVolumeLiters = totalVolumeLiters,
+                boxesCount = boxesCount,
+                repairCount = repairCount,
+                expiredCount = expiredCount,
+                freeCapacityLiters = freeCapacityLiters,
+                hasCapacity = hasCapacity,
+                boxesToBuy = boxesToBuy
             )
             } finally {
                 loading.value = false
@@ -239,6 +339,26 @@ fun DashboardScreen(nav: NavController) {
                     StatCard(ui.locationsCount, "ящиков", Modifier.weight(1f)) { nav.navigate("storages") }
                     StatCard(ui.storagesCount, "хранилищ", Modifier.weight(1f)) { nav.navigate("storages") }
                 }
+            }
+            item {
+                SectionTitle("Сводка")
+            }
+            item {
+                val toItems: () -> Unit = { nav.navigate("items/0") }
+                val toStorages: () -> Unit = { nav.navigate("storages") }
+                SummaryGrid(
+                    listOf(
+                        SumMetric(ui.draftsCount.toString(), "черновиков", toItems),
+                        SumMetric(ui.noLocationCount.toString(), "без ящика", toItems),
+                        SumMetric(formatMoney(ui.avitoValue), "стоимость Авито", toItems),
+                        SumMetric(formatKg(ui.totalWeightKg), "масса", toItems),
+                        SumMetric(ui.boxesCount.toString(), "объём, кор.", toItems),
+                        SumMetric(ui.repairCount.toString(), "к ремонту", toItems),
+                        SumMetric(ui.expiredCount.toString(), "просрочено", toItems),
+                        SumMetric(ui.freeCapacityLiters.roundToInt().toString(), "свободно, л", toStorages),
+                        SumMetric(ui.boxesToBuy.toString(), "кор. к закупке", toStorages)
+                    )
+                )
             }
             if (ui.activeLoans > 0) {
                 item {
@@ -570,3 +690,65 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier = M
         }
     }
 }
+
+// ── Секция «Сводка»: сетка компактных метрик ──
+
+private data class SumMetric(val value: String, val label: String, val onClick: () -> Unit)
+
+// Две метрики в ряд; последняя (нечётная) занимает всю ширину.
+@Composable
+private fun SummaryGrid(metrics: List<SumMetric>) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        metrics.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { m ->
+                    SumCard(m, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SumCard(m: SumMetric, modifier: Modifier = Modifier) {
+    Card(
+        onClick = m.onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Ozon.Card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                m.value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Ozon.TextPrimary,
+                maxLines = 1
+            )
+            Text(
+                m.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = Ozon.TextSecondary,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+// Короткое форматирование для метрик: деньги и масса без дробного хвоста, если велико.
+private fun formatMoney(v: Double): String =
+    if (v <= 0) "0 ₽" else "${v.roundToLong()} ₽"
+
+private fun formatKg(v: Double): String =
+    if (v <= 0) "0 кг" else if (v < 10) "%.1f кг".format(v) else "${v.roundToLong()} кг"

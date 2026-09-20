@@ -27,4 +27,6 @@ class DraftRepository(
     suspend fun clear(key: String) {
         dao.delete(key)
     }
+
+    suspend fun count(): Int = dao.count()
 }

@@ -86,6 +86,7 @@ object Deps {
         modelStore = ModelStore(app)
         seedDefaultAttributes()
         seedClimateAttributeDefs()
+        seedAvitoPriceAttribute()
         seedAttributeCatalogOnce()
         seedDefaultTemplate()
         backfillExpiryDates()
@@ -207,6 +208,26 @@ object Deps {
         )
         for (d in defs) db.attributeDao().upsert(d)
         meta().upsert(SchemaMetaEntity("climateDefsSeeded", "1"))
+    }
+
+    // Новое поле «Цена Авито, ₽» добираем отдельным one-shot флагом: общий каталог
+    // (attrCatalogV2Seeded) на установленных базах уже сидирован и не перезапускается.
+    private fun seedAvitoPriceAttribute() {
+        if (meta().get("avitoPriceSeeded") == "1") return
+        val now = System.currentTimeMillis()
+        val dao = db.attributeDao()
+        val exists = runBlocking { dao.allWithDeleted() }.any { it.scope == "item" && it.key == "avito_price" }
+        if (!exists) {
+            dao.upsert(
+                AttributeDefEntity(
+                    id = newId(), scope = "item", key = "avito_price", label = "Цена Авито, ₽",
+                    type = "number", options = "[]", sort_order = 17, required = false,
+                    created_at = now, updated_at = now, deleted_at = null,
+                    device_last_modified = deviceId, category = "*", tier = "rec"
+                )
+            )
+        }
+        meta().upsert(SchemaMetaEntity("avitoPriceSeeded", "1"))
     }
 
     // Справочник атрибутов (категории + уровни min/rec/free) досевается один раз.

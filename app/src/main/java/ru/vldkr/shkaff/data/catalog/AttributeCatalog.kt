@@ -118,6 +118,7 @@ object AttributeCatalog {
             )
         )
         add(Spec("item", "price", "Цена, ₽", "number", sort_order = 16, tier = "rec"))
+        add(Spec("item", "avito_price", "Цена Авито, ₽", "number", sort_order = 17, tier = "rec"))
         add(Spec("item", "purchase_date", "Дата покупки", "date", sort_order = 17, tier = "free"))
         add(Spec("item", "warranty_until", "Гарантия до", "date", sort_order = 18, tier = "free"))
         add(Spec("item", "serial_number", "Серийный номер", sort_order = 19, tier = "free"))

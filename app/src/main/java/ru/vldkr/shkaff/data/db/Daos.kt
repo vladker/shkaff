@@ -335,6 +335,9 @@ interface DraftDao {
 
     @Query("DELETE FROM draft")
     suspend fun clear()
+
+    @Query("SELECT COUNT(*) FROM draft")
+    suspend fun count(): Int
 }
 
 @Dao
