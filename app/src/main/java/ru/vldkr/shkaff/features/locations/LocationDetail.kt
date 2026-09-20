@@ -156,7 +156,7 @@ fun LocationDetailScreen(nav: NavController, locationId: String) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { nav.navigate("labels/location/$locationId/0") }) {
+                    IconButton(onClick = { nav.navigate("label-studio/location/$locationId/0") }) {
                         Icon(Icons.Filled.Label, contentDescription = "Этикетка")
                     }
                     if (Access.can(role, Access.EDIT)) {

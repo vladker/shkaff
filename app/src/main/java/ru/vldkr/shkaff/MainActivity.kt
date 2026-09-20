@@ -72,6 +72,8 @@ import ru.vldkr.shkaff.features.federation.FederationScreen
 import ru.vldkr.shkaff.features.items.ItemsScreen
 import ru.vldkr.shkaff.features.journal.JournalScreen
 import ru.vldkr.shkaff.features.labels.LabelsScreen
+import ru.vldkr.shkaff.features.labelstudio.LabelStudioScreen
+import ru.vldkr.shkaff.features.labelstudio.ShkaffLabelStudioDeps
 import ru.vldkr.shkaff.features.loans.LoansScreen
 import ru.vldkr.shkaff.features.merge.ConflictsScreen
 import ru.vldkr.shkaff.features.printers.PrintersScreen
@@ -334,6 +336,23 @@ fun AppRoot() {
                 )
             }
             composable("templates") { TemplatesScreen(navController) }
+            // LabelStudio — WYSIWYG-редактор этикетки: label-studio/{kind}/{id}/{templateId?}.
+            composable(
+                "label-studio/{kind}/{id}/{templateId}",
+                arguments = listOf(
+                    navArgument("kind") { type = NavType.StringType },
+                    navArgument("id") { type = NavType.StringType },
+                    navArgument("templateId") { type = NavType.StringType; nullable = true }
+                )
+            ) { b ->
+                LabelStudioScreen(
+                    navController,
+                    ShkaffLabelStudioDeps,
+                    b.arguments?.getString("kind").orEmpty(),
+                    b.arguments?.getString("id").orEmpty(),
+                    b.arguments?.getString("templateId")
+                )
+            }
             composable("backup") { BackupScreen(navController) }
             composable("federation") { FederationScreen(navController) }
             composable("fragment") { FragmentScreen(navController) }

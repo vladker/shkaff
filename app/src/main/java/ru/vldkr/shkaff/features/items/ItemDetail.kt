@@ -215,7 +215,7 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Button(
-                            onClick = { nav.navigate("labels/$itemId/0") },
+                            onClick = { nav.navigate("label-studio/item/$itemId/0") },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(52.dp),

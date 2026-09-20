@@ -234,9 +234,33 @@ data class PrinterProfileEntity(
     val bt_mac: String = "",
     val protocol: String = "escpos",
     val paper_width_mm: Double = 58.0,
+    // WYSIWYG (LabelStudio): печатная ширина отдельно от физической.
+    // ESC/POS 58 мм часто печатает только 48 мм = 384 px @203 dpi; TSC/лейбл — полные 58 мм = 464 px.
+    val printable_width_mm: Double = 48.0,
+    // Тип бумаги: continuous | gap_label | black_mark_label | fixed_label.
+    val paper_type: String = "continuous",
+    val gap_mm: Double = 2.5,
+    val feed_lines: Int = 3,
+    val darkness: Int = 8,
+    val dpi: Int = 203,
     val offset_x_mm: Double = 0.0,
     val offset_y_mm: Double = 0.0,
     val is_default: Boolean = true,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+// WYSIWYG-документ этикетки (LabelStudio): один документ = одна этикетка.
+// doc_json — сериализованный LabelDoc (LabelDocCodec); entity_kind — item | location | storage.
+@Entity(tableName = "label_doc", indices = [Index("entity_kind")])
+data class LabelDocEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val entity_kind: String,
+    val doc_json: String,
+    val is_default: Boolean = false,
     val created_at: Long,
     val updated_at: Long,
     val deleted_at: Long? = null,

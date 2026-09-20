@@ -29,9 +29,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BasketItemEntity::class,
         PeerEntity::class,
         SheetLayoutEntity::class,
-        SheetSlotEntity::class
+        SheetSlotEntity::class,
+        LabelDocEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -57,10 +58,11 @@ abstract class ShkaffDatabase : RoomDatabase() {
     abstract fun peerDao(): PeerDao
     abstract fun sheetLayoutDao(): SheetLayoutDao
     abstract fun sheetSlotDao(): SheetSlotDao
+    abstract fun labelDocDao(): LabelDocDao
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "19"
+        const val SCHEMA_VERSION = "20"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -333,10 +335,31 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v20 (LabelStudio — WYSIWYG-редактор этикеток): профиль принтера получает печатную
+        // ширину/тип бумаги/зазор/подачу/плотность/dpi; новая таблица label_doc — документ этикетки.
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN printable_width_mm REAL NOT NULL DEFAULT 48.0")
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN paper_type TEXT NOT NULL DEFAULT 'continuous'")
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN gap_mm REAL NOT NULL DEFAULT 2.5")
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN feed_lines INTEGER NOT NULL DEFAULT 3")
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN darkness INTEGER NOT NULL DEFAULT 8")
+                db.execSQL("ALTER TABLE printer_profile ADD COLUMN dpi INTEGER NOT NULL DEFAULT 203")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `label_doc` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `entity_kind` TEXT NOT NULL, " +
+                        "`doc_json` TEXT NOT NULL, `is_default` INTEGER NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_label_doc_entity_kind` ON `label_doc` (`entity_kind`)")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

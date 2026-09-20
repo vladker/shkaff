@@ -190,7 +190,7 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { nav.navigate("labels/storage/$storageId/0") }) {
+                    IconButton(onClick = { nav.navigate("label-studio/storage/$storageId/0") }) {
                         Icon(Icons.Filled.Label, contentDescription = "Этикетка")
                     }
                     if (Access.can(role, Access.EDIT)) {

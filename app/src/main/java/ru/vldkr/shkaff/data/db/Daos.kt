@@ -344,6 +344,36 @@ interface PrinterDao {
 }
 
 @Dao
+interface LabelDocDao {
+    @Query("SELECT * FROM label_doc WHERE entity_kind = :kind AND deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    fun observeByKind(kind: String): Flow<List<LabelDocEntity>>
+
+    @Query("SELECT * FROM label_doc WHERE entity_kind = :kind AND deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    suspend fun byKind(kind: String): List<LabelDocEntity>
+
+    @Query("SELECT * FROM label_doc WHERE entity_kind = :kind AND is_default = 1 AND deleted_at IS NULL LIMIT 1")
+    suspend fun defaultByKind(kind: String): LabelDocEntity?
+
+    @Query("SELECT * FROM label_doc WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): LabelDocEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(d: LabelDocEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<LabelDocEntity>)
+
+    @Query("SELECT * FROM label_doc")
+    suspend fun allWithDeleted(): List<LabelDocEntity>
+
+    @Query("UPDATE label_doc SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM label_doc WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
 interface ConflictDao {
     @Query("SELECT * FROM conflict_log ORDER BY resolved_at DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<ConflictLogEntity>

@@ -224,6 +224,9 @@ object Backup {
         put("host", e.host); put("port", e.port); put("bt_mac", e.bt_mac); put("protocol", e.protocol)
         put("paper_width_mm", e.paper_width_mm); put("offset_x_mm", e.offset_x_mm)
         put("offset_y_mm", e.offset_y_mm); put("is_default", e.is_default)
+        put("printable_width_mm", e.printable_width_mm); put("paper_type", e.paper_type)
+        put("gap_mm", e.gap_mm); put("feed_lines", e.feed_lines)
+        put("darkness", e.darkness); put("dpi", e.dpi)
         put("created_at", e.created_at); put("updated_at", e.updated_at)
         put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
     }
@@ -236,6 +239,12 @@ object Backup {
         paper_width_mm = j.optDouble("paper_width_mm", 58.0),
         offset_x_mm = j.optDouble("offset_x_mm", 0.0), offset_y_mm = j.optDouble("offset_y_mm", 0.0),
         is_default = j.optBoolean("is_default", true),
+        printable_width_mm = j.optDouble("printable_width_mm", 48.0),
+        paper_type = j.optString("paper_type", "continuous"),
+        gap_mm = j.optDouble("gap_mm", 2.5),
+        feed_lines = j.optInt("feed_lines", 3),
+        darkness = j.optInt("darkness", 8),
+        dpi = j.optInt("dpi", 203),
         created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
         deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
         device_last_modified = j.optString("device", "")
