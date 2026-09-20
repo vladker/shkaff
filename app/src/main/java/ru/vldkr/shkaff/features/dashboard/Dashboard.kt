@@ -125,11 +125,24 @@ class DashboardVm : ViewModel() {
             val now = System.currentTimeMillis()
             val loans = Deps.loans.observeActive().first()
             val itemLoans = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id }
+            // Порядок вещей на «Главной»: сначала без места, затем требующие внимания
+            // (одолжены, срок истёк или скоро истечёт), остальные — в случайном порядке.
+            val today = LocalDate.now()
+            val threshold = Deps.expiryThresholdDays()
+            fun ItemEntity.needsAttention(): Boolean {
+                if (itemLoans[id] != null) return true
+                val exp = expiry_date?.let { Expiry.parse(it) } ?: return false
+                return Expiry.daysUntil(exp, today) <= threshold
+            }
+            val noLocation = items.filter { it.location_id == null }.sortedByDescending { it.updated_at }
+            val attention = items.filter { it.location_id != null && it.needsAttention() }.sortedByDescending { it.updated_at }
+            val rest = items.filter { it.location_id != null && !it.needsAttention() }
+            val orderedItems = noLocation + attention + rest.shuffled()
             ui.value = Ui(
                 itemsCount = items.size,
                 locationsCount = Deps.locations.count(),
                 storagesCount = Deps.storages.count(),
-                recent = items.take(8),
+                recent = orderedItems.take(8),
                 expiringSoon = Deps.items.expiringSoon(Deps.expiryThresholdDays()),
                 tagDist = tagDist,
                 activeLoans = loans.size,
@@ -329,7 +342,7 @@ fun DashboardScreen(nav: NavController) {
                     )
                 }
             }
-            item { SectionTitle("Недавно добавленные") }
+            item { SectionTitle("Вещи") }
             if (ui.recent.isEmpty()) {
                 item {
                     EmptyState(

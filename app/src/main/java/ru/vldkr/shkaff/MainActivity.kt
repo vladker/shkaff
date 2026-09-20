@@ -9,25 +9,18 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBasket
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
@@ -45,15 +38,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -172,12 +162,12 @@ private data class Tab(
         route == pattern || (prefix != null && route?.startsWith(prefix) == true)
 }
 
-// Таб-бар как в Ozon: Главная, Вещи, Продукты, [+] по центру, Хранилища, ИИ, Поиск, Профиль.
+// Таб-бар как в Ozon: Главная, Вещи, Продукты, Хранилища, ИИ, Поиск, Профиль.
 private val tabs = listOf(
     Tab("dashboard", "Главная", Icons.Filled.Home, "dashboard"),
-    Tab("items/0", "Вещи", Icons.Filled.Inventory2, "items/{tag}", "items"),
+    Tab("items/0", "Вещи", Icons.Filled.Inventory, "items/{tag}", "items"),
     Tab("products", "Продукты", Icons.Filled.ShoppingBasket, "products"),
-    Tab("storages", "Хранилища", Icons.Filled.Storage, "storages", "storages"),
+    Tab("storages", "Хранилища", Icons.Filled.Archive, "storages", "storages"),
     Tab("agent", "ИИ", Icons.Filled.SmartToy, "agent", prefix = "agent"),
     Tab("search", "Поиск", Icons.Filled.Search, "search"),
     Tab("profiles", "Профиль", Icons.Filled.Person, "profiles")
@@ -222,71 +212,39 @@ fun AppRoot() {
                 Column {
                     HorizontalDivider(color = Ozon.Card, thickness = 1.dp)
                     NavigationBar(containerColor = Ozon.Bg) {
-                        // 8 слотов: Главная, Вещи, Продукты, [+] по центру, Хранилища, ИИ, Поиск, Профиль.
-                        // ВАЖНО: центральной кнопке НЕЛЬЗЯ давать fillMaxHeight() — она растянула бы
-                        // весь NavigationBar на экран и сжала контент до нуля.
-                        (0..7).forEach { slot ->
-                            if (slot == 3) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                         .clickable {
-                                             navController.navigate("item-wizard")
-                                         },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(Ozon.Blue),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Add,
-                                            contentDescription = "Новая вещь",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(26.dp)
-                                        )
+                        tabs.forEach { tab ->
+                            val badge = badgeText(counts[tab.badgeKey ?: tab.route] ?: 0)
+                            NavigationBarItem(
+                                selected = tab.matches(currentRoute),
+                                onClick = {
+                                    navController.navigate(tab.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                }
-                            } else {
-                                val tab = tabs[if (slot < 3) slot else slot - 1]
-                                val badge = badgeText(counts[tab.badgeKey ?: tab.route] ?: 0)
-                                NavigationBarItem(
-                                    selected = tab.matches(currentRoute),
-                                    onClick = {
-                                        navController.navigate(tab.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                    icon = {
-                                        BadgedBox(
-                                            badge = {
-                                                if (badge != null) {
-                                                    Badge(containerColor = Ozon.Pink, contentColor = Color.White) {
-                                                        Text(badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                                    }
+                                },
+                                icon = {
+                                    BadgedBox(
+                                        badge = {
+                                            if (badge != null) {
+                                                Badge(containerColor = Ozon.Pink, contentColor = Color.White) {
+                                                    Text(badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                                 }
                                             }
-                                        ) {
-                                            Icon(tab.icon, contentDescription = tab.label)
                                         }
-                                    },
-                                    label = {
-                                        Text(tab.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = Ozon.Blue,
-                                        selectedTextColor = Ozon.Blue,
-                                        indicatorColor = Color.Transparent,
-                                        unselectedIconColor = Ozon.TextSecondary,
-                                        unselectedTextColor = Ozon.TextSecondary
-                                    )
+                                    ) {
+                                        Icon(tab.icon, contentDescription = tab.label)
+                                    }
+                                },
+                                label = {},
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Ozon.Blue,
+                                    selectedTextColor = Ozon.Blue,
+                                    indicatorColor = Color.Transparent,
+                                    unselectedIconColor = Ozon.TextSecondary,
+                                    unselectedTextColor = Ozon.TextSecondary
                                 )
-                            }
+                            )
                         }
                     }
                 }
