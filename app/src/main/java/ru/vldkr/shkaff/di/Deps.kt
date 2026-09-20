@@ -17,8 +17,9 @@ import ru.vldkr.shkaff.data.repository.DraftRepository
 import ru.vldkr.shkaff.data.repository.ItemRepository
 import ru.vldkr.shkaff.data.repository.LocationRepository
 import ru.vldkr.shkaff.data.repository.LoansRepository
-import ru.vldkr.shkaff.data.repository.StorageRepository
+import ru.vldkr.shkaff.data.repository.SheetRepository
 import ru.vldkr.shkaff.data.repository.StacksRepository
+import ru.vldkr.shkaff.data.repository.StorageRepository
 import ru.vldkr.shkaff.data.repository.TagRepository
 import ru.vldkr.shkaff.data.repository.UsersRepository
 import ru.vldkr.shkaff.domain.access.Role
@@ -56,6 +57,8 @@ object Deps {
         private set
     lateinit var baskets: BasketRepository
         private set
+    lateinit var sheets: SheetRepository
+        private set
     lateinit var modelStore: ModelStore
         private set
 
@@ -83,6 +86,7 @@ object Deps {
         actionLog = ActionLogRepository(db)
         stacks = StacksRepository(db)
         baskets = BasketRepository(db)
+        sheets = SheetRepository(db)
         modelStore = ModelStore(app)
         seedDefaultAttributes()
         seedClimateAttributeDefs()

@@ -27,9 +27,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         StackMemberEntity::class,
         BasketEntity::class,
         BasketItemEntity::class,
-        PeerEntity::class
+        PeerEntity::class,
+        SheetLayoutEntity::class,
+        SheetSlotEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 abstract class ShkaffDatabase : RoomDatabase() {
@@ -53,10 +55,12 @@ abstract class ShkaffDatabase : RoomDatabase() {
     abstract fun basketDao(): BasketDao
     abstract fun basketItemDao(): BasketItemDao
     abstract fun peerDao(): PeerDao
+    abstract fun sheetLayoutDao(): SheetLayoutDao
+    abstract fun sheetSlotDao(): SheetSlotDao
 
     companion object {
         const val DB_NAME = "shkaff.db"
-        const val SCHEMA_VERSION = "18"
+        const val SCHEMA_VERSION = "19"
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -306,10 +310,33 @@ abstract class ShkaffDatabase : RoomDatabase() {
             }
         }
 
+        // v19 (листы этикеток): sheet_layout — лист (бумага + поле), sheet_slot — этикетка на листе.
+        // Геометрия слота в слоте; стиль — в связанном шаблоне. Слоты каскадно чистятся за листом.
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sheet_layout` (" +
+                        "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `paper_w_mm` REAL NOT NULL, " +
+                        "`paper_h_mm` REAL NOT NULL, `margin_mm` REAL NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, " +
+                        "`device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sheet_slot` (" +
+                        "`id` TEXT NOT NULL, `layout_id` TEXT NOT NULL, `x_mm` REAL NOT NULL, `y_mm` REAL NOT NULL, " +
+                        "`w_mm` REAL NOT NULL, `h_mm` REAL NOT NULL, `style_template_id` TEXT NOT NULL, " +
+                        "`sort_order` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, " +
+                        "`deleted_at` INTEGER, `device_last_modified` TEXT NOT NULL, PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`layout_id`) REFERENCES `sheet_layout`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sheet_slot_layout_id` ON `sheet_slot` (`layout_id`)")
+            }
+        }
+
         fun build(context: Context): ShkaffDatabase =
             Room.databaseBuilder(context, ShkaffDatabase::class.java, DB_NAME)
                 .allowMainThreadQueries()
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .addCallback(
                     object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {

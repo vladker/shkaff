@@ -166,6 +166,44 @@ data class LabelTemplateEntity(
     val device_last_modified: String = ""
 )
 
+// Лист этикеток: размер бумаги + поле. Слоты — отдельные этикетки на этом листе.
+@Entity(tableName = "sheet_layout")
+data class SheetLayoutEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val paper_w_mm: Double,
+    val paper_h_mm: Double,
+    val margin_mm: Double = 0.0,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
+// Слот на листе: позиция (x/y) и размер (w/h) одной этикетки в мм + стиль (шаблон этикетки).
+// Геометрия живёт здесь, в слоте; LabelTemplateEntity даёт только оформление содержимого.
+@Entity(
+    tableName = "sheet_slot",
+    foreignKeys = [
+        ForeignKey(entity = SheetLayoutEntity::class, parentColumns = ["id"], childColumns = ["layout_id"], onDelete = CASCADE)
+    ],
+    indices = [Index("layout_id")]
+)
+data class SheetSlotEntity(
+    @PrimaryKey val id: String,
+    val layout_id: String,
+    val x_mm: Double,
+    val y_mm: Double,
+    val w_mm: Double,
+    val h_mm: Double,
+    val style_template_id: String,
+    val sort_order: Int = 0,
+    val created_at: Long,
+    val updated_at: Long,
+    val deleted_at: Long? = null,
+    val device_last_modified: String = ""
+)
+
 @Entity(tableName = "attribute_def", indices = [Index(value = ["scope", "key"], unique = true)])
 data class AttributeDefEntity(
     @PrimaryKey val id: String,

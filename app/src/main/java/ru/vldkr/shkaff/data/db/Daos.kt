@@ -260,6 +260,66 @@ interface LabelTemplateDao {
 }
 
 @Dao
+interface SheetLayoutDao {
+    @Query("SELECT * FROM sheet_layout WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
+    fun observeAll(): Flow<List<SheetLayoutEntity>>
+
+    @Query("SELECT * FROM sheet_layout WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): SheetLayoutEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(t: SheetLayoutEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<SheetLayoutEntity>)
+
+    @Query("SELECT * FROM sheet_layout")
+    suspend fun allWithDeleted(): List<SheetLayoutEntity>
+
+    @Query("SELECT COUNT(*) FROM sheet_layout WHERE deleted_at IS NULL")
+    suspend fun count(): Int
+
+    @Query("UPDATE sheet_layout SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM sheet_layout WHERE id = :id")
+    suspend fun hardDelete(id: String)
+}
+
+@Dao
+interface SheetSlotDao {
+    @Query("SELECT * FROM sheet_slot WHERE layout_id = :layoutId AND deleted_at IS NULL ORDER BY sort_order, created_at")
+    fun observeByLayout(layoutId: String): Flow<List<SheetSlotEntity>>
+
+    @Query("SELECT * FROM sheet_slot WHERE layout_id = :layoutId AND deleted_at IS NULL ORDER BY sort_order, created_at")
+    suspend fun byLayout(layoutId: String): List<SheetSlotEntity>
+
+    @Query("SELECT * FROM sheet_slot WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): SheetSlotEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(s: SheetSlotEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(list: List<SheetSlotEntity>)
+
+    @Query("SELECT * FROM sheet_slot")
+    suspend fun allWithDeleted(): List<SheetSlotEntity>
+
+    @Query("SELECT COUNT(*) FROM sheet_slot WHERE layout_id = :layoutId AND deleted_at IS NULL")
+    suspend fun countByLayout(layoutId: String): Int
+
+    @Query("UPDATE sheet_slot SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
+    suspend fun softDelete(id: String, now: Long, dev: String)
+
+    @Query("DELETE FROM sheet_slot WHERE id = :id")
+    suspend fun hardDelete(id: String)
+
+    @Query("DELETE FROM sheet_slot WHERE layout_id = :layoutId")
+    suspend fun hardDeleteByLayout(layoutId: String)
+}
+
+@Dao
 interface PrinterDao {
     @Query("SELECT * FROM printer_profile WHERE deleted_at IS NULL ORDER BY name COLLATE LOCALIZED")
     fun observeAll(): Flow<List<PrinterProfileEntity>>
