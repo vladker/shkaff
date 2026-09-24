@@ -73,11 +73,16 @@ class StorageFormVm(
     var capacityWeight by mutableStateOf("")
     var dontFillToBrim by mutableStateOf(false)
     var isFull by mutableStateOf(false)
-    val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
-    val allStorages = MutableStateFlow<List<StorageEntity>>(emptyList())
-    val error = MutableStateFlow<String?>(null)
-    val saving = MutableStateFlow(false)
-    val loaded = MutableStateFlow(false)
+
+    data class Ui(
+        val attrDefs: List<AttributeDefEntity> = emptyList(),
+        val allStorages: List<StorageEntity> = emptyList(),
+        val error: String? = null,
+        val saving: Boolean = false,
+        val loaded: Boolean = false
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     class Factory(private val id: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -88,11 +93,11 @@ class StorageFormVm(
     init {
         viewModelScope.launch {
             Deps.attributes.observeAll().collect { all ->
-                attrDefs.value = all.filter { it.scope == "storage" || it.scope == "*" }
+                ui.value = ui.value.copy(attrDefs = all.filter { it.scope == "storage" || it.scope == "*" })
             }
         }
         viewModelScope.launch {
-            Deps.storages.observeAll().collect { allStorages.value = it }
+            Deps.storages.observeAll().collect { ui.value = ui.value.copy(allStorages = it) }
         }
         if (storageId != null) {
             viewModelScope.launch {
@@ -108,37 +113,38 @@ class StorageFormVm(
                     dontFillToBrim = it.dont_fill_to_brim
                     isFull = it.is_full
                 }
-                loaded.value = true
+                ui.value = ui.value.copy(loaded = true)
             }
         } else {
-            loaded.value = true
+            ui.value = ui.value.copy(loaded = true)
         }
     }
 
     // исключаем себя и потомков — иначе получился бы цикл вложенности
     fun parentCandidates(): List<StorageEntity> {
-        val all = allStorages.value
+        val all = ui.value.allStorages
         if (storageId == null) return all
         return all.filter { it.id !in subtreeIds(storageId, all, { s -> s.id }, { s -> s.parent_id }) }
     }
 
     fun parentName(): String? = parentId?.let { id ->
-        allStorages.value.firstOrNull { it.id == id }?.name
+        ui.value.allStorages.firstOrNull { it.id == id }?.name
     }
 
     fun save(onDone: (String?) -> Unit) {
         if (name.isBlank()) {
-            error.value = "Введите название хранилища"
+            ui.value = ui.value.copy(error = "Введите название хранилища")
             return
         }
         viewModelScope.launch {
-            saving.value = true
-            error.value = null
+            ui.value = ui.value.copy(saving = true, error = null)
             val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
             val need = if (storageId == null) Access.CREATE else Access.EDIT
             if (!Access.can(role, need)) {
-                error.value = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})"
-                saving.value = false
+                ui.value = ui.value.copy(
+                    error = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})",
+                    saving = false
+                )
                 return@launch
             }
             val d = StorageData(
@@ -161,9 +167,9 @@ class StorageFormVm(
                 }
                 onDone(id)
             } catch (e: Exception) {
-                error.value = e.message
+                ui.value = ui.value.copy(error = e.message)
             } finally {
-                saving.value = false
+                ui.value = ui.value.copy(saving = false)
             }
         }
     }
@@ -174,16 +180,13 @@ class StorageFormVm(
 fun StorageFormScreen(nav: NavController, id: String) {
     val isNew = id == "0"
     val vm: StorageFormVm = viewModel(factory = StorageFormVm.Factory(id))
-    val error by vm.error.collectAsState()
-    val saving by vm.saving.collectAsState()
-    val defs by vm.attrDefs.collectAsState()
-    val loaded by vm.loaded.collectAsState()
+    val ui by vm.ui.collectAsState()
     var showParentPicker by remember { mutableStateOf(false) }
 
     val parentName = vm.parentName()
     // US-O8: автофокус на «Название» при создании
     val nameFocus = remember { FocusRequester() }
-    LaunchedEffect(loaded) { if (loaded && isNew) nameFocus.requestFocus() }
+    LaunchedEffect(ui.loaded) { if (ui.loaded && isNew) nameFocus.requestFocus() }
 
     Scaffold(
         topBar = {
@@ -202,14 +205,14 @@ fun StorageFormScreen(nav: NavController, id: String) {
                                 else nav.popBackStack()
                             }
                         }
-                    }, enabled = !saving) {
+                    }, enabled = !ui.saving) {
                         Icon(Icons.Filled.Save, contentDescription = "Сохранить")
                     }
                 }
             )
         }
     ) { padding ->
-        if (!loaded) {
+        if (!ui.loaded) {
             Column(Modifier.padding(padding).padding(32.dp)) {
                 Text("Загрузка…", style = MaterialTheme.typography.bodyLarge)
             }
@@ -300,9 +303,9 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     placeholder = { Text("Комментарий, где стоит, цвет…") }
                 )
             }
-            if (defs.isNotEmpty()) {
-                val categoryKey = defs.firstOrNull { it.label == "Категория" || it.key == "category" }?.key ?: "category"
-                val categoryDef = defs.firstOrNull { it.key == categoryKey }
+            if (ui.attrDefs.isNotEmpty()) {
+                val categoryKey = ui.attrDefs.firstOrNull { it.label == "Категория" || it.key == "category" }?.key ?: "category"
+                val categoryDef = ui.attrDefs.firstOrNull { it.key == categoryKey }
                 val selectedCategory = vm.attrs[categoryKey]?.trim()?.takeIf { it.isNotEmpty() } ?: ""
                 val categoryOptions = (categoryDef?.let { parseOptions(it.options) } ?: emptyList())
                     .ifEmpty { AttributeCatalog.storageCategories }
@@ -315,7 +318,7 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     }
                 )
 
-                val visible = defs.filter { def ->
+                val visible = ui.attrDefs.filter { def ->
                     def.key != categoryKey && (def.category == "*" || def.category == selectedCategory)
                 }
                 val min = visible.filter { it.tier == "min" }.sortedBy { it.sort_order }
@@ -341,7 +344,7 @@ fun StorageFormScreen(nav: NavController, id: String) {
                     }
                 }
             }
-            error?.let {
+            ui.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
             }
         }

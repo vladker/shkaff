@@ -38,12 +38,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.di.Deps
@@ -52,7 +50,12 @@ import ru.vldkr.shkaff.util.newId
 
 class TemplatesVm : ViewModel() {
 
-    val templates = MutableStateFlow<List<LabelTemplateEntity>>(emptyList())
+    data class Ui(
+        val templates: List<LabelTemplateEntity> = emptyList(),
+        val error: String? = null
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     data class Form(
         val id: String? = null,
@@ -74,21 +77,20 @@ class TemplatesVm : ViewModel() {
     )
 
     var form: Form? by mutableStateOf(null)
-    val error = MutableStateFlow<String?>(null)
 
     init {
         viewModelScope.launch {
-            Deps.db.labelTemplateDao().observeAll().collect { templates.value = it }
+            Deps.db.labelTemplateDao().observeAll().collect { ui.value = ui.value.copy(templates = it) }
         }
     }
 
     fun openNew() {
-        error.value = null
+        ui.value = ui.value.copy(error = null)
         form = Form()
     }
 
     fun openEdit(t: LabelTemplateEntity) {
-        error.value = null
+        ui.value = ui.value.copy(error = null)
         form = Form(
             id = t.id,
             name = t.name,
@@ -117,12 +119,12 @@ class TemplatesVm : ViewModel() {
         val h = f.heightMm.toDoubleOrNull()
         val m = f.marginMm.toDoubleOrNull()
         val fs = f.fontSize.toDoubleOrNull()
-        if (f.name.isBlank()) { error.value = "Введите название шаблона"; return }
-        if (w == null || h == null || w < 10 || h < 10) { error.value = "Ширина/высота — число от 10 мм"; return }
-        if (m == null || m < 0) { error.value = "Поля — число от 0 мм"; return }
-        if (fs == null || fs < 6) { error.value = "Размер шрифта — число от 6"; return }
-        if (f.bgColor.isBlank() || f.textColor.isBlank()) { error.value = "Укажите цвета"; return }
-        if (f.textPosition != "top" && f.textPosition != "bottom") { error.value = "Выберите расположение текста"; return }
+        if (f.name.isBlank()) { ui.value = ui.value.copy(error = "Введите название шаблона"); return }
+        if (w == null || h == null || w < 10 || h < 10) { ui.value = ui.value.copy(error = "Ширина/высота — число от 10 мм"); return }
+        if (m == null || m < 0) { ui.value = ui.value.copy(error = "Поля — число от 0 мм"); return }
+        if (fs == null || fs < 6) { ui.value = ui.value.copy(error = "Размер шрифта — число от 6"); return }
+        if (f.bgColor.isBlank() || f.textColor.isBlank()) { ui.value = ui.value.copy(error = "Укажите цвета"); return }
+        if (f.textPosition != "top" && f.textPosition != "bottom") { ui.value = ui.value.copy(error = "Выберите расположение текста"); return }
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val dev = Deps.deviceId
@@ -166,7 +168,7 @@ class TemplatesVm : ViewModel() {
 @Composable
 fun TemplatesScreen(nav: NavController) {
     val vm: TemplatesVm = viewModel()
-    val list by vm.templates.collectAsState()
+    val ui by vm.ui.collectAsState()
     var confirmDelete by remember { mutableStateOf<LabelTemplateEntity?>(null) }
 
     Scaffold(
@@ -197,7 +199,7 @@ fun TemplatesScreen(nav: NavController) {
                 .padding(horizontal = 16.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
         ) {
-            if (list.isEmpty()) {
+            if (ui.templates.isEmpty()) {
                 item {
                     Text(
                         "Шаблонов пока нет. Нажмите «+» чтобы создать.",
@@ -206,7 +208,7 @@ fun TemplatesScreen(nav: NavController) {
                     )
                 }
             }
-            items(list, key = { it.id }) { t ->
+            items(ui.templates, key = { it.id }) { t ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                     Row(Modifier.padding(12.dp)) {
                         Column(Modifier.weight(1f)) {
@@ -248,7 +250,7 @@ fun TemplatesScreen(nav: NavController) {
 @Composable
 private fun TemplateFormContent(vm: TemplatesVm) {
     val f = vm.form!!
-    val error by vm.error.collectAsState()
+    val ui by vm.ui.collectAsState()
     Column(
         Modifier
             .fillMaxSize()
@@ -368,7 +370,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
                 Text("Тихая зона (поля) у кода", style = MaterialTheme.typography.bodyMedium)
             }
         }
-        error?.let {
+        ui.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
         }
         Spacer(Modifier.height(16.dp))

@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -82,9 +81,13 @@ class ProfilesVm : ViewModel() {
         val expiringCount: Int = 0
     )
 
-    val users = MutableStateFlow<List<UserEntity>>(emptyList())
-    val activeId = MutableStateFlow<String?>(null)
-    val stats = MutableStateFlow(Stats())
+    data class Ui(
+        val users: List<UserEntity> = emptyList(),
+        val activeId: String? = null,
+        val stats: Stats = Stats()
+    )
+
+    val ui = MutableStateFlow(Ui())
     var edit: UserEntity? by mutableStateOf(null)
     var showEditor by mutableStateOf(false)
 
@@ -95,16 +98,17 @@ class ProfilesVm : ViewModel() {
     }
 
     suspend fun refresh() {
-        users.value = Deps.users.all()
-        activeId.value = Deps.users.activeUser()?.id
+        ui.value = ui.value.copy(users = Deps.users.all(), activeId = Deps.users.activeUser()?.id)
         val loans = Deps.loans.observeActive().first()
         val now = System.currentTimeMillis()
-        stats.value = Stats(
-            itemsCount = Deps.items.all().size,
-            storagesCount = Deps.storages.count(),
-            activeLoans = loans.size,
-            overdueLoans = loans.count { it.due_at != null && it.due_at < now },
-            expiringCount = Deps.items.expiringSoon(Deps.expiryThresholdDays()).size
+        ui.value = ui.value.copy(
+            stats = Stats(
+                itemsCount = Deps.items.all().size,
+                storagesCount = Deps.storages.count(),
+                activeLoans = loans.size,
+                overdueLoans = loans.count { it.due_at != null && it.due_at < now },
+                expiringCount = Deps.items.expiringSoon(Deps.expiryThresholdDays()).size
+            )
         )
     }
 
@@ -155,12 +159,10 @@ class ProfilesVm : ViewModel() {
 @Composable
 fun ProfilesScreen(nav: NavController) {
     val vm: ProfilesVm = viewModel()
-    val users by vm.users.collectAsState()
-    val activeId by vm.activeId.collectAsState()
-    val stats by vm.stats.collectAsState()
+    val ui by vm.ui.collectAsState()
     val role = rememberRole()
     val isAdmin = Access.can(role, Access.ADMIN)
-    val active = users.firstOrNull { it.id == activeId }
+    val active = ui.users.firstOrNull { it.id == ui.activeId }
 
     Scaffold(
         topBar = {
@@ -235,15 +237,15 @@ fun ProfilesScreen(nav: NavController) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    ProfileStat(stats.itemsCount, "вещей", Modifier.weight(1f))
-                    ProfileStat(stats.storagesCount, "хранилищ", Modifier.weight(1f))
+                    ProfileStat(ui.stats.itemsCount, "вещей", Modifier.weight(1f))
+                    ProfileStat(ui.stats.storagesCount, "хранилищ", Modifier.weight(1f))
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    ProfileStat(stats.activeLoans, "выдано", Modifier.weight(1f), highlight = stats.overdueLoans > 0)
-                    ProfileStat(stats.expiringCount, "истекает", Modifier.weight(1f))
+                    ProfileStat(ui.stats.activeLoans, "выдано", Modifier.weight(1f), highlight = ui.stats.overdueLoans > 0)
+                    ProfileStat(ui.stats.expiringCount, "истекает", Modifier.weight(1f))
                 }
             }
 
@@ -267,7 +269,7 @@ fun ProfilesScreen(nav: NavController) {
             }
 
             item { SectionTitle("Члены семьи") }
-            if (users.isEmpty()) {
+            if (ui.users.isEmpty()) {
                 item {
                     androidx.compose.material3.Text(
                         "Добавьте профили членов семьи — у каждого своя роль и права.",
@@ -277,8 +279,8 @@ fun ProfilesScreen(nav: NavController) {
                     )
                 }
             }
-            items(users, key = { it.id }) { u ->
-                val isActive = u.id == activeId
+            items(ui.users, key = { it.id }) { u ->
+                val isActive = u.id == ui.activeId
                 Row(
                     Modifier
                         .fillMaxWidth()

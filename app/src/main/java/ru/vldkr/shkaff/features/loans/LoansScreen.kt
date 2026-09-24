@@ -36,29 +36,30 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import ru.vldkr.shkaff.data.db.ItemEntity
-import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
-import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.util.formatDate
 
 class LoansVm : ViewModel() {
 
-    val loans = MutableStateFlow<List<LoanEntity>>(emptyList())
-    val storedNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    data class Ui(
+        val loans: List<LoanEntity> = emptyList(),
+        val storedNames: Map<String, String> = emptyMap()
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     init {
         viewModelScope.launch {
-            Deps.loans.observeActive().collect { loans.value = it }
+            Deps.loans.observeActive().collect { loans -> ui.value = ui.value.copy(loans = loans) }
         }
         viewModelScope.launch {
             val names = HashMap<String, String>()
             Deps.items.all().forEach { i -> names["item:${i.id}"] = i.name }
             Deps.storages.observeAll().collect { ss ->
                 ss.forEach { s -> names["storage:${s.id}"] = s.name }
-                storedNames.value = names.toMap()
+                ui.value = ui.value.copy(storedNames = names.toMap())
             }
         }
     }
@@ -72,8 +73,7 @@ class LoansVm : ViewModel() {
 @Composable
 fun LoansScreen(nav: NavController) {
     val vm: LoansVm = viewModel()
-    val loans by vm.loans.collectAsState()
-    val storedNames by vm.storedNames.collectAsState()
+    val ui by vm.ui.collectAsState()
     val now = System.currentTimeMillis()
 
     Scaffold(
@@ -102,12 +102,12 @@ fun LoansScreen(nav: NavController) {
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-            if (loans.isEmpty()) {
+            if (ui.loans.isEmpty()) {
                 item { EmptyState("Нет активных выдач.") }
             } else {
-                items(loans, key = { it.id }) { l ->
+                items(ui.loans, key = { it.id }) { l ->
                     val overdue = l.due_at != null && l.due_at < now
-                    val name = storedNames["${l.entity_type}:${l.entity_id}"] ?: "${l.entity_type}:${l.entity_id}"
+                    val name = ui.storedNames["${l.entity_type}:${l.entity_id}"] ?: "${l.entity_type}:${l.entity_id}"
                     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {

@@ -14,7 +14,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -39,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -58,14 +56,16 @@ class StacksVm : ViewModel() {
 
     data class Row(val stack: StackEntity, val memberCount: Int)
 
-    val rows = MutableStateFlow<List<Row>>(emptyList())
+    data class Ui(val rows: List<Row> = emptyList())
+
+    val ui = MutableStateFlow(Ui())
 
     init {
         viewModelScope.launch {
             Deps.stacks.observeAll().collect { all ->
                 val counts = HashMap<String, Int>()
                 for (s in all) counts[s.id] = Deps.stacks.members(s.id).size
-                rows.value = all.map { Row(it, counts[it.id] ?: 0) }
+                ui.value = ui.value.copy(rows = all.map { Row(it, counts[it.id] ?: 0) })
             }
         }
     }
@@ -75,7 +75,7 @@ class StacksVm : ViewModel() {
 @Composable
 fun StacksScreen(nav: NavController) {
     val vm: StacksVm = viewModel()
-    val rows by vm.rows.collectAsState()
+    val ui by vm.ui.collectAsState()
     val role = rememberRole()
     var showCreate by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -106,7 +106,7 @@ fun StacksScreen(nav: NavController) {
             }
         }
     ) { padding ->
-        if (rows.isEmpty()) {
+        if (ui.rows.isEmpty()) {
             val canCreate = Access.can(role, Access.CREATE)
             Column(Modifier.padding(padding).padding(16.dp)) {
                 EmptyState(
@@ -123,7 +123,7 @@ fun StacksScreen(nav: NavController) {
                     .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp)
             ) {
-                items(rows, key = { it.stack.id }) { r ->
+                items(ui.rows, key = { it.stack.id }) { r ->
                     Row(
                         Modifier
                             .fillMaxWidth()

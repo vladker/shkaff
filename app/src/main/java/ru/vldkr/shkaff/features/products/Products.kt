@@ -50,7 +50,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
@@ -70,12 +70,16 @@ import java.time.LocalDate
 // экраном-каталогом, но в базе это те же item (ean заполнен).
 class ProductsVm : ViewModel() {
 
-    val allItems = MutableStateFlow<List<ItemEntity>>(emptyList())
-    val query = MutableStateFlow("")
+    data class Ui(
+        val allItems: List<ItemEntity> = emptyList(),
+        val query: String = ""
+    )
 
-    val list = combine(allItems, query) { all, q ->
-        val t = q.trim()
-        var l = all.filter { it.ean?.isNotBlank() == true }
+    val ui = MutableStateFlow(Ui())
+
+    val list = ui.map { u ->
+        val t = u.query.trim()
+        var l = u.allItems.filter { it.ean?.isNotBlank() == true }
         if (t.isNotEmpty()) {
             l = l.filter {
                 it.name.contains(t, true) ||
@@ -90,7 +94,7 @@ class ProductsVm : ViewModel() {
 
     init {
         viewModelScope.launch {
-            Deps.items.observeAll().collect { allItems.value = it }
+            Deps.items.observeAll().collect { ui.value = ui.value.copy(allItems = it) }
         }
     }
 }
@@ -101,7 +105,7 @@ fun ProductsScreen(nav: NavController) {
     val vm: ProductsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val list by vm.list.collectAsState()
     val locations = LocationMap()
-    var queryText by remember { mutableStateOf(vm.query.value) }
+    var queryText by remember { mutableStateOf(vm.ui.value.query) }
     val role = rememberRole()
 
     Scaffold(
@@ -134,7 +138,7 @@ fun ProductsScreen(nav: NavController) {
                 value = queryText,
                 onValueChange = {
                     queryText = it
-                    vm.query.value = it
+                    vm.ui.value = vm.ui.value.copy(query = it)
                 },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)

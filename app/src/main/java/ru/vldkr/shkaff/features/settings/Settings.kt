@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,27 +31,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.di.Deps
 import androidx.compose.material3.Switch
 
 class SettingsVm : ViewModel() {
-    val deviceId = MutableStateFlow(Deps.deviceId)
-    val expiryThreshold = MutableStateFlow(Deps.expiryThresholdDays())
+
+    data class Ui(
+        val deviceId: String = Deps.deviceId,
+        val expiryThreshold: Int = Deps.expiryThresholdDays(),
+        val numberingAuto: Boolean = Deps.numberingAuto()
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     fun setExpiryThreshold(days: Int) {
         Deps.setExpiryThresholdDays(days)
-        expiryThreshold.value = days
+        ui.value = ui.value.copy(expiryThreshold = days)
     }
-
-    val numberingAuto = MutableStateFlow(Deps.numberingAuto())
 
     fun setNumberingAuto(on: Boolean) {
         Deps.setNumberingAuto(on)
-        numberingAuto.value = on
+        ui.value = ui.value.copy(numberingAuto = on)
     }
 }
 
@@ -60,7 +61,7 @@ class SettingsVm : ViewModel() {
 @Composable
 fun SettingsScreen(nav: NavController) {
     val vm: SettingsVm = androidx.lifecycle.viewmodel.compose.viewModel()
-    val deviceId by vm.deviceId.collectAsState()
+    val ui by vm.ui.collectAsState()
     var showExpiryDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -86,7 +87,7 @@ fun SettingsScreen(nav: NavController) {
             item {
                 SettingRow(
                     "Напоминать о сроках",
-                    "В дашборде подсвечиваются вещи, истекающие за ${vm.expiryThreshold.value} дн.",
+                    "В дашборде подсвечиваются вещи, истекающие за ${ui.expiryThreshold} дн.",
                     { showExpiryDialog = true }
                 )
             }
@@ -105,7 +106,7 @@ fun SettingsScreen(nav: NavController) {
                         )
                     }
                     Switch(
-                        checked = vm.numberingAuto.value,
+                        checked = ui.numberingAuto,
                         onCheckedChange = { vm.setNumberingAuto(it) }
                     )
                 }
@@ -194,7 +195,7 @@ fun SettingsScreen(nav: NavController) {
             item {
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Text("ID устройства", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                    Text(deviceId.take(13) + "…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(ui.deviceId.take(13) + "…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item { Section("О приложении") }
@@ -224,7 +225,7 @@ fun SettingsScreen(nav: NavController) {
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                RadioButton(selected = vm.expiryThreshold.value == n, onClick = {
+                                RadioButton(selected = ui.expiryThreshold == n, onClick = {
                                     vm.setExpiryThreshold(n)
                                     showExpiryDialog = false
                                 })

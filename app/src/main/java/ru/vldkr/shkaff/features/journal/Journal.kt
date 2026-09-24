@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ActionLogEntity
 import ru.vldkr.shkaff.di.Deps
@@ -40,18 +41,22 @@ import ru.vldkr.shkaff.util.formatDate
 
 class JournalVm : ViewModel() {
 
-    val entries = MutableStateFlow<List<ActionLogEntity>>(emptyList())
-    val filter = MutableStateFlow<String?>(null)
+    data class Ui(
+        val entries: List<ActionLogEntity> = emptyList(),
+        val filter: String? = null
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     init {
         viewModelScope.launch {
-            filter.flatMapLatest { f -> Deps.actionLog.observeFiltered(f, null, null, 100) }
-                .collect { entries.value = it }
+            ui.map { it.filter }.flatMapLatest { f -> Deps.actionLog.observeFiltered(f, null, null, 100) }
+                .collect { entries -> ui.value = ui.value.copy(entries = entries) }
         }
     }
 
     fun setFilter(a: String?) {
-        filter.value = a
+        ui.value = ui.value.copy(filter = a)
     }
 }
 
@@ -75,8 +80,7 @@ fun actionLabel(a: String): String = when (a) {
 @Composable
 fun JournalScreen(nav: NavController) {
     val vm: JournalVm = viewModel()
-    val entries by vm.entries.collectAsState()
-    val filter by vm.filter.collectAsState()
+    val ui by vm.ui.collectAsState()
     val ctx = LocalContext.current
 
     Scaffold(
@@ -90,7 +94,7 @@ fun JournalScreen(nav: NavController) {
                 },
                 actions = {
                     IconButton(onClick = {
-                        val body = entries.joinToString("\n") { e ->
+                        val body = ui.entries.joinToString("\n") { e ->
                             "${formatDate(e.at)} · ${e.user_name.ifBlank { "—" }} · ${actionLabel(e.action)} · ${e.entity_type} ${e.entity_id}"
                         }
                         val send = Intent(Intent.ACTION_SEND).apply {
@@ -114,7 +118,7 @@ fun JournalScreen(nav: NavController) {
             Row(Modifier.padding(vertical = 8.dp)) {
                 listOf<String?>(null, "lend", "delete", "move").forEach { a ->
                     FilterChip(
-                        selected = filter == a,
+                        selected = ui.filter == a,
                         onClick = { vm.setFilter(a) },
                         label = {
                             Text(
@@ -131,10 +135,10 @@ fun JournalScreen(nav: NavController) {
                 }
             }
             LazyColumn(Modifier.fillMaxSize()) {
-                if (entries.isEmpty()) {
+                if (ui.entries.isEmpty()) {
                     item { EmptyState("Журнал пуст.\nДействия начнут записываться после первого изменения.") }
                 } else {
-                    items(entries, key = { it.id }) { e ->
+                    items(ui.entries, key = { it.id }) { e ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Row {
                                 Text(

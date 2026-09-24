@@ -38,7 +38,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
@@ -53,41 +53,45 @@ import ru.vldkr.shkaff.ui.theme.Ozon
 // Глобальный поиск: одно поле — вещи, ящики и шкафы (поиск без учёта регистра).
 class SearchVm : ViewModel() {
 
+    data class Ui(
+        val items: List<ItemEntity> = emptyList(),
+        val locations: List<LocationEntity> = emptyList(),
+        val storages: List<StorageEntity> = emptyList(),
+        val query: String = ""
+    )
+
     data class Results(
         val items: List<ItemEntity> = emptyList(),
         val locations: List<LocationEntity> = emptyList(),
         val storages: List<StorageEntity> = emptyList()
     )
 
-    private val itemsF = MutableStateFlow<List<ItemEntity>>(emptyList())
-    private val locationsF = MutableStateFlow<List<LocationEntity>>(emptyList())
-    private val storagesF = MutableStateFlow<List<StorageEntity>>(emptyList())
-    val query = MutableStateFlow("")
+    val ui = MutableStateFlow(Ui())
 
-    val results = combine(itemsF, locationsF, storagesF, query) { items, locations, storages, q ->
-        val t = q.trim()
-        if (t.isEmpty()) return@combine Results()
+    val results = ui.map { u ->
+        val t = u.query.trim()
+        if (t.isEmpty()) return@map Results()
         Results(
-            items = items.filter {
+            items = u.items.filter {
                 it.name.contains(t, true) ||
                     it.code.contains(t, true) ||
                     (it.ean ?: "").contains(t, true) ||
                     it.description.contains(t, true) ||
                     it.attributes.contains(t, true)
             }.take(50),
-            locations = locations.filter {
+            locations = u.locations.filter {
                 it.label.contains(t, true) || it.name.contains(t, true)
             }.take(50),
-            storages = storages.filter {
+            storages = u.storages.filter {
                 it.name.contains(t, true) || it.code.contains(t, true) || it.description.contains(t, true)
             }.take(50)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Results())
 
     init {
-        viewModelScope.launch { Deps.items.observeAll().collect { itemsF.value = it } }
-        viewModelScope.launch { Deps.locations.observeAll().collect { locationsF.value = it } }
-        viewModelScope.launch { Deps.storages.observeAll().collect { storagesF.value = it } }
+        viewModelScope.launch { Deps.items.observeAll().collect { ui.value = ui.value.copy(items = it) } }
+        viewModelScope.launch { Deps.locations.observeAll().collect { ui.value = ui.value.copy(locations = it) } }
+        viewModelScope.launch { Deps.storages.observeAll().collect { ui.value = ui.value.copy(storages = it) } }
     }
 }
 
@@ -96,7 +100,7 @@ class SearchVm : ViewModel() {
 fun SearchScreen(nav: NavController) {
     val vm: SearchVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val results by vm.results.collectAsState()
-    var queryText by remember { mutableStateOf(vm.query.value) }
+    var queryText by remember { mutableStateOf(vm.ui.value.query) }
     val storageNames = remember(results.storages) { results.storages.associateBy { it.id } }
 
     Scaffold(
@@ -107,7 +111,7 @@ fun SearchScreen(nav: NavController) {
                 value = queryText,
                 onValueChange = {
                     queryText = it
-                    vm.query.value = it
+                    vm.ui.value = vm.ui.value.copy(query = it)
                 },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -118,7 +122,7 @@ fun SearchScreen(nav: NavController) {
                     if (queryText.isNotEmpty()) {
                         IconButton(onClick = {
                             queryText = ""
-                            vm.query.value = ""
+                            vm.ui.value = vm.ui.value.copy(query = "")
                         }) {
                             Icon(Icons.Filled.Close, contentDescription = "Очистить")
                         }

@@ -43,7 +43,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.TagsJson
@@ -63,26 +63,30 @@ import ru.vldkr.shkaff.ui.theme.Ozon
 
 class ItemsVm : ViewModel() {
 
-    val allItems = MutableStateFlow<List<ItemEntity>>(emptyList())
-    val query = MutableStateFlow("")
-    val tagFilter = MutableStateFlow("")
-    val tagOptions = MutableStateFlow<List<String>>(emptyList())
-    val loansByItem = MutableStateFlow<Map<String, LoanEntity>>(emptyMap())
-    // US-O8: true до первой выдачи списка — показываем skeleton.
-    val loading = MutableStateFlow(true)
+    data class Ui(
+        val allItems: List<ItemEntity> = emptyList(),
+        val query: String = "",
+        val tagFilter: String = "",
+        val tagOptions: List<String> = emptyList(),
+        val loansByItem: Map<String, LoanEntity> = emptyMap(),
+        // US-O8: true до первой выдачи списка — показываем skeleton.
+        val loading: Boolean = true
+    )
 
-    val list = combine(allItems, query, tagFilter) { all, q, tag ->
-        val t = q.trim()
-        var l = if (t.isEmpty()) all else all.filter {
+    val ui = MutableStateFlow(Ui())
+
+    val list = ui.map { u ->
+        val t = u.query.trim()
+        var l = if (t.isEmpty()) u.allItems else u.allItems.filter {
             it.name.contains(t, true) ||
                 it.code.contains(t, true) ||
                 it.description.contains(t, true) ||
                 it.attributes.contains(t, true)
         }
         // US-I3: фильтр по тегам — совпадение без учёта регистра
-        if (tag.isNotEmpty()) {
+        if (u.tagFilter.isNotEmpty()) {
             l = l.filter { i ->
-                TagsJson.toList(i.tags).any { tn -> tn.equals(tag, ignoreCase = true) }
+                TagsJson.toList(i.tags).any { tn -> tn.equals(u.tagFilter, ignoreCase = true) }
             }
         }
         l
@@ -91,18 +95,17 @@ class ItemsVm : ViewModel() {
     init {
         viewModelScope.launch {
             Deps.items.observeAll().collect {
-                allItems.value = it
-                loading.value = false
+                ui.value = ui.value.copy(allItems = it, loading = false)
             }
         }
         viewModelScope.launch {
             Deps.tags.observeAll().collect { tags ->
-                tagOptions.value = tags.map { e -> e.name }.distinct().sorted()
+                ui.value = ui.value.copy(tagOptions = tags.map { e -> e.name }.distinct().sorted())
             }
         }
         viewModelScope.launch {
             Deps.loans.observeActive().collect { loans ->
-                loansByItem.value = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id }
+                ui.value = ui.value.copy(loansByItem = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id })
             }
         }
     }
@@ -113,24 +116,22 @@ class ItemsVm : ViewModel() {
 fun ItemsScreen(nav: NavController, tag: String = "") {
     val vm: ItemsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val list by vm.list.collectAsState()
-    val tagOptions by vm.tagOptions.collectAsState()
-    val loans by vm.loansByItem.collectAsState()
-    val loading by vm.loading.collectAsState()
+    val ui by vm.ui.collectAsState()
     val locations = LocationMap()
     // «0» — служебное значение для роута items/{tag}, когда тега нет
     val effectiveTag = if (tag.isEmpty() || tag == "0") "" else tag
-    var queryText by remember { mutableStateOf(vm.query.value) }
+    var queryText by remember { mutableStateOf(vm.ui.value.query) }
     var activeTag by remember { mutableStateOf(effectiveTag) }
     val role = rememberRole()
     LaunchedEffect(Unit) {
-        if (effectiveTag.isNotEmpty()) vm.tagFilter.value = effectiveTag
+        if (effectiveTag.isNotEmpty()) vm.ui.value = vm.ui.value.copy(tagFilter = effectiveTag)
         ScanBus.lastCode?.let { code ->
             queryText = code
-            vm.query.value = code
+            vm.ui.value = vm.ui.value.copy(query = code)
             ScanBus.lastCode = null
         }
     }
-    LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.tagFilter.value = effectiveTag }
+    LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.ui.value = vm.ui.value.copy(tagFilter = effectiveTag) }
 
     Scaffold(
         topBar = {
@@ -162,7 +163,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 value = queryText,
                 onValueChange = {
                     queryText = it
-                    vm.query.value = it
+                    vm.ui.value = vm.ui.value.copy(query = it)
                 },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -183,7 +184,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (tagOptions.isNotEmpty()) {
+            if (ui.tagOptions.isNotEmpty()) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -192,17 +193,17 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 ) {
                     FilterChip(
                         selected = activeTag.isEmpty(),
-                        onClick = { activeTag = ""; vm.tagFilter.value = "" },
+                        onClick = { activeTag = ""; vm.ui.value = vm.ui.value.copy(tagFilter = "") },
                         label = { Text("Все") },
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    tagOptions.forEach { t ->
+                    ui.tagOptions.forEach { t ->
                         FilterChip(
                             selected = activeTag.equals(t, ignoreCase = true),
                             onClick = {
                                 val next = if (activeTag.equals(t, ignoreCase = true)) "" else t
                                 activeTag = next
-                                vm.tagFilter.value = next
+                                vm.ui.value = vm.ui.value.copy(tagFilter = next)
                             },
                             label = { Text(t) },
                             modifier = Modifier.padding(end = 8.dp)
@@ -210,7 +211,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     }
                 }
             }
-            if (loading) {
+            if (ui.loading) {
                 ListSkeleton(rows = 6)
             } else if (list.isEmpty()) {
                 if (queryText.isBlank()) {
@@ -231,7 +232,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(list, key = { it.id }) { it ->
-                        val status = itemStatus(it, hasLocation = it.location_id != null, loan = loans[it.id])
+                        val status = itemStatus(it, hasLocation = it.location_id != null, loan = ui.loansByItem[it.id])
                         ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),

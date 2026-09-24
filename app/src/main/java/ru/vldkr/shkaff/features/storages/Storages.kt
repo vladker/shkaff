@@ -40,20 +40,24 @@ class StoragesVm : ViewModel() {
 
     data class Row(val storage: StorageEntity, val depth: Int)
 
-    val rows = MutableStateFlow<List<Row>>(emptyList())
-    val locationsCount = MutableStateFlow<Map<String, Int>>(emptyMap())
+    data class Ui(
+        val rows: List<Row> = emptyList(),
+        val locationsCount: Map<String, Int> = emptyMap()
+    )
+
+    val ui = MutableStateFlow(Ui())
     private val all = MutableStateFlow<List<StorageEntity>>(emptyList())
 
     init {
         viewModelScope.launch {
             Deps.storages.observeAll().collect { l ->
                 all.value = l
-                rows.value = flatten(l)
+                ui.value = ui.value.copy(rows = flatten(l))
             }
         }
         viewModelScope.launch {
             Deps.locations.observeAll().collect { locs ->
-                locationsCount.value = locs.groupBy { it.storage_id }.mapValues { e -> e.value.size }
+                ui.value = ui.value.copy(locationsCount = locs.groupBy { it.storage_id }.mapValues { e -> e.value.size })
             }
         }
     }
@@ -81,8 +85,7 @@ class StoragesVm : ViewModel() {
 @Composable
 fun StoragesScreen(nav: NavController) {
     val vm: StoragesVm = viewModel()
-    val rows by vm.rows.collectAsState()
-    val counts by vm.locationsCount.collectAsState()
+    val ui by vm.ui.collectAsState()
     val role = rememberRole()
 
     Scaffold(
@@ -95,7 +98,7 @@ fun StoragesScreen(nav: NavController) {
             }
         }
     ) { padding ->
-        if (rows.isEmpty()) {
+        if (ui.rows.isEmpty()) {
             val canCreate = Access.can(role, Access.CREATE)
             Column(Modifier.padding(padding).padding(16.dp)) {
                 EmptyState(
@@ -112,8 +115,8 @@ fun StoragesScreen(nav: NavController) {
                     .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp)
             ) {
-                items(rows, key = { it.storage.id }) { r ->
-                    StorageRow(r.storage, r.depth, counts[r.storage.id] ?: 0) { nav.navigate("storage/${r.storage.id}") }
+                items(ui.rows, key = { it.storage.id }) { r ->
+                    StorageRow(r.storage, r.depth, ui.locationsCount[r.storage.id] ?: 0) { nav.navigate("storage/${r.storage.id}") }
                 }
             }
         }

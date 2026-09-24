@@ -71,11 +71,16 @@ class LocationFormVm(
     var capacityWeight by mutableStateOf("")
     var dontFillToBrim by mutableStateOf(false)
     var isFull by mutableStateOf(false)
-    val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
-    val siblings = MutableStateFlow<List<LocationEntity>>(emptyList())
-    val error = MutableStateFlow<String?>(null)
-    val saving = MutableStateFlow(false)
-    val loaded = MutableStateFlow(false)
+
+    data class Ui(
+        val attrDefs: List<AttributeDefEntity> = emptyList(),
+        val siblings: List<LocationEntity> = emptyList(),
+        val error: String? = null,
+        val saving: Boolean = false,
+        val loaded: Boolean = false
+    )
+
+    val ui = MutableStateFlow(Ui())
 
     class Factory(private val storageId: String, private val locationId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -86,12 +91,12 @@ class LocationFormVm(
     init {
         viewModelScope.launch {
             Deps.attributes.observeAll().collect { all ->
-                attrDefs.value = all.filter { it.scope == "location" || it.scope == "*" }
+                ui.value = ui.value.copy(attrDefs = all.filter { it.scope == "location" || it.scope == "*" })
             }
         }
         viewModelScope.launch {
             val all = Deps.locations.allByStorage(storageId)
-            siblings.value = all
+            ui.value = ui.value.copy(siblings = all)
             if (locationId != null) {
                 all.firstOrNull { it.id == locationId }?.let {
                     label = it.label
@@ -110,30 +115,31 @@ class LocationFormVm(
                 }
                 FormBus.locationParentPreset = null
             }
-            loaded.value = true
+            ui.value = ui.value.copy(loaded = true)
         }
     }
 
     // исключаем себя и своих потомков — иначе вложенность превратится в цикл
     fun parentCandidates(): List<LocationEntity> {
-        val all = siblings.value
+        val all = ui.value.siblings
         if (locationId == null) return all
         return all.filter { it.id !in subtreeIds(locationId, all, { l -> l.id }, { l -> l.parent_id }) }
     }
 
     fun save(onDone: (String) -> Unit) {
         if (label.isBlank() && name.isBlank()) {
-            error.value = "Укажите номер или название ящика"
+            ui.value = ui.value.copy(error = "Укажите номер или название ящика")
             return
         }
         viewModelScope.launch {
-            saving.value = true
-            error.value = null
+            ui.value = ui.value.copy(saving = true, error = null)
             val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
             val need = if (locationId == null) Access.CREATE else Access.EDIT
             if (!Access.can(role, need)) {
-                error.value = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})"
-                saving.value = false
+                ui.value = ui.value.copy(
+                    error = "Профиль «${Deps.users.activeUser()?.name ?: "—"}» не может это делать (роль ${Access.label(role)})",
+                    saving = false
+                )
                 return@launch
             }
             val d = LocationData(
@@ -156,9 +162,9 @@ class LocationFormVm(
                 }
                 onDone(id)
             } catch (e: Exception) {
-                error.value = e.message
+                ui.value = ui.value.copy(error = e.message)
             } finally {
-                saving.value = false
+                ui.value = ui.value.copy(saving = false)
             }
         }
     }
@@ -169,19 +175,15 @@ class LocationFormVm(
 fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
     val isNew = id == "0"
     val vm: LocationFormVm = viewModel(factory = LocationFormVm.Factory(storageId, id))
-    val error by vm.error.collectAsState()
-    val saving by vm.saving.collectAsState()
-    val defs by vm.attrDefs.collectAsState()
-    val loaded by vm.loaded.collectAsState()
-    val siblings by vm.siblings.collectAsState()
+    val ui by vm.ui.collectAsState()
     var showParentPicker by remember { mutableStateOf(false) }
 
     val parentName: String? = vm.parentId?.let { pid ->
-        siblings.firstOrNull { it.id == pid }?.let { it.label.ifBlank { it.name } }
+        ui.siblings.firstOrNull { it.id == pid }?.let { it.label.ifBlank { it.name } }
     }
     // US-O8: автофокус на «Номер» при создании
     val labelFocus = remember { FocusRequester() }
-    LaunchedEffect(loaded) { if (loaded && isNew) labelFocus.requestFocus() }
+    LaunchedEffect(ui.loaded) { if (ui.loaded && isNew) labelFocus.requestFocus() }
 
     Scaffold(
         topBar = {
@@ -198,14 +200,14 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                             if (isNew) nav.navigate("location/$newId") { popUpTo("dashboard") }
                             else nav.popBackStack()
                         }
-                    }, enabled = !saving) {
+                    }, enabled = !ui.saving) {
                         Icon(Icons.Filled.Save, contentDescription = "Сохранить")
                     }
                 }
             )
         }
     ) { padding ->
-        if (!loaded) {
+        if (!ui.loaded) {
             Column(Modifier.padding(padding).padding(32.dp)) {
                 Text("Загрузка…", style = MaterialTheme.typography.bodyLarge)
             }
@@ -288,13 +290,13 @@ fun LocationFormScreen(nav: NavController, storageId: String, id: String) {
                 Text("Считать «полным» — блокировать добавление", modifier = Modifier.weight(1f))
                 Switch(checked = vm.isFull, onCheckedChange = { vm.isFull = it })
             }
-            if (defs.isNotEmpty()) {
+            if (ui.attrDefs.isNotEmpty()) {
                 SectionTitle("Атрибуты")
-                AttrFields(defs, vm.attrs) { k, v ->
+                AttrFields(ui.attrDefs, vm.attrs) { k, v ->
                     vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
                 }
             }
-            error?.let {
+            ui.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
             }
         }
