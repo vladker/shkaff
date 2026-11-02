@@ -15,13 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -136,14 +134,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Вещи") },
-                actions = {
-                    if (Access.can(role, Access.CREATE)) {
-                        IconButton(onClick = { nav.navigate("batch") }) {
-                            Icon(Icons.Filled.Numbers, contentDescription = "Серия вещей")
-                        }
-                    }
-                }
+                title = { Text("Вещи") }
             )
         },
         floatingActionButton = {
