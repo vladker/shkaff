@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicReference
 // Движок один и stateful, поэтому каждый запрос собирается заново:
 // система — через setSystemPrompt, остальной дилог — одним текстовым транскриптом.
 object DeviceLlm {
-
     const val N_MAX_TOKENS = 2048
 
     suspend fun complete(
@@ -22,68 +21,82 @@ object DeviceLlm {
         onToken: (String) -> Unit = {},
         nMaxTokens: Int = N_MAX_TOKENS,
         imagePath: String? = null,
-    ): String = withContext(Dispatchers.IO) {
-        val fileName = settings.model.trim()
-        if (fileName.isEmpty()) {
-            throw IllegalStateException("Модель на устройстве не выбрана — откройте «Модели» и скачайте GGUF")
-        }
-        val dir = Deps.modelStore.dir
-        val file = File(dir, fileName)
-        if (!file.isFile) {
-            throw IllegalStateException("Модель не скачана ($fileName). Скачайте её в разделе «Модели»")
-        }
-        val mmprojPath = Deps.modelStore.state.value.rows
-            .firstOrNull { it.file == fileName && !it.mmprojFile.isNullOrBlank() }
-            ?.mmprojFile
-            ?.let { File(dir, it) }
-            ?.takeIf { it.isFile }
-            ?.absolutePath
-
-        val code = LlmRuntime.ensureLoaded(file.absolutePath, mmprojPath)
-        if (code != LlamaBridge.OK) {
-            throw IllegalStateException("Не удалось загрузить модель: ${LlamaBridge.lastError().ifBlank { "код $code" }}")
-        }
-
-        val system = messages.filter { it.role == "system" }.joinToString("\n") { it.content.orEmpty() }.trim()
-        if (system.isNotEmpty()) {
-            LlamaBridge.setSystemPrompt(system)
-        } else {
-            LlamaBridge.resetChat()
-        }
-
-        val transcript = buildTranscript(messages.filter { it.role != "system" })
-        // Фото: явный параметр или imagePath, привязанный к одному из сообщений (vision).
-        val img = imagePath?.takeIf { it.isNotBlank() }
-            ?: messages.firstNotNullOfOrNull { it.imagePath }
-        val sb = StringBuilder()
-        val errMsg = AtomicReference<String?>(null)
-        val rc = LlamaBridge.complete(
-            prompt = transcript,
-            imagePath = img,
-            nMaxTokens = nMaxTokens,
-            cb = object : LlamaGenerationCallback {
-                override fun onToken(text: String) {
-                    sb.append(text)
-                    onToken(text)
-                }
-
-                override fun onError(code: Int, message: String) {
-                    errMsg.set(message)
-                }
-            },
-        )
-        val out = sb.toString().trim()
-        if (rc == LlamaBridge.ERR_NO_VISION) {
-            throw IllegalStateException("Эта модель не понимает фото. Скачайте vision-модель с mmproj (Qwen3-VL) в «Модели»")
-        }
-        if (out.isEmpty()) {
-            val reason = errMsg.get() ?: LlamaBridge.lastError().ifBlank {
-                if (rc == LlamaBridge.ABORTED) "генерация прервана" else "модель не ответила"
+    ): String =
+        withContext(Dispatchers.IO) {
+            val fileName = settings.model.trim()
+            if (fileName.isEmpty()) {
+                throw IllegalStateException("Модель на устройстве не выбрана — откройте «Модели» и скачайте GGUF")
             }
-            throw IllegalStateException(reason)
+            val dir = Deps.modelStore.dir
+            val file = File(dir, fileName)
+            if (!file.isFile) {
+                throw IllegalStateException("Модель не скачана ($fileName). Скачайте её в разделе «Модели»")
+            }
+            val mmprojPath =
+                Deps.modelStore.state.value.rows
+                    .firstOrNull { it.file == fileName && !it.mmprojFile.isNullOrBlank() }
+                    ?.mmprojFile
+                    ?.let { File(dir, it) }
+                    ?.takeIf { it.isFile }
+                    ?.absolutePath
+
+            val code = LlmRuntime.ensureLoaded(file.absolutePath, mmprojPath)
+            if (code == LlmRuntime.ERR_NO_RAM) {
+                throw IllegalStateException(LlmRuntime.load.value.error ?: "Недостаточно свободной памяти для модели")
+            }
+            if (code != LlamaBridge.OK) {
+                throw IllegalStateException("Не удалось загрузить модель: ${LlamaBridge.lastError().ifBlank { "код $code" }}")
+            }
+
+            val system = messages.filter { it.role == "system" }.joinToString("\n") { it.content.orEmpty() }.trim()
+            if (system.isNotEmpty()) {
+                LlamaBridge.setSystemPrompt(system)
+            } else {
+                LlamaBridge.resetChat()
+            }
+
+            val transcript = buildTranscript(messages.filter { it.role != "system" })
+            // Фото: явный параметр или imagePath, привязанный к одному из сообщений (vision).
+            val img =
+                imagePath?.takeIf { it.isNotBlank() }
+                    ?: messages.firstNotNullOfOrNull { it.imagePath }
+            val sb = StringBuilder()
+            val errMsg = AtomicReference<String?>(null)
+            val rc =
+                LlamaBridge.complete(
+                    prompt = transcript,
+                    imagePath = img,
+                    // При нехватке RAM контекст меньше типового 4096 — генерацию урезаем
+                    // вдвое от него, иначе decode не влезет в KV-кэш.
+                    nMaxTokens = nMaxTokens.coerceAtMost((LlmRuntime.loadedNCtx() / 2).coerceAtLeast(64)),
+                    cb =
+                        object : LlamaGenerationCallback {
+                            override fun onToken(text: String) {
+                                sb.append(text)
+                                onToken(text)
+                            }
+
+                            override fun onError(
+                                code: Int,
+                                message: String,
+                            ) {
+                                errMsg.set(message)
+                            }
+                        },
+                )
+            val out = sb.toString().trim()
+            if (rc == LlamaBridge.ERR_NO_VISION) {
+                throw IllegalStateException("Эта модель не понимает фото. Скачайте vision-модель с mmproj (Qwen3-VL) в «Модели»")
+            }
+            if (out.isEmpty()) {
+                val reason =
+                    errMsg.get() ?: LlamaBridge.lastError().ifBlank {
+                        if (rc == LlamaBridge.ABORTED) "генерация прервана" else "модель не ответила"
+                    }
+                throw IllegalStateException(reason)
+            }
+            out
         }
-        out
-    }
 
     fun abort() = LlamaBridge.abort()
 
@@ -95,7 +108,11 @@ object DeviceLlm {
         for (m in messages) {
             if (m.role == "system") continue
             val role = if (m.role == "assistant") "Ассистент" else "Пользователь"
-            sb.append(role).append(": ").append(m.content.orEmpty().trim()).append("\n")
+            sb
+                .append(role)
+                .append(": ")
+                .append(m.content.orEmpty().trim())
+                .append("\n")
             hasTurn = true
         }
         if (hasTurn) sb.append("Ассистент:")

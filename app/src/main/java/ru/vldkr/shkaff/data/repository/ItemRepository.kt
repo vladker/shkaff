@@ -150,6 +150,27 @@ class ItemRepository(
         return true
     }
 
+    // US-I2: найденные агентом атрибуты — слить в существующие (только непустые ключи),
+    // писать только после подтверждения пользователем.
+    suspend fun applyAttributes(id: String, attrs: Map<String, String>): Boolean {
+        val clean = attrs.filterKeys { it.isNotBlank() }.filterValues { it.isNotBlank() }
+        if (clean.isEmpty()) return false
+        val e = dao.byId(id) ?: return false
+        val merged = AttrJson.toMap(e.attributes).toMutableMap().apply { putAll(clean) }
+        dao.upsert(
+            e.copy(
+                attributes = AttrJson.toJson(merged),
+                updated_at = System.currentTimeMillis(),
+                device_last_modified = deviceId()
+            )
+        )
+        Deps.actionLog.log(
+            "attributes", "item", id,
+            mapOf("name" to e.name, "keys" to clean.keys.joinToString(","))
+        )
+        return true
+    }
+
     suspend fun softDelete(id: String) {
         val e = dao.byId(id)
         dao.softDelete(id, System.currentTimeMillis(), deviceId())

@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -324,14 +323,14 @@ fun AgentScreen(nav: NavController) {
             }
             item {
                 OutlinedButton(
-                    onClick = { nav.navigate("labels/0/0") },
+                    onClick = { nav.navigate("agent-attributes") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp)
                 ) {
-                    Icon(Icons.Filled.Label, contentDescription = null)
+                    Icon(Icons.Filled.Inventory2, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Настроить этикетку по сетке")
+                    Text("Найти атрибуты")
                 }
             }
             items(messages) { m -> Bubble(m) }
@@ -419,6 +418,16 @@ private fun SettingsDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Пресет: Qwen 27B (URL — автопоиск)")
+                }
+                OutlinedButton(
+                    onClick = {
+                        sProvider = Agent.PROVIDER_CLOUD
+                        sBaseUrl = "https://api.deepseek.com/v1"
+                        sModel = "deepseek-chat"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Пресет: DeepSeek (бесплатный облачный API)")
                 }
                 PROVIDERS.forEach { p ->
                     Row(
