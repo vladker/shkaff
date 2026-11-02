@@ -1,13 +1,14 @@
 # AGENTS.md — «Шкаф» (shkaff)
 
-Офлайн-приложение инвентаризации вещей на Android: вещи, ящики (locations), шкафы (storages), этикетки, сканер, разметка фото, бэкап/слияние. Один Gradle-модуль `:app`, пакет `ru.vldkr.shkaff`.
+Офлайн-приложение инвентаризации вещей на Android: вещи, ящики (locations), шкафы (storages), этикетки, сканер, разметка фото, бэкап/слияние, печать, локальный LLM-агент. Gradle-модули: `:app` (пакет `ru.vldkr.shkaff`) и `:llama` (JNI-обёртка `ru.vldkr.shkaff.llm.LlamaBridge` над llama.cpp из git-подмодуля `third_party/llama.cpp`, тег `b9999`).
 
 `PLAN.md` — ТЗ и дорожная карта (M1–M13; M8–M13 — пользовательские истории US-A…US-H). Где `PLAN.md` и код расходятся — **код старший** (напр., FTS5, TFLite u2net, ML Kit в плане есть, в коде их нет).
 
 ## Команды (Windows)
 
-- Сборка: `.\gradlew.bat :app:assembleDebug`
-- Юнит-тесты: `.\gradlew.bat :app:testDebugUnitTest` (JUnit4 + Robolectric; тесты — `sync/MergeEngineTest.kt`, `sync/MergeSanitizerTest.kt`, `sync/MergeSessionTest.kt`, `sync/BackupFormatTest.kt` в `app/src/test/`)
+- Сборка: `.\gradlew.bat :app:assembleDebug` (первый клон: `git submodule update --init third_party/llama.cpp`)
+- Релизный APK: `.\gradlew.bat :app:assembleRelease` — подписан ключом из `keystore.properties` (файл в `.gitignore`, шаблон `keystore.properties.example`, сам ключ `keystore/upload-keystore.jks`). Без `keystore.properties` релиз подписывается debug-ключом.
+- Юнит-тесты: `.\gradlew.bat :app:testDebugUnitTest` (JUnit4 + Robolectric; тесты — `sync/MergeEngineTest.kt`, `sync/MergeSanitizerTest.kt`, `sync/MergeSessionTest.kt`, `sync/BackupFormatTest.kt`, `domain/agent/LlmMemoryPlanTest.kt` в `app/src/test/`)
 - Установка на смартфон: `adb install -r app\build\outputs\apk\debug\app-debug.apk` — **обязательный шаг в конце каждого комита** (после успешной сборки и тестов; adb: `C:\Users\vldkr\AppData\Local\Android\Sdk\platform-tools\adb.exe`, устройство: SM-S928B, Android 16)
 - Room: схемы экспортируются в `app/schemas/` (KSP-арг). При изменении сущностей — поднять `version` в `ShkaffDatabase` + миграция.
 - В базе включён `allowMainThreadQueries()` — не «чинить» без явной задачи.
@@ -35,7 +36,7 @@
 ## Бэкап и слияние
 
 - `sync/MergeEngine.kt` (чистый Kotlin): LWW по `updated_at`; при равном `updated_at` и разных строках — побеждает сторона по флагу `remoteWins` + запись в `conflicts`; «удалено vs живо» — новее по `deleted_at`/`updated_at`.
-- `sync/Backup.kt`: формат `"shkaff-backup"` v1 — **один JSON** (в zip лежит единственный файл `backup.json`). **Фото в бэкап не попадают** (PLAN.md говорит об обратном — не опираться).
+- `sync/Backup.kt`: формат `"shkaff-backup"` v1 — `.json` это один JSON; `.zip` = `backup.json` + фото в каталоге `photos/` внутри архива (`exportToFile(..., photosDir)` / `importFromFile(..., photosDir)`; фото берутся по именам из `photo_path`, `barcode_photo_path`, `logo_path` и элементов `{"path": …}` в `label_docs.doc_json`). Старые версии приложения читают такой zip как раньше (только `backup.json`).
 - `Backup.applyMerge` — `upsertAll` всех таблиц в одной транзакции.
 
 ## Федерация (пир-синхронизация по LAN, US-G2)
@@ -47,9 +48,19 @@
 - `sync/PeerSync.kt` — оркестрация: HELLO → PULL → merge (локальная выигрывает) → sanitize → apply или `MergeSession` (конфликты) → PUSH обратно.
 - UI: `features/federation/FederationScreen.kt` (маршрут `"federation"`, пункт в Настройках). Тесты: `PeerTrustTest`, `PeerScopeTest` (org.json в юнит-тестах — только под `RobolectricTestRunner`).
 
+## Печать, сканер и локальный LLM
+
+- Печать этикеток: `data/printer/` — `PrintManager` + транспорты `BtSppTransport`/`BleSppTransport`/`UsbTransport`/`TcpTransport`/`ShareTransport`, растеризация в `BitmapRaster`. Профили принтеров — таблица `printer_profile`, экран `features/printers/` (роут `printers`).
+- LLM: `llama/` (модуль `:llama`, `LlamaBridge` — единственный владелец нативных библиотек), `domain/agent/` (`Agent`, `AgentLoop`, `Tools`, `DeviceLlm`, `LlmRuntime`, `LlmDiscovery`, `VolumeEstimate`, `AttributeEstimate`), загрузка моделей — `data/llm/ModelStore.kt` + `ModelDownloadService.kt` (роут `llm-models`), экраны — `features/agent/` (роуты `agent`, `agent-volumes`, `agent-attributes`).
+- `domain/agent/LlmRuntime.kt` подбирает `n_ctx` по свободной памяти (лестница 4096/2048/1024, чистая функция `planNCtx` + тест `LlmMemoryPlanTest`): при нехватке RAM llama.cpp зовёт `GGML_ABORT` и процесс падает без ошибки в UI, поэтому загрузка с `ERR_NO_RAM` отказывает явно.
+- `llama/src/main/cpp/CMakeLists.txt` до `add_subdirectory` ставит `-Wl,-z,max-page-size=16384` (требование Google Play 16 KiБ для targetSdk ≥ 35) и `add_compile_options(-g0)` — иначе `libllama-common.so` тянет ~70 МиБ `.debug_*`, релизный APK 153 МиБ вместо 26 МиБ.
+- В `release` оставлен только ABI `arm64-v8a` (в `debug` — плюс `x86_64` для эмулятора).
+
 ## Что уже есть / чего нет (не додумывать)
 
-- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки (`features/labels/LabelGenerator.kt`, ZXing, dpi по умолчанию 150), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**, пир-синхронизация по LAN с флагами доверия (US-G2, см. раздел «Федерация»).
+- Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки + LabelStudio (`features/labels/LabelGenerator.kt`, `features/labelstudio/`, таблица `label_docs`, роуты `labels/…`, `templates`), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), печать по BT/USB/TCP, стэки/корзины/выдачи (`stack`, `basket`, `loan`), фрагменты и оценка объёмов/атрибутов через LLM, удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**, пир-синхронизация по LAN с флагами доверия (US-G2, см. раздел «Федерация»). Все экраны зарегистрированы в `NavHost` в `MainActivity.kt` (роуты `scan`, `annotations/{storageId}`, `labels/{type}/{id}/{templateId}`, `templates`, `printers`, `agent`, `llm-models`, `fragment` и др.).
+- `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
+- Нет: облачная синхронизация, FTS5, TFLite/u2net, ML Kit — только план в `PLAN.md`.
 - ⚠️ **Мёртвые роуты:** `ScannerScreen`/`AnnotationScreen` навигают на `"labels/0/0"`, `LabelsScreen` — на `"templates"`, но роуты `labels/…`, `templates`, `scan`, `annotations/…` **не зарегистрированы в `NavHost` в `MainActivity.kt`**. Навигация на них упадёт; экраны сканера и разметки сейчас недостижимы. При подключении — добавить `composable(...)` в `MainActivity.kt`.
 - `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
 - Нет: печать (ESC/POS), TFLite/u2net, ML Kit, облачная синхронизация — только план в `PLAN.md`.
