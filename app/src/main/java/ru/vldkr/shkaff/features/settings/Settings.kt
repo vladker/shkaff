@@ -41,7 +41,8 @@ class SettingsVm : ViewModel() {
     data class Ui(
         val deviceId: String = Deps.deviceId,
         val expiryThreshold: Int = Deps.expiryThresholdDays(),
-        val numberingAuto: Boolean = Deps.numberingAuto()
+        val numberingAuto: Boolean = Deps.numberingAuto(),
+        val themeIsLight: Boolean = Deps.themeIsLight()
     )
 
     val ui = MutableStateFlow(Ui())
@@ -54,6 +55,14 @@ class SettingsVm : ViewModel() {
     fun setNumberingAuto(on: Boolean) {
         Deps.setNumberingAuto(on)
         ui.value = ui.value.copy(numberingAuto = on)
+    }
+
+    fun setTheme(light: Boolean) {
+        Deps.setThemeLight(light)
+        ru.vldkr.shkaff.ui.theme.Ozon.mode =
+            if (light) ru.vldkr.shkaff.ui.theme.ThemeMode.LIGHT
+            else ru.vldkr.shkaff.ui.theme.ThemeMode.DARK
+        ui.value = ui.value.copy(themeIsLight = light)
     }
 }
 
@@ -83,6 +92,26 @@ fun SettingsScreen(nav: NavController) {
                 .fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
         ) {
+            item { Section("Внешний вид") }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Светлая тема", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "«Инвертированная белая». По умолчанию — тёмная (как Ozon); акценты не меняются.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = ui.themeIsLight,
+                        onCheckedChange = { vm.setTheme(it) }
+                    )
+                }
+            }
             item { Section("Сроки годности") }
             item {
                 SettingRow(

@@ -113,6 +113,13 @@ object Deps {
         meta().upsert(SchemaMetaEntity("numberingAuto", if (on) "true" else "false"))
     }
 
+    // Тема UI: тёмная — по умолчанию; «light» — светлая (инвертированная белая).
+    fun themeIsLight(): Boolean = meta().get("themeMode") == "light"
+
+    fun setThemeLight(light: Boolean) {
+        meta().upsert(SchemaMetaEntity("themeMode", if (light) "light" else "dark"))
+    }
+
     // LLM-агент (US-B3): облако / локаль (Ollama), OpenAI-совместимый API.
     fun agentSettings(): ru.vldkr.shkaff.domain.agent.AgentSettings {
         val m = meta()
