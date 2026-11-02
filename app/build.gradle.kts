@@ -1,9 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+// Ключ подписи релиза лежит локально и в git не попадает (keystore.properties в
+// .gitignore, образец — keystore.properties.example). Если файла нет, релиз
+// собирается неподписанным: тогда подпись делает Play App Signing / CI.
+val keystoreProps =
+    Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
 
 android {
     namespace = "ru.vldkr.shkaff"
@@ -14,13 +25,37 @@ android {
         minSdk = 33
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        val store = keystoreProps.getProperty("storeFile")
+        if (store != null) {
+            create("upload") {
+                storeFile = rootProject.file(store)
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            // x86_64 нужен только эмулятору; в релиз он не едет (см. release ниже).
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
         release {
-            isMinifyEnabled = false
+            // Только arm64: реальные смартфоны на Android 12+ — arm64-v8a, а
+            // нативные библиотеки llama.cpp весят больше всего остального приложения.
+            ndk { abiFilters += listOf("arm64-v8a") }
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Без keystore.properties подписываем debug-ключом: это нужно только
+            // для установки release-сборки на свой телефон (R8/16 KB smoke-test).
+            // shortcut: для загрузки в Play нужен upload-ключ из keystore.properties.
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
 
