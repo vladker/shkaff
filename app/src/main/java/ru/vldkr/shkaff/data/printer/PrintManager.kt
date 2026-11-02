@@ -107,6 +107,17 @@ object PrintManager {
         return res
     }
 
+    // Штампование ленты (US-I3): растр на всю ширину полосы widthMm, без позиции (лента идёт от края).
+    suspend fun printRibbon(
+        profile: PrinterProfileEntity,
+        bmp: Bitmap,
+        widthMm: Double,
+        feedLines: Int = 5
+    ): Result<Unit> = printBitmap(
+        profile, bmp, Color.BLACK, Color.WHITE,
+        feedLines = feedLines, widthMm = widthMm
+    )
+
     fun describe(p: PrinterProfileEntity): String = when (p.transport.lowercase()) {
         "tcp" -> "Сеть ${p.host}:${p.port}"
         "usb" -> "USB ${p.host}"

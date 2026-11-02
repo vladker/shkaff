@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.ShoppingBasket
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -146,19 +148,35 @@ class DashboardVm : ViewModel() {
             val now = System.currentTimeMillis()
             val loans = Deps.loans.observeActive().first()
             val itemLoans = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id }
-            // Порядок вещей на «Главной»: сначала без места, затем требующие внимания
-            // (одолжены, срок истёк или скоро истечёт), остальные — в случайном порядке.
+            // Порядок вещей на «Главной» — по степени «требует внимания»:
+            // 1) без места; 2) без кода/этикетки; 3) без важных (обязательных) атрибутов;
+            // 4) одолжены или срок истекает; 5) остальные. Внутри группы — свежее первыми.
             val today = LocalDate.now()
             val threshold = Deps.expiryThresholdDays()
+            // «Важные» атрибуты вещи — обязательные из словаря (scope=item, required).
+            val requiredAttrKeys = Deps.attributes.forScope("item")
+                .filter { it.required && it.deleted_at == null }
+                .map { it.key }
+                .toSet()
+            fun ItemEntity.missingRequiredAttrs(): Boolean {
+                if (requiredAttrKeys.isEmpty()) return false
+                val attrs = AttrJson.toMap(attributes)
+                return requiredAttrKeys.any { k -> attrs[k].isNullOrBlank() }
+            }
             fun ItemEntity.needsAttention(): Boolean {
                 if (itemLoans[id] != null) return true
                 val exp = expiry_date?.let { Expiry.parse(it) } ?: return false
                 return Expiry.daysUntil(exp, today) <= threshold
             }
-            val noLocation = items.filter { it.location_id == null }.sortedByDescending { it.updated_at }
-            val attention = items.filter { it.location_id != null && it.needsAttention() }.sortedByDescending { it.updated_at }
-            val rest = items.filter { it.location_id != null && !it.needsAttention() }
-            val orderedItems = noLocation + attention + rest.shuffled()
+            fun attentionRank(i: ItemEntity): Int = when {
+                i.location_id == null -> 0
+                i.code.isBlank() -> 1
+                i.missingRequiredAttrs() -> 2
+                i.needsAttention() -> 3
+                else -> 4
+            }
+            val orderedItems = items.sortedWith(compareBy({ attentionRank(it) }, { -it.updated_at }))
+            val noLocation = orderedItems.filter { it.location_id == null }
 
             // ── Метрики «Сводка» ──
             val draftsCount = Deps.drafts.count()
@@ -271,16 +289,40 @@ fun DashboardScreen(nav: NavController) {
     val showSkeleton = loading && ui.itemsCount == 0 && ui.recent.isEmpty()
     LaunchedEffect(Unit) { vm.refresh() }
     val locations = LocationMap()
+    var showAddMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         floatingActionButton = {
             if (ui.canCreate) {
-                FloatingActionButton(
-                    onClick = { nav.navigate("item-wizard") },
-                    containerColor = Ozon.Blue,
-                    contentColor = Ozon.TextPrimary
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
+                Box {
+                    FloatingActionButton(
+                        onClick = { showAddMenu = true },
+                        containerColor = Ozon.Blue,
+                        contentColor = Ozon.TextPrimary
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Добавить")
+                    }
+                    DropdownMenu(
+                        expanded = showAddMenu,
+                        onDismissRequest = { showAddMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Добавить вещь") },
+                            leadingIcon = { Icon(Icons.Filled.Inventory2, contentDescription = null) },
+                            onClick = {
+                                showAddMenu = false
+                                nav.navigate("item-wizard")
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Добавить хранилище") },
+                            leadingIcon = { Icon(Icons.Filled.Storage, contentDescription = null) },
+                            onClick = {
+                                showAddMenu = false
+                                nav.navigate("storage-form/0")
+                            }
+                        )
+                    }
                 }
             }
         }

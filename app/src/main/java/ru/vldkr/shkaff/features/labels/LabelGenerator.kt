@@ -296,6 +296,82 @@ object LabelGenerator {
         return bmp
     }
 
+    // Одна полоска штампования: код + название.
+    data class RibbonEntry(val code: String, val name: String)
+
+    /**
+     * Штампование ленты (US-I3): N полосок высотой stripMm на одной длинной ленте шириной widthMm,
+     * у каждой — код слева (квадрат, вписанный в высоту полоски) и название справа (обрезка по ширине).
+     * Для непрерывной ленты/бумаги: печатается одним растром высотой N×stripMm.
+     */
+    fun generateRibbon(
+        entries: List<RibbonEntry>,
+        widthMm: Double,
+        stripMm: Double = 10.0,
+        dpi: Int = 150,
+        bgHex: String = "#FFFFFF",
+        fgHex: String = "#000000",
+        fontPt: Float = 12f,
+        showText: Boolean = true
+    ): Bitmap? {
+        val list = entries.filter { it.code.isNotBlank() }
+        if (list.isEmpty()) return null
+        // Полоска штампа всегда с QR (запрос пользователя: «QR слева, название справа»).
+        val fmt = BarcodeFormat.QR_CODE
+        val pxPerMm = dpi / 25.4f
+        val W = ((widthMm * pxPerMm).toInt()).coerceAtLeast(32)
+        val stripH = ((stripMm * pxPerMm).toInt()).coerceAtLeast(16)
+        val H = (stripH * list.size).coerceAtLeast(16)
+        val bg = parseColor(bgHex)
+        val fg = parseColor(fgHex)
+        val margin = (1f * pxPerMm).toInt().coerceAtLeast(2)
+        val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(bg)
+
+        val qrSide = (stripH - margin * 2).coerceAtLeast(16)
+        val textLeft = margin + qrSide + margin
+        val textMaxW = (W - textLeft - margin).coerceAtLeast(8)
+        val fontPx = ((fontPt * 25.4f / 72f) * pxPerMm).toInt().coerceIn(8, 800)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = fg
+            textSize = fontPx.toFloat()
+        }
+        val sepPaint = Paint().apply {
+            color = fg
+            alpha = 90
+            strokeWidth = 1f
+        }
+
+        list.forEachIndexed { i, e ->
+            val top = i * stripH
+            // Код слева, по центру по вертикали.
+            val matrix = try {
+                MultiFormatWriter().encode(e.code, fmt, qrSide, qrSide)
+            } catch (ex: Exception) {
+                null
+            }
+            if (matrix != null) {
+                val bmp = matrixToBitmap(matrix, fg, bg, false)
+                val offX = margin + (qrSide - bmp.width) / 2
+                val offY = top + margin + (qrSide - bmp.height) / 2
+                canvas.drawBitmap(bmp, offX.toFloat(), offY.toFloat(), null)
+            }
+            // Название справа, по центру по вертикали, обрезка по ширине.
+            if (showText && e.name.isNotBlank()) {
+                val shown = truncate(textPaint, e.name, textMaxW)
+                val ty = top + stripH / 2f - (textPaint.ascent() + textPaint.descent()) / 2f
+                canvas.drawText(shown, textLeft.toFloat(), ty, textPaint)
+            }
+            // Разделитель между полосками (не после последней).
+            if (i < list.size - 1) {
+                val y = (top + stripH - 1f)
+                canvas.drawLine(0f, y, W.toFloat(), y, sepPaint)
+            }
+        }
+        return out
+    }
+
     // Калибровочная сетка: шахматка (чередующиеся чёрные/белые клетки без зазоров).
     // Пользователь по напечатанной копии отмечает пальцем, какая зона печати плотная.
     fun renderGrid(spec: GridSpec, dpi: Int = 150): Bitmap {

@@ -183,7 +183,9 @@ class LabelsVm(
         // — пикер вещи для зоны (каталог + поиск) —
         val pickerZone: Int? = null,
         val catalog: List<ItemEntity> = emptyList(),
-        val catalogQuery: String = ""
+        val catalogQuery: String = "",
+        // — штампование ленты (US-I3): сколько одинаковых полосок напечатать подряд —
+        val ribbonCount: Int = 3
     )
 
     val ui = MutableStateFlow(Ui())
@@ -591,6 +593,48 @@ class LabelsVm(
                 else -> update { it.copy(busy = false, printError = "Ошибка: ${e.message ?: "не удалось напечатать"}") }
             }
         }
+    }
+
+    // ==================== Штампование ленты (US-I3) ====================
+
+    // Одна вещь штампится ribbonCount раз подряд на непрерывную ленту: QR слева, название справа.
+    fun printRibbon(profile: PrinterProfileEntity) {
+        val code = ui.value.code
+        if (code.isBlank()) { update { it.copy(printError = "Пустой код — нечего штамповать") }; return }
+        if (ui.value.busy) return
+        val t = effectiveTemplate()
+        val widthMm = (profile.paper_width_mm).coerceAtLeast(20.0)
+        val bg = t?.bg_color ?: "#FFFFFF"
+        val fg = t?.text_color ?: "#000000"
+        val fontPt = (t?.font_size?.toFloat() ?: 12f).coerceIn(6f, 24f)
+        val showText = t?.show_text ?: true
+        val count = ui.value.ribbonCount.coerceIn(1, 50)
+        update { it.copy(busy = true, printMsg = null, printError = null) }
+        viewModelScope.launch {
+            val res = try {
+                val entries = List(count) { LabelGenerator.RibbonEntry(code, ui.value.name) }
+                val bmp = LabelGenerator.generateRibbon(
+                    entries, widthMm = widthMm, stripMm = 10.0, dpi = LabelMath.DPI,
+                    bgHex = bg, fgHex = fg, fontPt = fontPt, showText = showText
+                ) ?: throw IllegalStateException("Не удалось сгенерировать ленту")
+                PrintManager.printRibbon(profile, bmp, widthMm)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            val e = res.exceptionOrNull()
+            when {
+                e == null -> update { it.copy(busy = false, printMsg = "Лента отправлена: ${count}× полоска, ${PrintManager.describe(profile)}") }
+                e is UsbPermissionPendingException -> {
+                    val msg = UsbPermission.failureMessage(e) { printRibbon(profile) }
+                    update { it.copy(busy = false, printMsg = msg) }
+                }
+                else -> update { it.copy(busy = false, printError = "Ошибка: ${e.message ?: "не удалось напечатать ленту"}") }
+            }
+        }
+    }
+
+    fun setRibbonCount(n: Int) {
+        update { it.copy(ribbonCount = n.coerceIn(1, 50)) }
     }
 
     // ==================== Зоны (шаг 0) ====================
@@ -1142,6 +1186,7 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
     val ctx = LocalContext.current
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPrintPicker by remember { mutableStateOf(false) }
+    var showRibbonPicker by remember { mutableStateOf(false) }
 
     val pickers = rememberPhotoPickers(
         onCaptured = { vm.onPhoto(it) },
@@ -1210,6 +1255,34 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
                         OutlinedButton(onClick = { vm.saveToGallery(ctx) }, enabled = ui.bitmap != null && !ui.busy, modifier = Modifier.weight(1f)) { Text("Сохранить") }
                         OutlinedButton(onClick = { vm.share(ctx) }, enabled = ui.bitmap != null && !ui.busy, modifier = Modifier.weight(1f)) { Text("Поделиться") }
                         OutlinedButton(onClick = { showPrintPicker = true }, enabled = ui.bitmap != null && !ui.busy, modifier = Modifier.weight(1f)) { Text("Печать") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Штампование ленты (QR слева, название справа)", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Одна и та же вещь N раз подряд на непрерывную ленту: полоски ~1 см, ширина — вся ширина бумаги.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                listOf(1, 3, 5, 10, 20).forEach { n ->
+                                    FilterChip(
+                                        selected = ui.ribbonCount == n,
+                                        onClick = { vm.setRibbonCount(n) },
+                                        label = { Text("$n шт.") }
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = { showRibbonPicker = true },
+                                enabled = ui.code.isNotBlank() && !ui.busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Штампование ленты (${ui.ribbonCount}×)") }
+                        }
                     }
                     ui.savedMsg?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
                     ui.printMsg?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
@@ -1371,6 +1444,20 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
                     nav.navigate("printers") { launchSingleTop = true }
                 },
                 onDismiss = { showPrintPicker = false }
+            )
+        }
+        if (showRibbonPicker) {
+            PrinterPickerDialog(
+                profiles = ui.profiles,
+                onPick = { p ->
+                    vm.printRibbon(p)
+                    showRibbonPicker = false
+                },
+                onManage = {
+                    showRibbonPicker = false
+                    nav.navigate("printers") { launchSingleTop = true }
+                },
+                onDismiss = { showRibbonPicker = false }
             )
         }
         if (ui.showSaveDialog) {
