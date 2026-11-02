@@ -6,6 +6,7 @@ import org.json.JSONObject
 import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
@@ -35,6 +36,7 @@ object Backup {
         items = db.itemDao().allWithDeleted(),
         annotations = db.annotationDao().allWithDeleted(),
         labelTemplates = db.labelTemplateDao().allWithDeleted(),
+        labelDocs = db.labelDocDao().allWithDeleted(),
         printers = db.printerDao().allWithDeleted(),
         tags = db.tagDao().allWithDeleted(),
         users = db.userDao().allWithDeleted(),
@@ -219,6 +221,23 @@ object Backup {
         device_last_modified = j.optString("device", "")
     )
 
+    private fun o(e: LabelDocEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name); put("entity_kind", e.entity_kind)
+        put("doc_json", e.doc_json); put("is_default", e.is_default)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun doc(j: JSONObject): LabelDocEntity = LabelDocEntity(
+        id = j.getString("id"), name = j.optString("name", ""),
+        entity_kind = j.optString("entity_kind", "item"),
+        doc_json = j.optString("doc_json", "[]"),
+        is_default = j.optBoolean("is_default", false),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
     private fun o(e: PrinterProfileEntity): JSONObject = JSONObject().apply {
         put("id", e.id); put("name", e.name); put("transport", e.transport)
         put("host", e.host); put("port", e.port); put("bt_mac", e.bt_mac); put("protocol", e.protocol)
@@ -367,6 +386,7 @@ object Backup {
         root.put("items", JSONArray().apply { input.items.forEach { put(o(it)) } })
         root.put("annotations", JSONArray().apply { input.annotations.forEach { put(o(it)) } })
         root.put("label_templates", JSONArray().apply { input.labelTemplates.forEach { put(o(it)) } })
+        root.put("label_docs", JSONArray().apply { input.labelDocs.forEach { put(o(it)) } })
         root.put("printers", JSONArray().apply { input.printers.forEach { put(o(it)) } })
         root.put("tags", JSONArray().apply { input.tags.forEach { put(o(it)) } })
         root.put("users", JSONArray().apply { input.users.forEach { put(o(it)) } })
@@ -394,6 +414,7 @@ object Backup {
             items = arr("items") { item(it) },
             annotations = arr("annotations") { anno(it) },
             labelTemplates = arr("label_templates") { tpl(it) },
+            labelDocs = arr("label_docs") { doc(it) },
             printers = arr("printers") { printer(it) },
             tags = arr("tags") { tag(it) },
             users = arr("users") { user(it) },
@@ -406,35 +427,72 @@ object Backup {
         )
     }
 
-    fun exportToFile(input: MergeInput, file: File) {
+    // Фото лежат в filesDir/photos, а в базе — абсолютные пути к ним. Для одного и того
+    // же пакета этот путь одинаков на любом устройстве, поэтому при импорте файлы просто
+    // возвращаются в тот же каталог, а пути в базе пересохранять не нужно.
+    // shortcut: если фото переедут в другой каталог, понадобится пересопоставление по имени.
+    private const val PHOTO_ENTRY_DIR = "photos"
+
+    private fun photoFiles(input: MergeInput, dir: File): List<File> {
+        val names = mutableSetOf<String>()
+        fun add(path: String?) = if (!path.isNullOrBlank()) names += File(path).name else Unit
+        input.items.forEach { add(it.photo_path); add(it.barcode_photo_path) }
+        input.storages.forEach { add(it.photo_path) }
+        input.locations.forEach { add(it.photo_path) }
+        input.labelTemplates.forEach { add(it.logo_path) }
+        // Макет LabelStudio ссылается на картинку элементом {"path": …} (LabelDocCodec).
+        input.labelDocs.forEach { d ->
+            Regex("\"path\"\\s*:\\s*\"([^\"]+)\"").findAll(d.doc_json)
+                .forEach { add(it.groupValues[1]) }
+        }
+        return names.mapNotNull { n -> File(dir, n).takeIf { it.isFile } }
+    }
+
+    private fun writeZip(input: MergeInput, zos: ZipOutputStream, photosDir: File?) {
+        zos.putNextEntry(ZipEntry("backup.json"))
+        zos.write(toJson(input).toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+        if (photosDir == null) return
+        for (f in photoFiles(input, photosDir)) {
+            zos.putNextEntry(ZipEntry("$PHOTO_ENTRY_DIR/${f.name}"))
+            f.inputStream().use { it.copyTo(zos) }
+            zos.closeEntry()
+        }
+    }
+
+    fun exportToFile(input: MergeInput, file: File, photosDir: File? = null) {
         val json = toJson(input)
         if (file.extension.lowercase() == "zip") {
-            ZipOutputStream(file.outputStream()).use { zos ->
-                zos.putNextEntry(ZipEntry("backup.json"))
-                zos.write(json.toByteArray(Charsets.UTF_8))
-                zos.closeEntry()
-            }
+            ZipOutputStream(file.outputStream()).use { writeZip(input, it, photosDir) }
         } else {
             file.parentFile?.mkdirs()
             file.writeText(json, Charsets.UTF_8)
         }
     }
 
-    fun exportZipToStream(input: MergeInput, out: java.io.OutputStream) {
-        ZipOutputStream(out.buffered()).use { zos ->
-            zos.putNextEntry(ZipEntry("backup.json"))
-            zos.write(toJson(input).toByteArray(Charsets.UTF_8))
-            zos.closeEntry()
-        }
+    fun exportZipToStream(input: MergeInput, out: java.io.OutputStream, photosDir: File? = null) {
+        ZipOutputStream(out.buffered()).use { writeZip(input, it, photosDir) }
     }
 
-    fun importFromFile(file: File): MergeInput {
+    fun importFromFile(file: File, photosDir: File? = null): MergeInput {
         return when (file.extension.lowercase()) {
             "zip" -> {
-                val json = ZipInputStream(file.inputStream()).use { zis ->
-                    val e = zis.nextEntry ?: throw IllegalArgumentException("Пустой архив")
-                    zis.readBytes().toString(Charsets.UTF_8)
+                var json = ""
+                ZipInputStream(file.inputStream()).use { zis ->
+                    while (true) {
+                        val e = zis.nextEntry ?: break
+                        when {
+                            e.name == "backup.json" -> json = zis.readBytes().toString(Charsets.UTF_8)
+                            photosDir != null && !e.isDirectory &&
+                                e.name.startsWith("$PHOTO_ENTRY_DIR/") -> {
+                                val dest = File(photosDir, File(e.name).name)
+                                if (!dest.exists()) dest.outputStream().use { zis.copyTo(it) }
+                            }
+                            // Неизвестные разделы архива старые сборки обязаны игнорировать.
+                        }
+                    }
                 }
+                if (json.isEmpty()) throw IllegalArgumentException("В архиве нет backup.json")
                 fromJson(json)
             }
             else -> fromJson(file.readText(Charsets.UTF_8))
@@ -450,6 +508,7 @@ object Backup {
             db.itemDao().upsertAll(m.items)
             db.annotationDao().upsertAll(m.annotations)
             db.labelTemplateDao().upsertAll(m.labelTemplates)
+            db.labelDocDao().upsertAll(m.labelDocs)
             db.printerDao().upsertAll(m.printers)
             db.tagDao().upsertAll(m.tags)
             db.userDao().upsertAll(m.users)

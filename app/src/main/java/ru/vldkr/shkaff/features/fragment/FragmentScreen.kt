@@ -55,6 +55,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.sync.Backup
 import ru.vldkr.shkaff.sync.Fragment
 import ru.vldkr.shkaff.sync.MergeInput
+import ru.vldkr.shkaff.util.PhotoCapture
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import java.time.LocalDate
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -133,7 +134,7 @@ class FragmentVm : ViewModel() {
                     ))
                     val out = ctx.contentResolver.openOutputStream(uri)
                         ?: throw IOException("Не удалось открыть файл для записи")
-                    Backup.exportZipToStream(fragment, out)
+                    Backup.exportZipToStream(fragment, out, PhotoCapture.internalPhotoDir(ctx))
                 Unit
             }.fold(
                 onSuccess = { update { it.copy(busy = false, message = "Фрагмент сохранён. Это обычный бэкап — импортируйте его как обычно.") } },

@@ -3,6 +3,7 @@ package ru.vldkr.shkaff.sync
 import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
@@ -22,6 +23,7 @@ data class MergeInput(
     val items: List<ItemEntity> = emptyList(),
     val annotations: List<AnnotationEntity> = emptyList(),
     val labelTemplates: List<LabelTemplateEntity> = emptyList(),
+    val labelDocs: List<LabelDocEntity> = emptyList(),
     val printers: List<PrinterProfileEntity> = emptyList(),
     val tags: List<TagEntity> = emptyList(),
     val users: List<UserEntity> = emptyList(),
@@ -243,7 +245,13 @@ object MergeEngine {
         )
         allConflicts += c14
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14)
+        val (docs, c15, s15) = mergeTable(
+            "label_docs", local.labelDocs, remote.labelDocs,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c15
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15)
         val total = MergeStats(
             added = all.sumOf { it.added },
             changed = all.sumOf { it.changed },
@@ -260,6 +268,7 @@ object MergeEngine {
             items = items,
             annotations = anns,
             labelTemplates = tpls,
+            labelDocs = docs,
             printers = printers,
             tags = tags,
             users = users,

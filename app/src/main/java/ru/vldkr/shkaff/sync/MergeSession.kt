@@ -5,6 +5,7 @@ import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ConflictLogEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
@@ -87,6 +88,7 @@ object MergeSession {
         "items" -> input.items.firstOrNull { it.id == id }
         "annotations" -> input.annotations.firstOrNull { it.id == id }
         "label_templates" -> input.labelTemplates.firstOrNull { it.id == id }
+        "label_docs" -> input.labelDocs.firstOrNull { it.id == id }
         "printers" -> input.printers.firstOrNull { it.id == id }
         else -> null
     }
@@ -98,6 +100,7 @@ object MergeSession {
         "items" -> input.copy(items = input.items.map { if (it.id == id) row as ItemEntity else it })
         "annotations" -> input.copy(annotations = input.annotations.map { if (it.id == id) row as AnnotationEntity else it })
         "label_templates" -> input.copy(labelTemplates = input.labelTemplates.map { if (it.id == id) row as LabelTemplateEntity else it })
+        "label_docs" -> input.copy(labelDocs = input.labelDocs.map { if (it.id == id) row as LabelDocEntity else it })
         "printers" -> input.copy(printers = input.printers.map { if (it.id == id) row as PrinterProfileEntity else it })
         else -> input
     }

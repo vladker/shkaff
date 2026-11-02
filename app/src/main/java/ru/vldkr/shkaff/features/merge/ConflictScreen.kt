@@ -128,6 +128,7 @@ private fun locationLabels(p: PendingMerge): Map<String, String> {
 }
 
 private fun tableTitle(table: String): String = when (table) {
+    "label_docs" -> "Макет"
     "items" -> "Вещь"
     "storages" -> "Хранилище"
     "locations" -> "Ящик"

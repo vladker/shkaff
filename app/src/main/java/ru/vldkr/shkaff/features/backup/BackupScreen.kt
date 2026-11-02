@@ -55,6 +55,7 @@ import ru.vldkr.shkaff.sync.MergeResult
 import ru.vldkr.shkaff.sync.MergeSanitizer
 import ru.vldkr.shkaff.sync.MergeSession
 import ru.vldkr.shkaff.sync.MergeStats
+import ru.vldkr.shkaff.util.PhotoCapture
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import java.io.File
 import java.io.IOException
@@ -103,7 +104,7 @@ class BackupVm : ViewModel() {
                 val input = Backup.buildInput(Deps.db)
                 val out = ctx.contentResolver.openOutputStream(uri)
                     ?: throw IOException("Не удалось открыть файл для записи")
-                Backup.exportZipToStream(input, out)
+                Backup.exportZipToStream(input, out, PhotoCapture.internalPhotoDir(ctx))
                 Unit
             }.fold(
                 onSuccess = { update { it.copy(busy = false, message = "База экспортирована в выбранный файл") } },
@@ -119,7 +120,7 @@ class BackupVm : ViewModel() {
                 val input = Backup.buildInput(Deps.db)
                 val dir = File(ctx.filesDir, "backup").apply { mkdirs() }
                 val f = File(dir, "shkaff-backup-${LocalDate.now()}.zip")
-                Backup.exportToFile(input, f)
+                Backup.exportToFile(input, f, PhotoCapture.internalPhotoDir(ctx))
                 val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/zip"
@@ -141,7 +142,7 @@ class BackupVm : ViewModel() {
             val input = ctx.contentResolver.openInputStream(uri)
                 ?: throw IOException("Не удалось открыть файл")
             input.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
-            val remote = Backup.importFromFile(tmp)
+            val remote = Backup.importFromFile(tmp, PhotoCapture.internalPhotoDir(ctx))
             tmp.delete()
             val local = Backup.buildInput(Deps.db)
             val result = MergeEngine.merge(local, remote, remoteWins = false)

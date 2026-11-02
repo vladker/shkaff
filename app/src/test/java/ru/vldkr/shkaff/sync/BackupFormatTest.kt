@@ -3,12 +3,14 @@ package ru.vldkr.shkaff.sync
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -89,6 +91,36 @@ class BackupFormatTest {
         Backup.exportToFile(input, f)
         val back = Backup.importFromFile(f)
         assertEquals("Дрель", back.items.single().name)
+        f.delete()
+    }
+
+    // Фото лежит в filesDir/photos, в базе — только имя файла, поэтому в zip
+    // уезжает сам файл, а при импорте распаковывается в каталог фото.
+    @Test
+    fun photosRideAlongInTheZip() {
+        val ctx = ApplicationProvider.getApplicationContext<Application>()
+        val src = File(ctx.cacheDir, "photos-out").apply { mkdirs() }
+        val dst = File(ctx.cacheDir, "photos-in").apply { mkdirs() }
+        File(src, "a.jpg").writeBytes(byteArrayOf(1, 2, 3))
+        File(src, "b.png").writeBytes(byteArrayOf(9, 9))
+        File(src, "pic.png").writeBytes(byteArrayOf(7))
+        val withPhotos = item.copy(photo_path = "photos/a.jpg", barcode_photo_path = "b.png")
+        val doc = LabelDocEntity(
+            id = "d1",
+            name = "макет",
+            entity_kind = "item",
+            doc_json = """{"elements":[{"path":"pic.png"}]}""",
+            created_at = 1L,
+            updated_at = 2L,
+        )
+        val input = MergeInput(items = listOf(withPhotos), labelDocs = listOf(doc))
+        val f = File(ctx.cacheDir, "photos.zip")
+        Backup.exportToFile(input, f, src)
+        val back = Backup.importFromFile(f, dst)
+        assertEquals("Дрель", back.items.single().name)
+        assertArrayEquals(byteArrayOf(1, 2, 3), File(dst, "a.jpg").readBytes())
+        assertArrayEquals(byteArrayOf(9, 9), File(dst, "b.png").readBytes())
+        assertArrayEquals(byteArrayOf(7), File(dst, "pic.png").readBytes())
         f.delete()
     }
 
