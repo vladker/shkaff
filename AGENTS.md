@@ -61,9 +61,13 @@
 - Есть: CRUD storage/location/item, атрибуты, поиск, дашборд, экспорт в xlsx/csv (`export/` — минимальный OOXML-райтер без зависимостей + CSV с BOM; `features/export/` — SAF-сохранение и «Поделиться»), этикетки + LabelStudio (`features/labels/LabelGenerator.kt`, `features/labelstudio/`, таблица `label_docs`, роуты `labels/…`, `templates`), сканер (`features/scan/ScannerScreen.kt`, CameraX + ZXing-декод по кадрам), редактор разметки (`features/annotations/AnnotationScreen.kt`), печать по BT/USB/TCP, стэки/корзины/выдачи (`stack`, `basket`, `loan`), фрагменты и оценка объёмов/атрибутов через LLM, удаление фона — эвристика по цвету рамки (`util/ImageOps.removeBackground`), **не ML**, пир-синхронизация по LAN с флагами доверия (US-G2, см. раздел «Федерация»). Все экраны зарегистрированы в `NavHost` в `MainActivity.kt` (роуты `scan`, `annotations/{storageId}`, `labels/{type}/{id}/{templateId}`, `templates`, `printers`, `agent`, `llm-models`, `fragment` и др.).
 - `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
 - Нет: облачная синхронизация, FTS5, TFLite/u2net, ML Kit — только план в `PLAN.md`.
-- ⚠️ **Мёртвые роуты:** `ScannerScreen`/`AnnotationScreen` навигают на `"labels/0/0"`, `LabelsScreen` — на `"templates"`, но роуты `labels/…`, `templates`, `scan`, `annotations/…` **не зарегистрированы в `NavHost` в `MainActivity.kt`**. Навигация на них упадёт; экраны сканера и разметки сейчас недостижимы. При подключении — добавить `composable(...)` в `MainActivity.kt`.
+- Роуты `scan`, `annotations/{storageId}`, `labels/{itemId}/{templateId}`, `labels/{type}/{id}/{templateId}`, `templates`, `batch?from={from}` **зарегистрированы в `NavHost` в `MainActivity.kt`** (коммит 2404f4f3); сканер, разметка и этикетки достижимы.
 - `util/ScanBus.kt` — заглушка (одно поле `lastCode`), HID-перехват сканеров не реализован.
 - Нет: печать (ESC/POS), TFLite/u2net, ML Kit, облачная синхронизация — только план в `PLAN.md`.
+
+## Фоновые агенты (очередь TODO)
+
+Ночная регрессия, аудит и глубокий анализ (cron) боевой код и git НЕ трогают: не редактируют `app/`/`llama/`, не коммитят, не делают `adb install` (смартфон — прод пользователя). Пишут только в `TODO_AGENT.md` в корне репо (вне git; разделы «ДЕФЕКТЫ / РЕКОМЕНДАЦИИ / ИДЕИ / ОТКЛОНЕНО», записи `### T-NNN [S|M|L]`, статусы `NEW`/`ПОДТВЕРЖДЁН`/`ОТРКЛОНЁН`/`⚑ реализовано (хеш)`) и в `.tmp/` (протоколы, логи, временные репро-тесты — за собой удалять). Реализация T-xxx — только через интерактивную сессию обычным комитом (с `adb install` в конце).
 
 ## Правила кода
 

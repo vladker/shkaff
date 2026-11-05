@@ -17,6 +17,10 @@ local.properties
 .local.properties
 .cxx/
 
+# Очередь фоновых агентов и их протоколы (вне git)
+TODO_AGENT.md
+.tmp/
+
 # Dependencies
 node_modules/
 venv/
