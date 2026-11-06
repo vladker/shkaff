@@ -2,6 +2,8 @@ package ru.vldkr.shkaff
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -90,6 +92,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.data.printer.UsbPermission
 import ru.vldkr.shkaff.domain.links.AppLink
 import ru.vldkr.shkaff.util.DeepLinkBus
+import ru.vldkr.shkaff.util.HidScanAccumulator
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.features.settings.SettingsScreen
 import ru.vldkr.shkaff.features.stacks.StackDetailScreen
@@ -118,6 +121,21 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         UsbPermission.onIntent(intent)
         handleDeepLink(intent)
+    }
+
+    // USB/BLE-сканер-клавиатура: быстрые клавиши + Enter → код на ScanBus.
+    // Системные клавиши (назад, громкость) не участвуют; Enter, закрывший скан, гасится.
+    private val hidScan = HidScanAccumulator()
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && !event.isSystem) {
+            val code = hidScan.onKey(event.keyCode, event.isShiftPressed, event.repeatCount, SystemClock.uptimeMillis())
+            if (code != null) {
+                ScanBus.publish(code)
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     // US-I3: QR со ссылкой приложения открывает «Шкаф» и ведёт к вещи по коду.

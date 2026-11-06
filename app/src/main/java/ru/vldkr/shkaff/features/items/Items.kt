@@ -128,6 +128,12 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
             vm.ui.value = vm.ui.value.copy(query = code)
             ScanBus.lastCode = null
         }
+        // Живой скан HID-сканером прямо на экране «Вещи»: код сразу становится запросом.
+        ScanBus.codes.collect { code ->
+            queryText = code
+            vm.ui.value = vm.ui.value.copy(query = code)
+            ScanBus.lastCode = null
+        }
     }
     LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.ui.value = vm.ui.value.copy(tagFilter = effectiveTag) }
 
