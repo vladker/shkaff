@@ -2,8 +2,8 @@ package ru.vldkr.shkaff.sync
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,17 +17,34 @@ import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class BackupFormatTest {
+    private val storage =
+        StorageEntity(
+            id = "s1",
+            name = "Гараж",
+            description = "",
+            attributes = "{}",
+            parent_id = null,
+            photo_path = null,
+            created_at = 1L,
+            updated_at = 2L,
+            deleted_at = null,
+            device_last_modified = "dev",
+        )
 
-    private val storage = StorageEntity(
-        id = "s1", name = "Гараж", description = "", attributes = "{}", parent_id = null,
-        photo_path = null, created_at = 1L, updated_at = 2L, deleted_at = null, device_last_modified = "dev"
-    )
-
-    private val item = ItemEntity(
-        id = "i1", name = "Дрель", code = "DR-1", description = "", attributes = "{}",
-        location_id = null, photo_path = null,
-        created_at = 1L, updated_at = 2L, deleted_at = null, device_last_modified = "dev"
-    )
+    private val item =
+        ItemEntity(
+            id = "i1",
+            name = "Дрель",
+            code = "DR-1",
+            description = "",
+            attributes = "{}",
+            location_id = null,
+            photo_path = null,
+            created_at = 1L,
+            updated_at = 2L,
+            deleted_at = null,
+            device_last_modified = "dev",
+        )
 
     @Test
     fun jsonRoundTrip() {
@@ -105,14 +122,15 @@ class BackupFormatTest {
         File(src, "b.png").writeBytes(byteArrayOf(9, 9))
         File(src, "pic.png").writeBytes(byteArrayOf(7))
         val withPhotos = item.copy(photo_path = "photos/a.jpg", barcode_photo_path = "b.png")
-        val doc = LabelDocEntity(
-            id = "d1",
-            name = "макет",
-            entity_kind = "item",
-            doc_json = """{"elements":[{"path":"pic.png"}]}""",
-            created_at = 1L,
-            updated_at = 2L,
-        )
+        val doc =
+            LabelDocEntity(
+                id = "d1",
+                name = "макет",
+                entity_kind = "item",
+                doc_json = """{"elements":[{"path":"pic.png"}]}""",
+                created_at = 1L,
+                updated_at = 2L,
+            )
         val input = MergeInput(items = listOf(withPhotos), labelDocs = listOf(doc))
         val f = File(ctx.cacheDir, "photos.zip")
         Backup.exportToFile(input, f, src)
@@ -142,12 +160,23 @@ class BackupFormatTest {
 
     @Test
     fun attributeDefCategoryTierSurviveRoundTrip() {
-        val def = AttributeDefEntity(
-            id = "a1", scope = "item", key = "material", label = "Материал",
-            type = "text", options = "[]", sort_order = 2, required = false,
-            created_at = 1L, updated_at = 2L, deleted_at = null, device_last_modified = "dev",
-            category = "Инструменты", tier = "min"
-        )
+        val def =
+            AttributeDefEntity(
+                id = "a1",
+                scope = "item",
+                key = "material",
+                label = "Материал",
+                type = "text",
+                options = "[]",
+                sort_order = 2,
+                required = false,
+                created_at = 1L,
+                updated_at = 2L,
+                deleted_at = null,
+                device_last_modified = "dev",
+                category = "Инструменты",
+                tier = "min",
+            )
         val back = Backup.fromJson(Backup.toJson(MergeInput(attributeDefs = listOf(def))))
         val d = back.attributeDefs.single()
         assertEquals("a1", d.id)
@@ -157,7 +186,8 @@ class BackupFormatTest {
 
     @Test
     fun oldAttributeDefGetsDefaults() {
-        val json = """
+        val json =
+            """
             {
               "format": "shkaff-backup",
               "version": 1,
@@ -165,7 +195,7 @@ class BackupFormatTest {
                 {"id":"a1","scope":"item","key":"material","label":"Материал","type":"text","options":"[]","sort_order":2,"required":false,"created_at":1,"updated_at":2,"device_last_modified":"dev"}
               ]
             }
-        """.trimIndent()
+            """.trimIndent()
         val back = Backup.fromJson(json)
         val d = back.attributeDefs.single()
         assertEquals("*", d.category)

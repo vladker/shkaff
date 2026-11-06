@@ -21,9 +21,14 @@
 
     <!-- LM Studio / Ollama на локальной сети работают по HTTP (без TLS);
          принтеры ESC/POS — тоже plain TCP (IP:9100). -->
+    <!-- Системный автобэкап выключен: восстановление базы на другом телефоне
+         копирует deviceId из schema_meta — два устройства начинают писаться
+         одним автором и LWW-слияние их не различает. Фото при этом не влезают
+         в квоту автобэкапа 25 МиБ (сверх — облако не бэкапит вовсе). Перенос
+         данных — штатным экспортом/слиянием приложения. -->
     <application
         android:name=".ShkaffApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
