@@ -5,6 +5,7 @@ import ru.vldkr.shkaff.data.db.SchemaMetaEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.UserEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.util.newId
 
@@ -31,6 +32,7 @@ class UsersRepository(
     suspend fun setActive(id: String) {
         if (dao.byId(id) == null) return
         meta.upsert(SchemaMetaEntity("activeUserId", id))
+        ActiveRole.set(activeUser()?.role)
     }
 
     suspend fun create(name: String, role: Role): UserEntity {
@@ -47,6 +49,7 @@ class UsersRepository(
         dao.upsert(e)
         // Первый профиль становится активным автоматически.
         if (meta.get("activeUserId") == null) meta.upsert(SchemaMetaEntity("activeUserId", e.id))
+        ActiveRole.set(activeUser()?.role)
         return e
     }
 
@@ -59,6 +62,7 @@ class UsersRepository(
             device_last_modified = deviceId()
         )
         dao.upsert(u)
+        if (activeUser()?.id == id) ActiveRole.set(u.role)
         return u
     }
 

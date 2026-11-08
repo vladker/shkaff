@@ -25,7 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Label
@@ -48,6 +50,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.pullToRefreshIndicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -85,6 +88,8 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.capacity.BRIM_RESERVE_RATIO
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.onboarding.OnbStep
+import ru.vldkr.shkaff.domain.onboarding.Onboarding
 import ru.vldkr.shkaff.util.Expiry
 import java.time.LocalDate
 import ru.vldkr.shkaff.ui.components.EmptyState
@@ -126,7 +131,10 @@ class DashboardVm : ViewModel() {
         val expiredCount: Int = 0,
         val freeCapacityLiters: Double = 0.0,
         val hasCapacity: Boolean = false,
-        val boxesToBuy: Int = 0
+        val boxesToBuy: Int = 0,
+        // Чек-лист первого запуска (PLAN_ONBOARDING П0.1).
+        val onbSteps: List<OnbStep> = emptyList(),
+        val onbDismissed: Boolean = false
     )
 
     val ui = MutableStateFlow(Ui())
@@ -267,7 +275,9 @@ class DashboardVm : ViewModel() {
                 expiredCount = expiredCount,
                 freeCapacityLiters = freeCapacityLiters,
                 hasCapacity = hasCapacity,
-                boxesToBuy = boxesToBuy
+                boxesToBuy = boxesToBuy,
+                onbSteps = Onboarding.steps(Deps.storages.count(), Deps.locations.count(), items.size),
+                onbDismissed = Deps.onboardingDismissed()
             )
             } finally {
                 loading.value = false
@@ -371,6 +381,19 @@ fun DashboardScreen(nav: NavController) {
             }
             item {
                 OzonSearch(nav)
+            }
+            // Чек-лист «Начните работать»: гасится по мере появления реальных объектов (П0.1).
+            if (Onboarding.showChecklist(ui.onbSteps, ui.onbDismissed)) {
+                item {
+                    OnboardingCard(
+                        steps = ui.onbSteps,
+                        onStep = { nav.navigate(it.route) },
+                        onDismiss = {
+                            Deps.setOnboardingDismissed(true)
+                            vm.refresh()
+                        }
+                    )
+                }
             }
             item {
                 Row(
@@ -531,6 +554,77 @@ fun DashboardScreen(nav: NavController) {
                     }
                 }
             }
+                }
+            }
+        }
+    }
+}
+
+// Карточка-чеклист первого запуска (PLAN_ONBOARDING П0.1): прогресс X/3, шаги-переходы
+// в формы, авто-погашение по числу объектов в БД.
+@Composable
+private fun OnboardingCard(steps: List<OnbStep>, onStep: (OnbStep) -> Unit, onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Ozon.Card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Начните работать",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Ozon.TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    Onboarding.progress(steps),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Ozon.Blue
+                )
+            }
+            steps.forEach { s ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onStep(s) }
+                        .padding(vertical = 10.dp)
+                ) {
+                    Icon(
+                        if (s.done) Icons.Filled.Check else Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = if (s.done) Ozon.Green else Ozon.Blue,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            s.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (s.done) Ozon.TextSecondary else Ozon.TextPrimary
+                        )
+                        if (!s.done) {
+                            Text(
+                                s.hint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Ozon.TextSecondary,
+                                maxLines = 2
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Больше не показывать", color = Ozon.TextSecondary)
                 }
             }
         }

@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import ru.vldkr.shkaff.data.db.AttributeDefEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.domain.levels.Levels
@@ -535,15 +537,10 @@ fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier) {
 
 private fun fmt1(v: Double): String = if (v >= 100) v.toInt().toString() else "%.1f".format(v)
 
-// Роль активного профиля (US-G1); обновляется после старта скрина.
+// Активная роль (US-G1, П0.2/T-009): наблюдаемое состояние ActiveRole — UI перестраивается
+// сразу при смене профиля и не мигает VIEW до загрузки.
 @Composable
-fun rememberRole(): Role {
-    var role by remember { mutableStateOf(Role.VIEW) }
-    LaunchedEffect(Unit) {
-        role = Role.parse(Deps.users.activeUser()?.role ?: "view")
-    }
-    return role
-}
+fun rememberRole(): Role = ActiveRole.role.collectAsState().value
 
 // Уровень иерархии (US-C1): чипы с базовой цепочкой + свободный ввод своего уровня.
 // Одно поле ввода — единый источник значения; чип подставляет/убирает предустановку.

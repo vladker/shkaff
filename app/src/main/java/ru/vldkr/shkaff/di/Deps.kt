@@ -22,6 +22,7 @@ import ru.vldkr.shkaff.data.repository.StacksRepository
 import ru.vldkr.shkaff.data.repository.StorageRepository
 import ru.vldkr.shkaff.data.repository.TagRepository
 import ru.vldkr.shkaff.data.repository.UsersRepository
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
@@ -96,6 +97,8 @@ object Deps {
         backfillExpiryDates()
         seedTagDictionaryOnce()
         seedDefaultProfile()
+        // Активная роль — в наблюдаемое состояние сразу, до первого кадра UI (П0.2/T-009).
+        ActiveRole.set(runBlocking { users.activeUser() }?.role)
         pruneJournal()
         ready = true
     }
@@ -105,6 +108,19 @@ object Deps {
 
     fun setExpiryThresholdDays(days: Int) {
         meta().upsert(SchemaMetaEntity("expiryThresholdDays", days.toString()))
+    }
+
+    // Онбординг (PLAN_ONBOARDING П0): скрытие чек-листа и «сплэш только при первом запуске».
+    fun onboardingDismissed(): Boolean = meta().get("onbDismissed") == "true"
+
+    fun setOnboardingDismissed(on: Boolean) {
+        meta().upsert(SchemaMetaEntity("onbDismissed", if (on) "true" else "false"))
+    }
+
+    fun splashSeen(): Boolean = meta().get("splashSeen") == "true"
+
+    fun markSplashSeen() {
+        meta().upsert(SchemaMetaEntity("splashSeen", "true"))
     }
 
     fun numberingAuto(): Boolean = meta().get("numberingAuto") != "false"

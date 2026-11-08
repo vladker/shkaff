@@ -797,6 +797,17 @@ private fun StorageStep(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    // Poka-yoke (PLAN_ONBOARDING П0.4): при пустой сети ящиков молчаливое «без ящика» —
+    // частая ошибка новичка; предупреждаем до сохранения.
+    if (locations.isEmpty()) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Ящиков ещё нет — вещь останется «без места» и её будет трудно найти. " +
+                "Загляните во вкладку «Хранилища»: создайте шкаф и ящик — потом вернитесь сюда.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
     Spacer(Modifier.height(12.dp))
     FieldRow("Где хранится") {
         Column {

@@ -149,10 +149,14 @@ private const val SPLASH_DURATION_MS = 1500L
 
 @Composable
 private fun SplashHost() {
-    var splashVisible by remember { mutableStateOf(true) }
+    // Сплэш — только при первом запуске (PLAN_ONBOARDING П0.3): повторный старт мгновенный.
+    var splashVisible by remember { mutableStateOf(!Deps.splashSeen()) }
     LaunchedEffect(Unit) {
-        delay(SPLASH_DURATION_MS)
-        splashVisible = false
+        if (splashVisible) {
+            delay(SPLASH_DURATION_MS)
+            splashVisible = false
+            Deps.markSplashSeen()
+        }
     }
     Box(modifier = Modifier.fillMaxSize()) {
         AppRoot()
