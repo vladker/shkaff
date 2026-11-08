@@ -44,11 +44,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import ru.vldkr.shkaff.data.TagsJson
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.search.ItemMatch
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.rememberRole
@@ -75,17 +75,10 @@ class ItemsVm : ViewModel() {
 
     val list = ui.map { u ->
         val t = u.query.trim()
-        var l = if (t.isEmpty()) u.allItems else u.allItems.filter {
-            it.name.contains(t, true) ||
-                it.code.contains(t, true) ||
-                it.description.contains(t, true) ||
-                it.attributes.contains(t, true)
-        }
+        var l = if (t.isEmpty()) u.allItems else u.allItems.filter { ItemMatch.matches(it, t) }
         // US-I3: фильтр по тегам — совпадение без учёта регистра
         if (u.tagFilter.isNotEmpty()) {
-            l = l.filter { i ->
-                TagsJson.toList(i.tags).any { tn -> tn.equals(u.tagFilter, ignoreCase = true) }
-            }
+            l = l.filter { ItemMatch.matchesTag(it, u.tagFilter) }
         }
         l
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

@@ -22,6 +22,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,10 +46,12 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.search.ItemMatch
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.theme.Ozon
+import ru.vldkr.shkaff.util.ScanBus
 
 // Глобальный поиск: одно поле — вещи, ящики и шкафы (поиск без учёта регистра).
 class SearchVm : ViewModel() {
@@ -72,13 +75,7 @@ class SearchVm : ViewModel() {
         val t = u.query.trim()
         if (t.isEmpty()) return@map Results()
         Results(
-            items = u.items.filter {
-                it.name.contains(t, true) ||
-                    it.code.contains(t, true) ||
-                    (it.ean ?: "").contains(t, true) ||
-                    it.description.contains(t, true) ||
-                    it.attributes.contains(t, true)
-            }.take(50),
+            items = u.items.filter { ItemMatch.matches(it, t) }.take(50),
             locations = u.locations.filter {
                 it.label.contains(t, true) || it.name.contains(t, true)
             }.take(50),
@@ -102,6 +99,19 @@ fun SearchScreen(nav: NavController) {
     val results by vm.results.collectAsState()
     var queryText by remember { mutableStateOf(vm.ui.value.query) }
     val storageNames = remember(results.storages) { results.storages.associateBy { it.id } }
+    // Scan-first (PLAN_ONBOARDING П1.1): скан с камеры/диплинка/HID прямо здесь становится запросом.
+    LaunchedEffect(Unit) {
+        ScanBus.lastCode?.let { code ->
+            queryText = code
+            vm.ui.value = vm.ui.value.copy(query = code)
+            ScanBus.lastCode = null
+        }
+        ScanBus.codes.collect { code ->
+            queryText = code
+            vm.ui.value = vm.ui.value.copy(query = code)
+            ScanBus.lastCode = null
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Поиск") }) }
@@ -144,7 +154,12 @@ fun SearchScreen(nav: NavController) {
             )
             val q = queryText.trim()
             if (q.isEmpty()) {
-                EmptyState("Введите название, код, EAN или номер — поищем по всем сущностям.")
+                // Крупное скан-действие вместо голой подсказки: скан = глагол (WMS-подход).
+                EmptyState(
+                    "Введите название, код, EAN или номер — поищем по всем сущностям.",
+                    actionLabel = "Сканировать",
+                    onAction = { nav.navigate("scan") }
+                )
             } else if (results.items.isEmpty() && results.locations.isEmpty() && results.storages.isEmpty()) {
                 EmptyState("Ничего не найдено по «$q».")
             } else {
