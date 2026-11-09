@@ -316,6 +316,15 @@ fun DashboardScreen(nav: NavController) {
                         expanded = showAddMenu,
                         onDismissRequest = { showAddMenu = false }
                     ) {
+                        // П1.2: scan-first — «Сканировать вещь» первым пунктом FAB-меню.
+                        DropdownMenuItem(
+                            text = { Text("Сканировать вещь") },
+                            leadingIcon = { Icon(Icons.Filled.QrCodeScanner, contentDescription = null) },
+                            onClick = {
+                                showAddMenu = false
+                                nav.navigate("scan")
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Добавить вещь") },
                             leadingIcon = { Icon(Icons.Filled.Inventory2, contentDescription = null) },
@@ -457,28 +466,29 @@ fun DashboardScreen(nav: NavController) {
             }
             if (ui.canCreate) {
                 item { SectionTitle("Быстрые действия") }
+                // П1.2: «Сканировать вещь» — сразу рядом с «Добавить вещь»; сетка плиток 2×4.
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         QuickAction("Добавить вещь", Icons.Filled.Add, Modifier.weight(1f)) { nav.navigate("item-wizard") }
+                        QuickAction("Сканировать вещь", Icons.Filled.QrCodeScanner, Modifier.weight(1f)) { nav.navigate("scan") }
+                    }
+                }
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
                         QuickAction("Хранилище", Icons.Filled.Storage, Modifier.weight(1f)) { nav.navigate("storage-form/0") }
-                    }
-                }
-                item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
                         QuickAction("Ящик", Icons.Filled.Inventory2, Modifier.weight(1f)) { nav.navigate("storages") }
+                    }
+                }
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
                         QuickAction("Стеки", Icons.Filled.Layers, Modifier.weight(1f)) { nav.navigate("stacks") }
-                    }
-                }
-                item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
                         QuickAction("Корзина извлечения", Icons.Filled.ShoppingBasket, Modifier.weight(1f)) { nav.navigate("basket") }
-                        QuickAction("Серия вещей", Icons.Filled.PlaylistAdd, Modifier.weight(1f)) { nav.navigate("batch") }
                     }
                 }
                 item {
@@ -486,6 +496,7 @@ fun DashboardScreen(nav: NavController) {
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.padding(top = 10.dp)
                     ) {
+                        QuickAction("Серия вещей", Icons.Filled.PlaylistAdd, Modifier.weight(1f)) { nav.navigate("batch") }
                         QuickAction("Этикетки", Icons.Filled.Label, Modifier.weight(1f)) { nav.navigate("labels/0/0") }
                     }
                 }
