@@ -21,6 +21,11 @@ local.properties
 TODO_AGENT.md
 .tmp/
 
+# Следы сторонних ИИ-сессий (T-004): черновики орудия .omo, выгрузки сессий, автогенённые дампы контекста
+.omo/
+session-ses_*.md
+shkaff_full_context.md
+
 # Dependencies
 node_modules/
 venv/
