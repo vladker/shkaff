@@ -21,7 +21,7 @@ import ru.vldkr.shkaff.data.db.TagEntity
 import ru.vldkr.shkaff.data.db.UserEntity
 import java.io.File
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 object Backup {
@@ -427,15 +427,16 @@ object Backup {
         )
     }
 
-    // Фото лежат в filesDir/photos, а в базе — абсолютные пути к ним. Для одного и того
-    // же пакета этот путь одинаков на любом устройстве, поэтому при импорте файлы просто
-    // возвращаются в тот же каталог, а пути в базе пересохранять не нужно.
-    // shortcut: если фото переедут в другой каталог, понадобится пересопоставление по имени.
+    // Фото лежат в разных каталогах внутренней памяти (photos/, item_photos/,
+    // barcode_photos/), а в базе — абсолютный путь к файлу. Для одного и того же пакета
+    // этот путь одинаков на любом устройстве, поэтому при экспорте файл берется прямо по
+    // пути из базы, а при импорте возвращается в свою папку — пересохранять пути не нужно.
+    // Поиск по имени в photosDir остается запасным вариантом (сдвинутые/старые файлы).
     private const val PHOTO_ENTRY_DIR = "photos"
 
-    private fun photoFiles(input: MergeInput, dir: File): List<File> {
-        val names = mutableSetOf<String>()
-        fun add(path: String?) = if (!path.isNullOrBlank()) names += File(path).name else Unit
+    private fun photoPaths(input: MergeInput): List<String> {
+        val paths = LinkedHashSet<String>()
+        fun add(path: String?) = if (!path.isNullOrBlank()) paths += path else Unit
         input.items.forEach { add(it.photo_path); add(it.barcode_photo_path) }
         input.storages.forEach { add(it.photo_path) }
         input.locations.forEach { add(it.photo_path) }
@@ -445,7 +446,17 @@ object Backup {
             Regex("\"path\"\\s*:\\s*\"([^\"]+)\"").findAll(d.doc_json)
                 .forEach { add(it.groupValues[1]) }
         }
-        return names.mapNotNull { n -> File(dir, n).takeIf { it.isFile } }
+        return paths.toList()
+    }
+
+    private fun photoFiles(input: MergeInput, dir: File): List<File> {
+        val byName = LinkedHashMap<String, File>()
+        for (p in photoPaths(input)) {
+            val db = File(p)
+            val f = if (db.isFile) db else File(dir, db.name).takeIf { it.isFile } ?: continue
+            byName.putIfAbsent(f.name, f)
+        }
+        return byName.values.toList()
     }
 
     private fun writeZip(input: MergeInput, zos: ZipOutputStream, photosDir: File?) {
@@ -477,25 +488,40 @@ object Backup {
     fun importFromFile(file: File, photosDir: File? = null): MergeInput {
         return when (file.extension.lowercase()) {
             "zip" -> {
-                var json = ""
-                ZipInputStream(file.inputStream()).use { zis ->
-                    while (true) {
-                        val e = zis.nextEntry ?: break
-                        when {
-                            e.name == "backup.json" -> json = zis.readBytes().toString(Charsets.UTF_8)
-                            photosDir != null && !e.isDirectory &&
-                                e.name.startsWith("$PHOTO_ENTRY_DIR/") -> {
-                                val dest = File(photosDir, File(e.name).name)
-                                if (!dest.exists()) dest.outputStream().use { zis.copyTo(it) }
-                            }
-                            // Неизвестные разделы архива старые сборки обязаны игнорировать.
-                        }
-                    }
+                val input = ZipFile(file).use { zf ->
+                    val je = zf.getEntry("backup.json")
+                        ?: throw IllegalArgumentException("В архиве нет backup.json")
+                    fromJson(zf.getInputStream(je).readBytes().toString(Charsets.UTF_8))
                 }
-                if (json.isEmpty()) throw IllegalArgumentException("В архиве нет backup.json")
-                fromJson(json)
+                if (photosDir != null) ZipFile(file).use { restorePhotos(input, photosDir, it) }
+                input
             }
             else -> fromJson(file.readText(Charsets.UTF_8))
+        }
+    }
+
+    // Фото возвращается в тот каталог, на который указывает путь из backup.json:
+    // абсолютный путь одинаков на любом устройстве для этого пакета. В photosDir
+    // пишутся только записи, которых нет среди путей базы (старые архивы, голые имена).
+    private fun restorePhotos(input: MergeInput, photosDir: File, zf: ZipFile) {
+        val targets = LinkedHashMap<String, MutableList<File>>()
+        for (p in photoPaths(input)) {
+            val f = File(p)
+            if (f.isAbsolute) targets.getOrPut(f.name) { mutableListOf() } += f
+        }
+        val entries = zf.entries()
+        while (entries.hasMoreElements()) {
+            val e = entries.nextElement()
+            if (e.isDirectory || !e.name.startsWith("$PHOTO_ENTRY_DIR/")) continue
+            val name = File(e.name).name
+            val dests = (targets[name] ?: listOf(File(photosDir, name)))
+                .distinctBy { it.absolutePath }
+            for (dest in dests) {
+                if (!dest.exists()) {
+                    dest.parentFile?.mkdirs()
+                    zf.getInputStream(e).use { inp -> dest.outputStream().use { inp.copyTo(it) } }
+                }
+            }
         }
     }
 
