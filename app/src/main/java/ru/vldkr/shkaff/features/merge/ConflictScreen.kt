@@ -42,11 +42,18 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
+import ru.vldkr.shkaff.data.db.BasketEntity
+import ru.vldkr.shkaff.data.db.BasketItemEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.db.StackEntity
+import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
+import ru.vldkr.shkaff.data.db.TagEntity
+import ru.vldkr.shkaff.data.db.UserEntity
 import ru.vldkr.shkaff.sync.Conflict
 import ru.vldkr.shkaff.sync.MergeSession
 import ru.vldkr.shkaff.sync.PendingMerge
@@ -127,7 +134,7 @@ private fun locationLabels(p: PendingMerge): Map<String, String> {
     return out
 }
 
-private fun tableTitle(table: String): String = when (table) {
+internal fun tableTitle(table: String): String = when (table) {
     "label_docs" -> "Макет"
     "items" -> "Вещь"
     "storages" -> "Хранилище"
@@ -136,10 +143,17 @@ private fun tableTitle(table: String): String = when (table) {
     "annotations" -> "Разметка"
     "label_templates" -> "Шаблон"
     "printers" -> "Принтер"
+    "tags" -> "Тег"
+    "users" -> "Профиль"
+    "loans" -> "Выдача"
+    "stacks" -> "Набор"
+    "stack_members" -> "Состав набора"
+    "baskets" -> "Корзина"
+    "basket_items" -> "Позиция корзины"
     else -> table
 }
 
-private fun fieldsOf(local: Any?, remote: Any?, locations: Map<String, String>): List<Triple<String, String, String>> = when {
+internal fun fieldsOf(local: Any?, remote: Any?, locations: Map<String, String>): List<Triple<String, String, String>> = when {
     local is ItemEntity || remote is ItemEntity -> {
         val l = local as? ItemEntity
         val r = remote as? ItemEntity
@@ -219,6 +233,88 @@ private fun fieldsOf(local: Any?, remote: Any?, locations: Map<String, String>):
             Triple("Транспорт", l?.transport ?: "—", r?.transport ?: "—"),
             Triple("Адрес", (l?.host ?: "") + if ((l?.port ?: 0) > 0) ":${l?.port}" else "", (r?.host ?: "") + if ((r?.port ?: 0) > 0) ":${r?.port}" else ""),
             Triple("BT MAC", l?.bt_mac?.takeIf { it.isNotBlank() } ?: "—", r?.bt_mac?.takeIf { it.isNotBlank() } ?: "—")
+        )
+    }
+
+    local is TagEntity || remote is TagEntity -> {
+        val l = local as? TagEntity
+        val r = remote as? TagEntity
+        listOf(
+            Triple("Название", l?.name?.takeIf { it.isNotBlank() } ?: "—", r?.name?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Удалён", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Создан", ts(l?.created_at), ts(r?.created_at))
+        )
+    }
+
+    local is UserEntity || remote is UserEntity -> {
+        val l = local as? UserEntity
+        val r = remote as? UserEntity
+        listOf(
+            Triple("Имя", l?.name?.takeIf { it.isNotBlank() } ?: "—", r?.name?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Роль", l?.role ?: "—", r?.role ?: "—"),
+            Triple("Удалён", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Изменён", ts(l?.updated_at), ts(r?.updated_at))
+        )
+    }
+
+    local is LoanEntity || remote is LoanEntity -> {
+        val l = local as? LoanEntity
+        val r = remote as? LoanEntity
+        listOf(
+            Triple("Кому", l?.borrower?.takeIf { it.isNotBlank() } ?: "—", r?.borrower?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Что", l?.let { "${it.entity_type}:${it.entity_id}" } ?: "—", r?.let { "${it.entity_type}:${it.entity_id}" } ?: "—"),
+            Triple("Заметка", l?.note?.takeIf { it.isNotBlank() } ?: "—", r?.note?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Выдана", ts(l?.lent_at), ts(r?.lent_at)),
+            Triple("Срок", ts(l?.due_at), ts(r?.due_at)),
+            Triple("Вернута", ts(l?.returned_at), ts(r?.returned_at)),
+            Triple("Изменена", ts(l?.updated_at), ts(r?.updated_at))
+        )
+    }
+
+    local is StackEntity || remote is StackEntity -> {
+        val l = local as? StackEntity
+        val r = remote as? StackEntity
+        listOf(
+            Triple("Название", l?.name?.takeIf { it.isNotBlank() } ?: "—", r?.name?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Код", l?.code?.takeIf { it.isNotBlank() } ?: "—", r?.code?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Описание", l?.description?.takeIf { it.isNotBlank() } ?: "—", r?.description?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Удалён", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Изменён", ts(l?.updated_at), ts(r?.updated_at))
+        )
+    }
+
+    local is StackMemberEntity || remote is StackMemberEntity -> {
+        val l = local as? StackMemberEntity
+        val r = remote as? StackMemberEntity
+        listOf(
+            Triple("Набор", l?.stack_id ?: "—", r?.stack_id ?: "—"),
+            Triple("Объект", l?.let { "${it.entity_type}:${it.entity_id}" } ?: "—", r?.let { "${it.entity_type}:${it.entity_id}" } ?: "—"),
+            Triple("Порядок", l?.sort_order?.toString() ?: "—", r?.sort_order?.toString() ?: "—"),
+            Triple("Удалён", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Изменён", ts(l?.updated_at), ts(r?.updated_at))
+        )
+    }
+
+    local is BasketEntity || remote is BasketEntity -> {
+        val l = local as? BasketEntity
+        val r = remote as? BasketEntity
+        listOf(
+            Triple("Название", l?.name?.takeIf { it.isNotBlank() } ?: "—", r?.name?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple("Статус", if (l?.status == "done") "закрыта" else "в работе", if (r?.status == "done") "закрыта" else "в работе"),
+            Triple("Удалена", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Изменена", ts(l?.updated_at), ts(r?.updated_at))
+        )
+    }
+
+    local is BasketItemEntity || remote is BasketItemEntity -> {
+        val l = local as? BasketItemEntity
+        val r = remote as? BasketItemEntity
+        listOf(
+            Triple("Корзина", l?.basket_id ?: "—", r?.basket_id ?: "—"),
+            Triple("Вещь", l?.item_id ?: "—", r?.item_id ?: "—"),
+            Triple("Взято", if (l?.picked_ts != null) "да" else "нет", if (r?.picked_ts != null) "да" else "нет"),
+            Triple("Удалено", yesNo(l?.deleted_at != null), yesNo(r?.deleted_at != null)),
+            Triple("Изменено", ts(l?.updated_at), ts(r?.updated_at))
         )
     }
 

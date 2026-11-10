@@ -3,14 +3,21 @@ package ru.vldkr.shkaff.sync
 import android.content.Context
 import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
+import ru.vldkr.shkaff.data.db.BasketEntity
+import ru.vldkr.shkaff.data.db.BasketItemEntity
 import ru.vldkr.shkaff.data.db.ConflictLogEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.SchemaMetaEntity
+import ru.vldkr.shkaff.data.db.StackEntity
+import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
+import ru.vldkr.shkaff.data.db.TagEntity
+import ru.vldkr.shkaff.data.db.UserEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.util.newId
 
@@ -90,6 +97,15 @@ object MergeSession {
         "label_templates" -> input.labelTemplates.firstOrNull { it.id == id }
         "label_docs" -> input.labelDocs.firstOrNull { it.id == id }
         "printers" -> input.printers.firstOrNull { it.id == id }
+        // T-066: движок конфликтует и эти таблицы — без веток выбор пользователя
+        // молча пропадал (applyResolutions уходил в continue по rowOf == null).
+        "tags" -> input.tags.firstOrNull { it.id == id }
+        "users" -> input.users.firstOrNull { it.id == id }
+        "loans" -> input.loans.firstOrNull { it.id == id }
+        "stacks" -> input.stacks.firstOrNull { it.id == id }
+        "stack_members" -> input.stackMembers.firstOrNull { it.id == id }
+        "baskets" -> input.baskets.firstOrNull { it.id == id }
+        "basket_items" -> input.basketItems.firstOrNull { it.id == id }
         else -> null
     }
 
@@ -102,6 +118,13 @@ object MergeSession {
         "label_templates" -> input.copy(labelTemplates = input.labelTemplates.map { if (it.id == id) row as LabelTemplateEntity else it })
         "label_docs" -> input.copy(labelDocs = input.labelDocs.map { if (it.id == id) row as LabelDocEntity else it })
         "printers" -> input.copy(printers = input.printers.map { if (it.id == id) row as PrinterProfileEntity else it })
+        "tags" -> input.copy(tags = input.tags.map { if (it.id == id) row as TagEntity else it })
+        "users" -> input.copy(users = input.users.map { if (it.id == id) row as UserEntity else it })
+        "loans" -> input.copy(loans = input.loans.map { if (it.id == id) row as LoanEntity else it })
+        "stacks" -> input.copy(stacks = input.stacks.map { if (it.id == id) row as StackEntity else it })
+        "stack_members" -> input.copy(stackMembers = input.stackMembers.map { if (it.id == id) row as StackMemberEntity else it })
+        "baskets" -> input.copy(baskets = input.baskets.map { if (it.id == id) row as BasketEntity else it })
+        "basket_items" -> input.copy(basketItems = input.basketItems.map { if (it.id == id) row as BasketItemEntity else it })
         else -> input
     }
 }
