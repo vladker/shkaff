@@ -81,7 +81,7 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
-import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.actions.ActionCode
 import ru.vldkr.shkaff.domain.actions.Relocation
 import ru.vldkr.shkaff.domain.actions.RelocationFlow
@@ -613,7 +613,7 @@ private fun ServiceCodeCard(
         Button(
             onClick = {
                 scope.launch {
-                    val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+                    val role = ActiveRole.role.value // T-009: наблюдаемая активная роль, без чтения БД
                     if (Access.can(role, verbAction())) runAction() else denied = true
                 }
             },

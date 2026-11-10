@@ -75,6 +75,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.TagsJson
@@ -83,6 +84,7 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.ItemCard
@@ -103,7 +105,9 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
     val storageName = MutableStateFlow<String?>(null)
     val activeLoan = MutableStateFlow<LoanEntity?>(null)
     val similar = MutableStateFlow<List<ItemEntity>>(emptyList())
-    val role = MutableStateFlow(Role.VIEW)
+    // T-009: роль — наблюдаемая (ActiveRole), а не одноразовое чтение в init:
+    // после смены профиля кнопки карточки перестраиваются сами.
+    val role: StateFlow<Role> get() = ActiveRole.role
 
     class Factory(private val itemId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -132,9 +136,6 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
                     .sortedByDescending { e -> e.second }
                 similar.value = scored.take(8).map { e -> e.first }
             }
-        }
-        viewModelScope.launch {
-            role.value = Role.parse(Deps.users.activeUser()?.role ?: "view")
         }
         viewModelScope.launch {
             activeLoan.value = Deps.loans.activeForEntity("item", itemId)

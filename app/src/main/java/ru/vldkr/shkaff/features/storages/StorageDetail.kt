@@ -57,6 +57,7 @@ import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.capacity.CapacityUsage
 import ru.vldkr.shkaff.domain.levels.Levels
@@ -80,7 +81,9 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     val itemCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val usage = MutableStateFlow<CapacityUsage?>(null)
     val activeLoan = MutableStateFlow<LoanEntity?>(null)
-    val role = MutableStateFlow(Role.VIEW)
+    // T-009: роль — наблюдаемая (ActiveRole), а не одноразовое чтение в init:
+    // после смены профиля кнопки карточки перестраиваются сами.
+    val role: StateFlow<Role> get() = ActiveRole.role
 
     class Factory(private val storageId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -141,9 +144,6 @@ class StorageDetailVm(val storageId: String) : ViewModel() {
     }
 
     init {
-        viewModelScope.launch {
-            role.value = Role.parse(Deps.users.activeUser()?.role ?: "view")
-        }
         viewModelScope.launch {
             activeLoan.value = Deps.loans.activeForEntity("storage", storageId)
         }

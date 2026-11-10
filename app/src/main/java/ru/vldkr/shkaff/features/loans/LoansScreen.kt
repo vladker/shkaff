@@ -38,7 +38,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.util.formatDate
 
 class LoansVm : ViewModel() {
@@ -64,7 +67,12 @@ class LoansVm : ViewModel() {
         }
     }
 
+    // T-009: «Вернул» — действие выдачи (Access.LEND); по матрице доступно только
+    // полному доступу. UI скрывает кнопку, VM не даёт закрыть выдачу в обход UI.
+    fun canReturn(): Boolean = Access.can(ActiveRole.role.value, Access.LEND)
+
     fun returnLoan(l: LoanEntity) {
+        if (!canReturn()) return
         viewModelScope.launch { Deps.loans.returnLoan(l.id) }
     }
 }
@@ -74,6 +82,8 @@ class LoansVm : ViewModel() {
 fun LoansScreen(nav: NavController) {
     val vm: LoansVm = viewModel()
     val ui by vm.ui.collectAsState()
+    val role = rememberRole()
+    val canManage = Access.can(role, Access.LEND)
     val now = System.currentTimeMillis()
 
     Scaffold(
@@ -96,7 +106,8 @@ fun LoansScreen(nav: NavController) {
         ) {
             item {
                 Text(
-                    "Вещи и хранилища, выданные на время. Просроченные — в начале списка.",
+                    "Вещи и хранилища, выданные на время. Просроченные — в начале списка." +
+                        if (canManage) "" else " Возврат оформляет профиль с правом выдачи.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -132,7 +143,7 @@ fun LoansScreen(nav: NavController) {
                                     color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Button(onClick = { vm.returnLoan(l) }) { Text("Вернул") }
+                            if (canManage) Button(onClick = { vm.returnLoan(l) }) { Text("Вернул") }
                         }
                     }
                     HorizontalDivider()

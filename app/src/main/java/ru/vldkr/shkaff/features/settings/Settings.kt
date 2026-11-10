@@ -34,6 +34,9 @@ import androidx.lifecycle.ViewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.access.ActiveRole
+import ru.vldkr.shkaff.ui.components.rememberRole
 import androidx.compose.material3.Switch
 
 class SettingsVm : ViewModel() {
@@ -47,17 +50,26 @@ class SettingsVm : ViewModel() {
 
     val ui = MutableStateFlow(Ui())
 
+    // T-009: настройки — зона администратора (Access.ADMIN, «профили, настройки»).
+    // UI гасит контролы, VM отклоняет правки и без UI — роль читается наблюдаемо.
+    private fun isAdmin(): Boolean = Access.can(ActiveRole.role.value, Access.ADMIN)
+
+    fun canEdit(): Boolean = isAdmin()
+
     fun setExpiryThreshold(days: Int) {
+        if (!isAdmin()) return
         Deps.setExpiryThresholdDays(days)
         ui.value = ui.value.copy(expiryThreshold = days)
     }
 
     fun setNumberingAuto(on: Boolean) {
+        if (!isAdmin()) return
         Deps.setNumberingAuto(on)
         ui.value = ui.value.copy(numberingAuto = on)
     }
 
     fun setTheme(light: Boolean) {
+        if (!isAdmin()) return
         Deps.setThemeLight(light)
         ru.vldkr.shkaff.ui.theme.Ozon.mode =
             if (light) ru.vldkr.shkaff.ui.theme.ThemeMode.LIGHT
@@ -72,6 +84,10 @@ fun SettingsScreen(nav: NavController) {
     val vm: SettingsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val ui by vm.ui.collectAsState()
     var showExpiryDialog by remember { mutableStateOf(false) }
+    // T-009: экран доступен всем, но редактирующие секции — по правам (ADMIN / EXPORT).
+    val role = rememberRole()
+    val adminLock = if (Access.can(role, Access.ADMIN)) null else "нужен полный доступ"
+    val exportLock = if (Access.can(role, Access.EXPORT)) null else "нужно право экспорта"
 
     Scaffold(
         topBar = {
@@ -101,13 +117,15 @@ fun SettingsScreen(nav: NavController) {
                     Column(Modifier.weight(1f)) {
                         Text("Светлая тема", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "«Инвертированная белая». По умолчанию — тёмная (как Ozon); акценты не меняются.",
+                            "«Инвертированная белая». По умолчанию — тёмная (как Ozon); акценты не меняются." +
+                                (adminLock?.let { " · $it" } ?: ""),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
                         checked = ui.themeIsLight,
+                        enabled = adminLock == null,
                         onCheckedChange = { vm.setTheme(it) }
                     )
                 }
@@ -117,7 +135,8 @@ fun SettingsScreen(nav: NavController) {
                 SettingRow(
                     "Напоминать о сроках",
                     "В дашборде подсвечиваются вещи, истекающие за ${ui.expiryThreshold} дн.",
-                    { showExpiryDialog = true }
+                    { showExpiryDialog = true },
+                    locked = adminLock
                 )
             }
             item { Section("Нумерация") }
@@ -129,13 +148,15 @@ fun SettingsScreen(nav: NavController) {
                     Column(Modifier.weight(1f)) {
                         Text("Автогенерация кодов", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Пустое поле — присваивается ULID-код (26 символов): вещи, ящики, шкафы, стеки",
+                            "Пустое поле — присваивается ULID-код (26 символов): вещи, ящики, шкафы, стеки" +
+                                (adminLock?.let { " · $it" } ?: ""),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
                         checked = ui.numberingAuto,
+                        enabled = adminLock == null,
                         onCheckedChange = { vm.setNumberingAuto(it) }
                     )
                 }
@@ -143,34 +164,38 @@ fun SettingsScreen(nav: NavController) {
 
             item { Section("Данные") }
             item {
-                SettingRow("Словарь атрибутов", "Типы и варианты полей", { nav.navigate("attrdefs") })
+                SettingRow("Словарь атрибутов", "Типы и варианты полей", { nav.navigate("attrdefs") }, locked = adminLock)
             }
             item {
                 SettingRow(
                     "Экспорт / импорт",
                     "Один файл базы; обмен с другим устройством; слияние с выбором конфликтов",
-                    { nav.navigate("backup") }
+                    { nav.navigate("backup") },
+                    locked = exportLock
                 )
             }
             item {
                 SettingRow(
                     "Экспорт в Excel/CSV",
                     "Списки вещей и ящиков в xlsx или csv; на устройство или через «Поделиться»",
-                    { nav.navigate("export") }
+                    { nav.navigate("export") },
+                    locked = exportLock
                 )
             }
             item {
                 SettingRow(
                     "Федерация (LAN-синхронизация)",
                     "Обмен базой с другим устройством по локальной сети; доверие — роль и область по хранилищам",
-                    { nav.navigate("federation") }
+                    { nav.navigate("federation") },
+                    locked = adminLock
                 )
             }
             item {
                 SettingRow(
                     "Принтеры",
                     "58-мм ESC/POS: TCP (IP:9100) и Bluetooth; тестовая печать",
-                    { nav.navigate("printers") }
+                    { nav.navigate("printers") },
+                    locked = adminLock
                 )
             }
             item { Section("ИИ-агент") }
@@ -178,7 +203,8 @@ fun SettingsScreen(nav: NavController) {
                 SettingRow(
                     "Модели на устройстве",
                     "Скачивание GGUF-моделей (Qwen3) для работы без интернета",
-                    { nav.navigate("llm-models") }
+                    { nav.navigate("llm-models") },
+                    locked = adminLock
                 )
             }
             item {
@@ -193,7 +219,8 @@ fun SettingsScreen(nav: NavController) {
                 SettingRow(
                     "Профили и роли",
                     "Кто работает, и какие действия разрешены (админ / добавление / перекладка / просмотр)",
-                    { nav.navigate("profiles") }
+                    { nav.navigate("profiles") },
+                    locked = adminLock
                 )
             }
             item {
@@ -278,17 +305,23 @@ private fun Section(title: String) {
 }
 
 @Composable
-private fun SettingRow(title: String, subtitle: String, onClick: (() -> Unit)?) {
+private fun SettingRow(title: String, subtitle: String, onClick: (() -> Unit)?, locked: String? = null) {
+    // locked != null — строка показана, но не открывается: так честнее, чем прятать настройку.
+    val open = onClick != null && locked == null
     Column(
         Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(if (open) Modifier.clickable { onClick!!() } else Modifier)
             .padding(vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            if (onClick != null) Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (open) Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            if (locked != null) "$subtitle · $locked" else subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

@@ -87,7 +87,7 @@ import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.capacity.BRIM_RESERVE_RATIO
 import ru.vldkr.shkaff.domain.access.Access
-import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.onboarding.OnbStep
 import ru.vldkr.shkaff.domain.onboarding.Onboarding
 import ru.vldkr.shkaff.util.Expiry
@@ -152,7 +152,7 @@ class DashboardVm : ViewModel() {
                 for (t in TagsJson.toList(i.tags)) tagMap[t] = (tagMap[t] ?: 0) + 1
             }
             val tagDist = tagMap.entries.sortedByDescending { it.value }.take(5).map { it.key to it.value }
-            val role = Role.parse(Deps.users.activeUser()?.role ?: "view")
+            val role = ActiveRole.role.value // T-009: наблюдаемая активная роль, без чтения БД
             val now = System.currentTimeMillis()
             val loans = Deps.loans.observeActive().first()
             val itemLoans = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id }
