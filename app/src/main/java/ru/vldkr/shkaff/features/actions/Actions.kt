@@ -106,6 +106,20 @@ fun ActionsScreen(nav: NavController) {
                 show(ActionCode.encode(Verb.JOURNAL, "", code), code, "Журнал действий")
             }) }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+            item { SectionCaption("Действия по скану (П3.1 / T-007)", "QR без объекта: цель выбирается следующим сканом — «Шкаф» выполнит действие с подтверждением.") }
+            item { ActionRow("Переложить вещь", "Скан: QR вещи → QR ящика → подтверждение «Кладем X в Y?»", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.MOVE), code, "Переложить вещь")
+            }) }
+            item { ActionRow("Выдать вещь по скану", "Скан: QR вещи → имя получателя → временная выдача", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.LEND), code, "Выдать вещь по скану")
+            }) }
+            item { ActionRow("Удалить вещь по скану", "Скан: QR вещи → подтверждение, мягкое удаление с «Отменить»", {
+                val code = newUlid()
+                show(ActionCode.encode(Verb.DELETE), code, "Удалить вещь по скану")
+            }) }
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item {
                 Text(
                     "Установка без приложения (US-I3)",
@@ -160,6 +174,17 @@ fun ActionsScreen(nav: NavController) {
             }
         )
     }
+}
+
+@Composable
+private fun SectionCaption(title: String, subtitle: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        subtitle,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = 4.dp)
+    )
 }
 
 @Composable

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,14 +40,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,13 +74,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.actions.ActionCode
+import ru.vldkr.shkaff.domain.actions.Relocation
+import ru.vldkr.shkaff.domain.actions.RelocationFlow
 import ru.vldkr.shkaff.domain.links.AppLink
+import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.util.ScanBus
 import java.util.concurrent.Executors
 
@@ -151,7 +164,45 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
     // US-L22: View для performHapticFeedback (CONFIRM/REJECT).
     val hapticView = remember { View(ctx) }
 
+    // П3.1/T-007: скан-цикл по служебному QR без объекта — цель выбирается сканом
+    // (перекладка: QR вещи → QR ящика → подтверждение; выдача/удаление: QR вещи).
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val reloc = remember { RelocationFlow() }
+    var cycleVerb by remember { mutableStateOf<String?>(null) }
+    var cycleHint by remember { mutableStateOf<String?>(null) }
+    var movePair by remember { mutableStateOf<Pair<ItemEntity, LocationEntity>?>(null) }
+    var moveConfirmText by remember { mutableStateOf("") }
+    var deleteAsk by remember { mutableStateOf<ItemEntity?>(null) }
+    var lendAsk by remember { mutableStateOf<ItemEntity?>(null) }
+    var lendBorrower by remember { mutableStateOf("") }
+    var itemPool by remember { mutableStateOf<List<ItemEntity>>(emptyList()) }
+    var locPool by remember { mutableStateOf<List<LocationEntity>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        itemPool = Deps.items.all()
+        locPool = Deps.locations.observeAll().first()
+    }
+    fun endCycle() {
+        cycleVerb = null
+        cycleHint = null
+        movePair = null
+        deleteAsk = null
+        lendAsk = null
+        detected = null
+        reloc.reset()
+    }
+    fun startCycle(verb: String) {
+        detected = null
+        cycleVerb = verb
+        reloc.reset()
+        cycleHint = when (verb) {
+            ActionCode.Verb.MOVE -> "Шаг 1/2 — отсканируйте QR вещи"
+            else -> "Отсканируйте QR вещи"
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Сканер штрихкода / QR") },
@@ -180,10 +231,61 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                     }
                 }
             } else {
-                ScanCameraPreview(enabled = detected == null) { code ->
+                ScanCameraPreview(
+                    enabled = detected == null && movePair == null && deleteAsk == null && lendAsk == null
+                ) { code ->
                     BarcodeScanner.beep()
-                    BarcodeScanner.haptic(hapticView, success = true) // US-L22: успех
-                    detected = code
+                    val verb = cycleVerb
+                    if (verb == null) {
+                        BarcodeScanner.haptic(hapticView, success = true) // US-L22: успех
+                        detected = code
+                    } else if (verb == ActionCode.Verb.MOVE && reloc.step == RelocationFlow.STEP_LOCATION) {
+                        // Шаг 2 перекладки: ждём ящик.
+                        if (reloc.scanLocation(code, locPool)) {
+                            BarcodeScanner.haptic(hapticView, success = true)
+                            moveConfirmText = reloc.confirmText()
+                            movePair = reloc.item!! to reloc.location!!
+                        } else {
+                            BarcodeScanner.haptic(hapticView, success = false) // «не та коробка»
+                            cycleHint = "Ящик не найден («${Relocation.keyOf(code)}») — отсканируйте QR ящика"
+                        }
+                    } else if (reloc.scanItem(code, itemPool)) {
+                        BarcodeScanner.haptic(hapticView, success = true)
+                        when (verb) {
+                            ActionCode.Verb.MOVE -> cycleHint = "Вещь «${reloc.item!!.name}». Шаг 2/2 — отсканируйте QR ящика"
+                            ActionCode.Verb.DELETE -> deleteAsk = reloc.item
+                            ActionCode.Verb.LEND -> { lendBorrower = ""; lendAsk = reloc.item }
+                        }
+                    } else {
+                        BarcodeScanner.haptic(hapticView, success = false)
+                        cycleHint = "Вещь не найдена («${Relocation.keyOf(code)}») — отсканируйте QR вещи"
+                    }
+                }
+                cycleVerb?.let { verb ->
+                    Card(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                when (verb) {
+                                    ActionCode.Verb.MOVE -> if (reloc.step == RelocationFlow.STEP_LOCATION) "Перекладка · шаг 2/2" else "Перекладка · шаг 1/2"
+                                    ActionCode.Verb.DELETE -> "Удаление по скану"
+                                    ActionCode.Verb.LEND -> "Выдача по скану"
+                                    else -> "Служебный QR"
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(cycleHint ?: "", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(4.dp))
+                            TextButton(onClick = { endCycle() }) { Text("Отменить цикл") }
+                        }
+                    }
                 }
                 Box(
                     Modifier
@@ -213,7 +315,13 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                             Text(code, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(12.dp))
                             if (ActionCode.isServiceCode(code)) {
-                                ServiceCodeCard(nav, parsed = ActionCode.parse(code), onDone = { detected = null })
+                                ServiceCodeCard(
+                                    nav,
+                                    parsed = ActionCode.parse(code),
+                                    onDone = { detected = null },
+                                    onStartCycle = { verb -> startCycle(verb) },
+                                    onMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                                )
                             } else if (AppLink.parse(code) != null) {
                                 // QR «Шкаф» (US-I3): внутри приложения ссылку не открываем —
                                 // сразу ищем вещь по коду.
@@ -284,13 +392,99 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
             }
         }
     }
+
+    // П3.1: подтверждение «Кладем X в Y?» — scan-как-валидация из WMS.
+    movePair?.let { (it1, loc) ->
+        AlertDialog(
+            onDismissRequest = { movePair = null },
+            title = { Text("Перекладка по скану") },
+            text = { Text(moveConfirmText) },
+            confirmButton = {
+                Button(onClick = {
+                    movePair = null
+                    scope.launch {
+                        val oldLocation = it1.location_id
+                        Deps.items.moveTo(it1.id, loc.id)
+                        // П3.2: после перекладки — undo-снак на 5 секунд.
+                        snackbarHostState.undo("Переложили «${it1.name}» в «${Relocation.locationName(loc)}»") {
+                            Deps.items.moveTo(it1.id, oldLocation)
+                        }
+                        endCycle()
+                    }
+                }) { Text("Кладем") }
+            },
+            dismissButton = {
+                TextButton(onClick = { endCycle() }) { Text("Отмена") }
+            }
+        )
+    }
+
+    deleteAsk?.let { itm ->
+        AlertDialog(
+            onDismissRequest = { deleteAsk = null },
+            title = { Text("Удалить вещь?") },
+            text = { Text("«${itm.name}» будет скрыта из списков.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteAsk = null
+                    scope.launch {
+                        Deps.items.softDelete(itm.id)
+                        snackbarHostState.undo("«${itm.name}» удалена") {
+                            Deps.items.restore(itm.id)
+                        }
+                        endCycle()
+                    }
+                }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { endCycle() }) { Text("Отмена") }
+            }
+        )
+    }
+
+    lendAsk?.let { itm ->
+        AlertDialog(
+            onDismissRequest = { lendAsk = null },
+            title = { Text("Выдать временно") },
+            text = {
+                Column {
+                    Text("«${itm.name}» — кому выдаём? Срок и заметку можно уточнить в карточке вещи.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = lendBorrower,
+                        onValueChange = { lendBorrower = it },
+                        label = { Text("Кому") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = lendBorrower.isNotBlank(),
+                    onClick = {
+                        lendAsk = null
+                        scope.launch {
+                            Deps.loans.lend("item", itm.id, lendBorrower.trim(), "", null)
+                            snackbarHostState.showSnackbar("«${itm.name}» выдана: ${lendBorrower.trim()}")
+                            endCycle()
+                        }
+                    }
+                ) { Text("Выдать") }
+            },
+            dismissButton = {
+                TextButton(onClick = { endCycle() }) { Text("Отмена") }
+            }
+        )
+    }
 }
 
 @Composable
 private fun ServiceCodeCard(
     nav: androidx.navigation.NavController,
     parsed: ActionCode.Parsed,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onStartCycle: (String) -> Unit,
+    onMessage: (String) -> Unit
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var denied by androidx.compose.runtime.remember { mutableStateOf(false) }
@@ -312,11 +506,24 @@ private fun ServiceCodeCard(
         else -> Access.VIEW
     }
     fun runAction() {
+        // T-007: выполнение служебного QR отмечается в журнале действий меткой «service».
+        scope.launch {
+            Deps.actionLog.log("service", parsed.entityType, parsed.entityId, mapOf("verb" to verbLabel))
+        }
         when (parsed.verb) {
-            ActionCode.Verb.ADD -> when (parsed.entityType) {
-                "item" -> nav.navigate("item-form/0/0")
-                "storage" -> nav.navigate("storage-form/0")
-                "location" -> nav.navigate("location-form/0/0")
+            ActionCode.Verb.ADD -> {
+                // T-007: ULID карточки из ADD-кода не теряется — им предзаполняется
+                // «Код / номер» формы (обещание «у каждого QR свой ULID»).
+                if (parsed.entityId.isNotBlank()) ScanBus.lastCode = parsed.entityId
+                when (parsed.entityType) {
+                    "item" -> nav.navigate("item-form/0/0")
+                    "storage" -> nav.navigate("storage-form/0")
+                    "location" -> nav.navigate("location-form/0/0")
+                    else -> {
+                        ScanBus.lastCode = null
+                        onMessage("Служебный QR: неизвестный тип объекта «${parsed.entityType}»")
+                    }
+                }
             }
             ActionCode.Verb.EXPORT -> nav.navigate("export")
             ActionCode.Verb.JOURNAL -> nav.navigate("journal")
@@ -326,10 +533,19 @@ private fun ServiceCodeCard(
                         "item" -> nav.navigate("item/${parsed.entityId}")
                         "storage" -> nav.navigate("storage/${parsed.entityId}")
                         "location" -> nav.navigate("location/${parsed.entityId}")
+                        else -> onMessage("Служебный QR: неизвестный тип объекта «${parsed.entityType}»")
+                    }
+                } else {
+                    // T-007: объект в QR не указан — больше не мёртвая кнопка:
+                    // цель выбирается следующим сканом (перекладка/выдача/удаление по скану).
+                    if (parsed.entityType.isBlank() || parsed.entityType == "item") {
+                        onStartCycle(parsed.verb)
+                    } else {
+                        onMessage("Служебный QR без объекта: перекладка/выдача/удаление по скану — только для вещей, а не «${parsed.entityType}»")
                     }
                 }
             }
-            else -> Unit
+            else -> onMessage("Служебный QR: неизвестное действие «${parsed.verb}»")
         }
     }
     if (denied) {

@@ -101,6 +101,20 @@ class ItemRepository(
         return u
     }
 
+    // П3.1: перекладка по скану — меняем только ящик, остальное как было.
+    // Обновляем updated_at: от него зависит LWW при слиянии (AGENTS.md).
+    suspend fun moveTo(id: String, locationId: String?): ItemEntity? {
+        val e = dao.byId(id) ?: return null
+        val u = e.copy(
+            location_id = locationId,
+            updated_at = System.currentTimeMillis(),
+            device_last_modified = deviceId()
+        )
+        dao.upsert(u)
+        Deps.actionLog.log("move", "item", u.id, mapOf("name" to u.name, "to" to (locationId ?: "no-location")))
+        return u
+    }
+
     // Пустой код → ULID (если включена автогенерация); заданный → проверка дубля.
     private suspend fun resolveCode(input: String): String {
         if (input.isEmpty()) {
