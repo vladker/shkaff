@@ -260,7 +260,7 @@ fun StorageDetailScreen(nav: NavController, storageId: String) {
                     }
                     val u = usage
                     if (u != null) {
-                        CapacitySection(u, Modifier.padding(top = 8.dp))
+                        CapacitySection(u, Modifier.padding(top = 8.dp), isLocation = false)
                     }
                 }
             }

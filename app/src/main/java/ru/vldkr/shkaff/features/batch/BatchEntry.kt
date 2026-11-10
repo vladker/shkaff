@@ -192,6 +192,8 @@ class BatchVm : ViewModel() {
                 u.curAttrs
             )
             try {
+                // П3.3/T-006: в пакете нет полей объёма/массы — предупреждать о переполнении
+                // не о чем (вклад 0), но «полный» ящик по-прежнему блокируется (BLOCK).
                 val e = Deps.items.create(
                     ItemData(
                         name = BatchPlan.expandName(u.namePattern, u.index).trim(),
@@ -200,7 +202,8 @@ class BatchVm : ViewModel() {
                         attributes = attrs,
                         locationId = u.locationId,
                         tags = u.tags
-                    )
+                    ),
+                    allowOverCapacity = true
                 )
                 val created = ui.value.created + e
                 if (u.index >= u.totalCount) {

@@ -280,6 +280,11 @@ fun ItemWizardScreen(nav: NavController) {
             }
         }
 
+        CapacityConfirmDialog(vm) { id ->
+            savedId = id
+            savedName = vm.name
+            step = WStep.DONE
+        }
         if (showTemplatePicker) {
             TemplatePickerDialog(
                 templates = templates.value,

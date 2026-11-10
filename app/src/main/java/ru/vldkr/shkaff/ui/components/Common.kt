@@ -495,8 +495,10 @@ fun LocationMap(): Map<String, LocationEntity> {
 }
 
 // Заполненность хранилища/ящика (US-C3/C4): полосы объёма и массы + статус.
+// T-006: «добавление блокировано» для ящика — правда: ItemRepository.create/update/moveTo
+// отказывают, когда ящик помечен «полным». Для хранилища пометка только информационная.
 @Composable
-fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier) {
+fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier, isLocation: Boolean = true) {
     Column(modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         val volText = usage.capacityVolumeLiters?.let {
             "Объём: ${fmt1(usage.volumeLiters)} / ${fmt1(it)} л"
@@ -528,7 +530,11 @@ fun CapacitySection(usage: CapacityUsage, modifier: Modifier = Modifier) {
             )
         }
         if (usage.isFull) {
-            Text("Помечено «полным» — добавление блокировано", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+            Text(
+                if (isLocation) "Ящик помечен «полным» — добавление и перекладка вещей блокированы"
+                else "Хранилище помечено «полным»",
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error
+            )
         } else if (usage.dontFillToBrim) {
             Text("«Не набивать до упора» — резерв места", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -75,6 +75,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.capacity.OverCapacityException
 import ru.vldkr.shkaff.domain.ean.ProductPageBrowser
 import ru.vldkr.shkaff.domain.ean.findUrlInText
 import ru.vldkr.shkaff.domain.recommend.Recommend
@@ -119,6 +120,8 @@ class ItemFormVm(
     val error = MutableStateFlow<String?>(null)
     val saving = MutableStateFlow(false)
     val loaded = MutableStateFlow(false)
+    // П3.3/T-006: предупреждение о переполнении ящика — текст для диалога подтверждения.
+    val capacityConfirm = MutableStateFlow<String?>(null)
 
     // US-B1: поиск по штрихкоду в интернете
     data class EanRow(val key: String, val value: String, val checked: Boolean)
@@ -682,7 +685,7 @@ class ItemFormVm(
     }
 
 
-    fun save(onDone: (String) -> Unit) {
+    fun save(allowOverCapacity: Boolean = false, onDone: (String) -> Unit) {
         if (name.isBlank()) {
             error.value = "Введите название вещи"
             return
@@ -718,12 +721,17 @@ class ItemFormVm(
             )
             try {
                 val id = if (itemId == null) {
-                    Deps.items.create(d).id
+                    Deps.items.create(d, allowOverCapacity = allowOverCapacity).id
                 } else {
-                    Deps.items.update(itemId, d)?.id ?: throw IllegalStateException("Вещь не найдена")
+                    Deps.items.update(itemId, d, allowOverCapacity = allowOverCapacity)?.id
+                        ?: throw IllegalStateException("Вещь не найдена")
                 }
                 Deps.drafts.clear(draftKey())
+                capacityConfirm.value = null
                 onDone(id)
+            } catch (e: OverCapacityException) {
+                // П3.3/T-006: превышение объёма/массы — не запрет, просим подтверждение.
+                capacityConfirm.value = e.message ?: "Ёмкость ящика будет превышена"
             } catch (e: Exception) {
                 error.value = e.message
             } finally {
@@ -1335,6 +1343,10 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                 }
             )
         }
+        CapacityConfirmDialog(vm) { newId ->
+            if (isNew) nav.navigate("item/$newId") { popUpTo("dashboard") }
+            else nav.popBackStack()
+        }
         EanLookupDialog(vm)
         SmartSearchDialog(vm)
     }
@@ -1852,6 +1864,28 @@ private fun LinkPhotoDialog(
         },
         dismissButton = {
             TextButton(onClick = { onDismiss() }, enabled = !busy) { Text("Отмена") }
+        }
+    )
+}
+
+// П3.3 / T-006: «ёмкость ящика будет превышена» — предупреждение с подтверждением.
+// Общая для формы вещи и мастера добавления: сохранение только по явному согласию.
+@Composable
+fun CapacityConfirmDialog(vm: ItemFormVm, onSaved: (String) -> Unit) {
+    val message by vm.capacityConfirm.collectAsState()
+    val text = message ?: return
+    AlertDialog(
+        onDismissRequest = { vm.capacityConfirm.value = null },
+        title = { Text("Превышение ёмкости") },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = {
+                vm.capacityConfirm.value = null
+                vm.save(allowOverCapacity = true, onDone = onSaved)
+            }) { Text("Всё равно сохранить", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.capacityConfirm.value = null }) { Text("Отмена") }
         }
     )
 }

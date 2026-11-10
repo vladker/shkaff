@@ -135,4 +135,16 @@ class RelocationTest {
         assertNull(f.item)
         assertNull(f.location)
     }
+
+    @Test
+    fun `clearLocation returns to the box step keeping the item`() {
+        // П3.3: «полный» ящик отклонён гейтом — шаг выбора ящика повторяется, вещь помним.
+        val f = RelocationFlow()
+        f.scanItem("i1", listOf(item("i1")))
+        f.scanLocation("l1", listOf(loc("l1", label = "Ящик A")))
+        f.clearLocation()
+        assertEquals(RelocationFlow.STEP_LOCATION, f.step)
+        assertEquals("i1", f.item?.id)
+        assertNull(f.location)
+    }
 }

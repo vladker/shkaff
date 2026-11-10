@@ -85,6 +85,8 @@ import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.actions.ActionCode
 import ru.vldkr.shkaff.domain.actions.Relocation
 import ru.vldkr.shkaff.domain.actions.RelocationFlow
+import ru.vldkr.shkaff.domain.capacity.CapacityGate
+import ru.vldkr.shkaff.domain.capacity.GateVerdict
 import ru.vldkr.shkaff.domain.links.AppLink
 import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.util.ScanBus
@@ -172,6 +174,7 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
     var cycleVerb by remember { mutableStateOf<String?>(null) }
     var cycleHint by remember { mutableStateOf<String?>(null) }
     var movePair by remember { mutableStateOf<Pair<ItemEntity, LocationEntity>?>(null) }
+    var moveOverLimit by remember { mutableStateOf(false) } // П3.3: подтверждённое превышение ёмкости
     var moveConfirmText by remember { mutableStateOf("") }
     var deleteAsk by remember { mutableStateOf<ItemEntity?>(null) }
     var lendAsk by remember { mutableStateOf<ItemEntity?>(null) }
@@ -242,9 +245,38 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                     } else if (verb == ActionCode.Verb.MOVE && reloc.step == RelocationFlow.STEP_LOCATION) {
                         // Шаг 2 перекладки: ждём ящик.
                         if (reloc.scanLocation(code, locPool)) {
-                            BarcodeScanner.haptic(hapticView, success = true)
-                            moveConfirmText = reloc.confirmText()
-                            movePair = reloc.item!! to reloc.location!!
+                            // П3.3/T-006: гейт ёмкости цели. «Полный» ящик — отказ (шаг ящика
+                            // повторяется), превышение объёма/массы — предупреждение внутри
+                            // подтверждения «Кладем X в Y?» (нажатие = согласие).
+                            val loc = reloc.location!!
+                            val it1 = reloc.item!!
+                            scope.launch {
+                                val ids = Deps.locations.subtreeIds(loc.id)
+                                var u = Deps.locations.usage(loc.id)
+                                if (it1.location_id in ids) {
+                                    u = CapacityGate.excludingItem(u, it1.volume_liters, it1.weight_kg)
+                                }
+                                val dec = CapacityGate.checkPlacement(u, it1.volume_liters, it1.weight_kg)
+                                when (dec.verdict) {
+                                    GateVerdict.BLOCK -> {
+                                        BarcodeScanner.haptic(hapticView, success = false) // «не влезет»
+                                        cycleHint = dec.message ?: "Ящик помечен «полным»"
+                                        reloc.clearLocation()
+                                    }
+                                    GateVerdict.CONFIRM -> {
+                                        BarcodeScanner.haptic(hapticView, success = true)
+                                        moveOverLimit = true
+                                        moveConfirmText = reloc.confirmText() + "\n\n" + dec.message
+                                        movePair = it1 to loc
+                                    }
+                                    GateVerdict.OK -> {
+                                        BarcodeScanner.haptic(hapticView, success = true)
+                                        moveOverLimit = false
+                                        moveConfirmText = reloc.confirmText()
+                                        movePair = it1 to loc
+                                    }
+                                }
+                            }
                         } else {
                             BarcodeScanner.haptic(hapticView, success = false) // «не та коробка»
                             cycleHint = "Ящик не найден («${Relocation.keyOf(code)}») — отсканируйте QR ящика"
@@ -404,12 +436,18 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                     movePair = null
                     scope.launch {
                         val oldLocation = it1.location_id
-                        Deps.items.moveTo(it1.id, loc.id)
-                        // П3.2: после перекладки — undo-снак на 5 секунд.
-                        snackbarHostState.undo("Переложили «${it1.name}» в «${Relocation.locationName(loc)}»") {
-                            Deps.items.moveTo(it1.id, oldLocation)
+                        try {
+                            Deps.items.moveTo(it1.id, loc.id, allowOverCapacity = moveOverLimit)
+                            // П3.2: после перекладки — undo-снак на 5 секунд.
+                            snackbarHostState.undo("Переложили «${it1.name}» в «${Relocation.locationName(loc)}»") {
+                                runCatching { Deps.items.moveTo(it1.id, oldLocation, allowOverCapacity = true) }
+                            }
+                            endCycle()
+                        } catch (e: Exception) {
+                            // Гонка: ящик успели пометить «полным» — честный отказ вместо записи.
+                            cycleHint = e.message ?: "Не удалось переложить"
+                            reloc.clearLocation()
                         }
-                        endCycle()
                     }
                 }) { Text("Кладем") }
             },

@@ -74,6 +74,12 @@ class RelocationFlow {
         return true
     }
 
+    // П3.3: ящик отклонён гейтом ёмкости («полный») — возвращаемся к шагу ящика,
+    // выбранную вещь помним.
+    fun clearLocation() {
+        location = null
+    }
+
     fun confirmText(): String =
         "Кладем «${item?.name ?: ""}» в «${location?.let { Relocation.locationName(it) } ?: ""}»?"
 

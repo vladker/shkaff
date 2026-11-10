@@ -7,6 +7,9 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
+import ru.vldkr.shkaff.domain.capacity.CapacityGate
+import ru.vldkr.shkaff.domain.capacity.GateVerdict
+import ru.vldkr.shkaff.domain.capacity.OverCapacityException
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.util.newId
 import ru.vldkr.shkaff.util.newUlid
@@ -45,7 +48,8 @@ class ItemRepository(
         dao.markLabelled(id, System.currentTimeMillis(), deviceId())
     }
 
-    suspend fun create(d: ItemData): ItemEntity {
+    suspend fun create(d: ItemData, allowOverCapacity: Boolean = false): ItemEntity {
+        capacityGate(d.locationId, d.volumeLiters, d.weightKg, existing = null, allowOverCapacity)
         val now = System.currentTimeMillis()
         val e = ItemEntity(
             id = newId(),
@@ -71,11 +75,12 @@ class ItemRepository(
         return e
     }
 
-    suspend fun update(id: String, d: ItemData): ItemEntity? {
+    suspend fun update(id: String, d: ItemData, allowOverCapacity: Boolean = false): ItemEntity? {
         val e = dao.byId(id) ?: return null
         val code = d.code.trim()
         if (code.isNotEmpty() && code != e.code && dao.existsByCode(code, id) > 0)
             throw IllegalStateException("Номер уже занят: $code")
+        capacityGate(d.locationId, d.volumeLiters, d.weightKg, existing = e, allowOverCapacity)
         val u = e.copy(
             name = d.name.trim(),
             code = code,
@@ -103,8 +108,9 @@ class ItemRepository(
 
     // П3.1: перекладка по скану — меняем только ящик, остальное как было.
     // Обновляем updated_at: от него зависит LWW при слиянии (AGENTS.md).
-    suspend fun moveTo(id: String, locationId: String?): ItemEntity? {
+    suspend fun moveTo(id: String, locationId: String?, allowOverCapacity: Boolean = false): ItemEntity? {
         val e = dao.byId(id) ?: return null
+        capacityGate(locationId, e.volume_liters, e.weight_kg, existing = e, allowOverCapacity)
         val u = e.copy(
             location_id = locationId,
             updated_at = System.currentTimeMillis(),
@@ -113,6 +119,32 @@ class ItemRepository(
         dao.upsert(u)
         Deps.actionLog.log("move", "item", u.id, mapOf("name" to u.name, "to" to (locationId ?: "no-location")))
         return u
+    }
+
+    // T-006 / П3.3: честная проверка ёмкости до записи. «Полный» ящик — запрет
+    // (IllegalStateException), превышение объёма/массы — OverCapacityException, пока
+    // вызывающий явно не подтвердит (allowOverCapacity). Вклад самой вещи вычитаем,
+    // если она уже стоит в целевом поддереве (правка/перекладка не «съедает» место дважды).
+    private suspend fun capacityGate(
+        locationId: String?,
+        volumeLiters: Double,
+        weightKg: Double,
+        existing: ItemEntity?,
+        allowOverCapacity: Boolean
+    ) {
+        val locId = locationId ?: return
+        val locs = LocationRepository(db, deviceId)
+        var usage = locs.usage(locId)
+        if (existing != null && existing.location_id in locs.subtreeIds(locId)) {
+            usage = CapacityGate.excludingItem(usage, existing.volume_liters, existing.weight_kg)
+        }
+        val dec = CapacityGate.checkPlacement(usage, volumeLiters, weightKg)
+        when (dec.verdict) {
+            GateVerdict.BLOCK -> throw IllegalStateException(dec.message)
+            GateVerdict.CONFIRM ->
+                if (!allowOverCapacity) throw OverCapacityException(dec.message ?: "Ёмкость ящика будет превышена")
+            GateVerdict.OK -> Unit
+        }
     }
 
     // Пустой код → ULID (если включена автогенерация); заданный → проверка дубля.
