@@ -61,7 +61,8 @@ class TemplatesZonePreserveTest {
             val loaded = runBlocking { dao.byId(id) }
             assertNotNull("шаблон должен читаться из БД", loaded)
             vm.openEdit(loaded!!)
-            vm.form!!.name = "Зона A переименована"
+            // T-046: форма неизменяемая — правка имени идёт через Ui-state.
+            vm.editForm { it.copy(name = "Зона A переименована") }
             vm.save()
 
             var saved: LabelTemplateEntity? = null

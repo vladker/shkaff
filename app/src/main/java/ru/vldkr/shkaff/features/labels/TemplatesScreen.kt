@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,31 +53,34 @@ class TemplatesVm : ViewModel() {
 
     data class Ui(
         val templates: List<LabelTemplateEntity> = emptyList(),
-        val error: String? = null
+        val error: String? = null,
+        // T-046: форма живёт в Ui-state. Раньше Form c plain var держалась в
+        // mutableStateOf отдельно — держатель отслеживал только смену ссылки,
+        // запись в поле (чекбокс/формат) не инвалидировала композицию.
+        // Форма неизменяемая: каждая правка — copy и новый экземпляр Ui.
+        val form: Form? = null
     )
 
     val ui = MutableStateFlow(Ui())
 
     data class Form(
         val id: String? = null,
-        var name: String = "",
-        var format: String = "QR",
-        var widthMm: String = "58",
-        var heightMm: String = "40",
-        var marginMm: String = "3",
-        var showText: Boolean = true,
-        var textContent: String = "{name}",
-        var textPosition: String = "bottom",
-        var showNumber: Boolean = true,
-        var appLink: Boolean = false,
-        var fontSize: String = "12",
-        var textColor: String = "#000000",
-        var bgColor: String = "#FFFFFF",
-        var invert: Boolean = false,
-        var quietZone: Boolean = true
+        val name: String = "",
+        val format: String = "QR",
+        val widthMm: String = "58",
+        val heightMm: String = "40",
+        val marginMm: String = "3",
+        val showText: Boolean = true,
+        val textContent: String = "{name}",
+        val textPosition: String = "bottom",
+        val showNumber: Boolean = true,
+        val appLink: Boolean = false,
+        val fontSize: String = "12",
+        val textColor: String = "#000000",
+        val bgColor: String = "#FFFFFF",
+        val invert: Boolean = false,
+        val quietZone: Boolean = true
     )
-
-    var form: Form? by mutableStateOf(null)
 
     init {
         viewModelScope.launch {
@@ -85,36 +89,43 @@ class TemplatesVm : ViewModel() {
     }
 
     fun openNew() {
-        ui.value = ui.value.copy(error = null)
-        form = Form()
+        ui.value = ui.value.copy(error = null, form = Form())
     }
 
     fun openEdit(t: LabelTemplateEntity) {
-        ui.value = ui.value.copy(error = null)
-        form = Form(
-            id = t.id,
-            name = t.name,
-            format = t.format,
-            widthMm = t.width_mm.toString(),
-            heightMm = t.height_mm.toString(),
-            marginMm = t.margin_mm.toString(),
-            showText = t.show_text,
-            textContent = t.text_content,
-            textPosition = t.text_position,
-            showNumber = t.show_number,
-            appLink = t.app_link,
-            fontSize = t.font_size.toString(),
-            textColor = t.text_color,
-            bgColor = t.bg_color,
-            invert = t.invert,
-            quietZone = t.quiet_zone
+        ui.value = ui.value.copy(
+            error = null,
+            form = Form(
+                id = t.id,
+                name = t.name,
+                format = t.format,
+                widthMm = t.width_mm.toString(),
+                heightMm = t.height_mm.toString(),
+                marginMm = t.margin_mm.toString(),
+                showText = t.show_text,
+                textContent = t.text_content,
+                textPosition = t.text_position,
+                showNumber = t.show_number,
+                appLink = t.app_link,
+                fontSize = t.font_size.toString(),
+                textColor = t.text_color,
+                bgColor = t.bg_color,
+                invert = t.invert,
+                quietZone = t.quiet_zone
+            )
         )
     }
 
-    fun closeForm() { form = null }
+    fun closeForm() { ui.value = ui.value.copy(form = null) }
+
+    // Единственная точка правки формы: copy -> новый Ui -> инвалидация композиции.
+    fun editForm(edit: (Form) -> Form) {
+        val f = ui.value.form ?: return
+        ui.value = ui.value.copy(form = edit(f))
+    }
 
     fun save() {
-        val f = form ?: return
+        val f = ui.value.form ?: return
         val w = f.widthMm.toDoubleOrNull()
         val h = f.heightMm.toDoubleOrNull()
         val m = f.marginMm.toDoubleOrNull()
@@ -178,7 +189,7 @@ class TemplatesVm : ViewModel() {
                 device_last_modified = dev
             )
             dao.upsert(t)
-            form = null
+            ui.value = ui.value.copy(form = null)
         }
     }
 
@@ -213,7 +224,7 @@ fun TemplatesScreen(nav: NavController) {
             )
         }
     ) { padding ->
-        if (vm.form != null) {
+        if (ui.form != null) {
             TemplateFormContent(vm)
             return@Scaffold
         }
@@ -274,8 +285,8 @@ fun TemplatesScreen(nav: NavController) {
 
 @Composable
 private fun TemplateFormContent(vm: TemplatesVm) {
-    val f = vm.form!!
     val ui by vm.ui.collectAsState()
+    val f = ui.form ?: return
     Column(
         Modifier
             .fillMaxSize()
@@ -285,7 +296,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         SectionTitle(if (f.id == null) "Новый шаблон" else "Шаблон")
         OutlinedTextField(
             value = f.name,
-            onValueChange = { f.name = it },
+            onValueChange = { v -> vm.editForm { it.copy(name = v) } },
             label = { Text("Название *") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -296,7 +307,14 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             LabelGenerator.FORMATS.forEach { fmt ->
                 val selected = f.format == fmt
-                OutlinedButton(onClick = { f.format = fmt }, modifier = Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = { vm.editForm { it.copy(format = fmt) } },
+                    modifier = Modifier.weight(1f),
+                    // T-046: выбранный формат подсвечен (ср. LabelsScreen),
+                    // раньше val selected нигде не использовался.
+                    colors = if (selected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                            else ButtonDefaults.outlinedButtonColors()
+                ) {
                     Text(fmt, style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -305,21 +323,21 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = f.widthMm,
-                onValueChange = { f.widthMm = it },
+                onValueChange = { v -> vm.editForm { it.copy(widthMm = v) } },
                 label = { Text("Ширина, мм") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
             OutlinedTextField(
                 value = f.heightMm,
-                onValueChange = { f.heightMm = it },
+                onValueChange = { v -> vm.editForm { it.copy(heightMm = v) } },
                 label = { Text("Высота, мм") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
             OutlinedTextField(
                 value = f.marginMm,
-                onValueChange = { f.marginMm = it },
+                onValueChange = { v -> vm.editForm { it.copy(marginMm = v) } },
                 label = { Text("Поля, мм") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
@@ -327,32 +345,42 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(checked = f.showText, onCheckedChange = { f.showText = it })
+            Checkbox(checked = f.showText, onCheckedChange = { v -> vm.editForm { it.copy(showText = v) } })
             Text("Текст на этикетке", style = MaterialTheme.typography.bodyMedium)
         }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(checked = f.showNumber, onCheckedChange = { f.showNumber = it })
+            Checkbox(checked = f.showNumber, onCheckedChange = { v -> vm.editForm { it.copy(showNumber = v) } })
             Text("Номер объекта (код) вместе с кодом", style = MaterialTheme.typography.bodyMedium)
         }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(checked = f.appLink, onCheckedChange = { f.appLink = it })
+            Checkbox(checked = f.appLink, onCheckedChange = { v -> vm.editForm { it.copy(appLink = v) } })
             Text("QR — ссылка на приложение (открывает «Шкаф» по скану)", style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(Modifier.height(4.dp))
         Text("Расположение надписей", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { f.textPosition = "top" }, modifier = Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = { vm.editForm { it.copy(textPosition = "top") } },
+                modifier = Modifier.weight(1f),
+                colors = if (f.textPosition == "top") ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        else ButtonDefaults.outlinedButtonColors()
+            ) {
                 Text("Над кодом", style = MaterialTheme.typography.labelLarge)
             }
-            OutlinedButton(onClick = { f.textPosition = "bottom" }, modifier = Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = { vm.editForm { it.copy(textPosition = "bottom") } },
+                modifier = Modifier.weight(1f),
+                colors = if (f.textPosition == "bottom") ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        else ButtonDefaults.outlinedButtonColors()
+            ) {
                 Text("Под кодом", style = MaterialTheme.typography.labelLarge)
             }
         }
         if (f.showText) {
             OutlinedTextField(
                 value = f.textContent,
-                onValueChange = { f.textContent = it },
+                onValueChange = { v -> vm.editForm { it.copy(textContent = v) } },
                 label = { Text("Текст") },
                 supportingText = { Text("Плейсхолдеры: {name}, {code}") },
                 modifier = Modifier.fillMaxWidth(),
@@ -361,7 +389,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = f.fontSize,
-                onValueChange = { f.fontSize = it },
+                onValueChange = { v -> vm.editForm { it.copy(fontSize = v) } },
                 label = { Text("Размер шрифта, pt") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
@@ -370,7 +398,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = f.textColor,
-                    onValueChange = { f.textColor = it },
+                    onValueChange = { v -> vm.editForm { it.copy(textColor = v) } },
                     label = { Text("Цвет текста") },
                     supportingText = { Text("HEX, напр. #000000") },
                     modifier = Modifier.weight(1f),
@@ -378,7 +406,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
                 )
                 OutlinedTextField(
                     value = f.bgColor,
-                    onValueChange = { f.bgColor = it },
+                    onValueChange = { v -> vm.editForm { it.copy(bgColor = v) } },
                     label = { Text("Цвет фона") },
                     supportingText = { Text("HEX, напр. #FFFFFF") },
                     modifier = Modifier.weight(1f),
@@ -387,11 +415,11 @@ private fun TemplateFormContent(vm: TemplatesVm) {
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = f.invert, onCheckedChange = { f.invert = it })
+                Checkbox(checked = f.invert, onCheckedChange = { v -> vm.editForm { it.copy(invert = v) } })
                 Text("Инвертировать (белый код на тёмном)", style = MaterialTheme.typography.bodyMedium)
             }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = f.quietZone, onCheckedChange = { f.quietZone = it })
+                Checkbox(checked = f.quietZone, onCheckedChange = { v -> vm.editForm { it.copy(quietZone = v) } })
                 Text("Тихая зона (поля) у кода", style = MaterialTheme.typography.bodyMedium)
             }
         }
