@@ -813,6 +813,7 @@ class LabelsVm(
         when (s.kind) {
             "location" -> Deps.locations.markLabelled(s.id)
             "storage" -> Deps.storages.markLabelled(s.id)
+            "stack" -> Unit // у стека поля labelled_at нет (T-016)
             else -> Deps.items.markLabelled(s.id)
         }
     }
@@ -1129,6 +1130,21 @@ class LabelsVm(
                         update {
                             it.copy(
                                 subject = Subject("storage", f.id, name, code, AttrJson.toMap(f.attributes)),
+                                code = code,
+                                name = name
+                            )
+                        }
+                        applySavedAttrs()
+                        regenerate()
+                    }
+                    // T-016 (US-E2): стек — субъект этикетки (номер вместо атрибутов).
+                    "stack" -> Deps.stacks.byId(entityId)?.let { f ->
+                        val name = f.name.ifBlank { "Стек" }
+                        val code = f.code.ifBlank { newUlid() }
+                        if (code != f.code) Deps.stacks.rename(f.id, f.name, code)
+                        update {
+                            it.copy(
+                                subject = Subject("stack", f.id, name, code, emptyMap()),
                                 code = code,
                                 name = name
                             )

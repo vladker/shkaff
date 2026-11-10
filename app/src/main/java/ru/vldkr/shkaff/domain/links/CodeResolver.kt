@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.domain.links
 
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.data.db.StackEntity
 
 // Разбор отсканированного кода (QR ящика/вещи) во внутренний код и в объект.
 // Чистая логика без Android/DI — резолверы передаются извне, удобно тестировать.
@@ -33,5 +34,17 @@ object CodeResolver {
         val code = innerCode(scanned)
         if (code.isEmpty()) return null
         return itemByCode(code)
+    }
+
+    // Стек (T-016, US-E2): сначала по номеру стека, затем по id карточки —
+    // QR без номера (старые записи) резолвится через id.
+    suspend fun resolveStack(
+        scanned: String,
+        stackByCode: suspend (String) -> StackEntity?,
+        stackById: suspend (String) -> StackEntity?,
+    ): StackEntity? {
+        val code = innerCode(scanned)
+        if (code.isEmpty()) return null
+        return stackByCode(code) ?: stackById(code)
     }
 }

@@ -14,6 +14,7 @@ import ru.vldkr.shkaff.features.labelstudio.domain.LabelStudioDeps
 import ru.vldkr.shkaff.features.labelstudio.domain.LabelStudioDeps.PrinterProfile
 import ru.vldkr.shkaff.features.labelstudio.domain.LabelStudioDeps.Subject
 import ru.vldkr.shkaff.features.labelstudio.domain.LabelStudioDeps.TemplateSummary
+import ru.vldkr.shkaff.util.newUlid
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -34,6 +35,14 @@ object ShkaffLabelStudioDeps : LabelStudioDeps {
         }
         "storage" -> Deps.storages.byId(id)?.let {
             Subject("storage", it.id, it.name, it.code, AttrJson.toMap(it.attributes))
+        }
+        // T-016 (US-E2): стек — субъект этикетки; QR несёт номер стека, а пустой
+        // номер стеку присваивается при выдаче (как вещи) — пустой QR печатать нельзя.
+        "stack" -> Deps.stacks.byId(id)?.let {
+            val code = it.code.ifBlank {
+                newUlid().also { c -> Deps.stacks.rename(it.id, it.name, c) }
+            }
+            Subject("stack", it.id, it.name.ifBlank { "Стек" }, code, emptyMap())
         }
         else -> null
     }

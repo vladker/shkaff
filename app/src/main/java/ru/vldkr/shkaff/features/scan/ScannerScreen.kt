@@ -79,6 +79,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
+import ru.vldkr.shkaff.data.db.StackEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.ActiveRole
@@ -88,6 +89,7 @@ import ru.vldkr.shkaff.domain.actions.RelocationFlow
 import ru.vldkr.shkaff.domain.capacity.CapacityGate
 import ru.vldkr.shkaff.domain.capacity.GateVerdict
 import ru.vldkr.shkaff.domain.links.AppLink
+import ru.vldkr.shkaff.domain.links.CodeResolver
 import ru.vldkr.shkaff.ui.components.undo
 import ru.vldkr.shkaff.util.ScanBus
 import java.util.concurrent.Executors
@@ -181,6 +183,8 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
     var lendBorrower by remember { mutableStateOf("") }
     var itemPool by remember { mutableStateOf<List<ItemEntity>>(emptyList()) }
     var locPool by remember { mutableStateOf<List<LocationEntity>>(emptyList()) }
+    // T-016 (US-E2): если код принадлежит стеку — карточка «Открыть стек» → stack/{id}.
+    var stackHit by remember { mutableStateOf<StackEntity?>(null) }
     LaunchedEffect(Unit) {
         itemPool = Deps.items.all()
         locPool = Deps.locations.observeAll().first()
@@ -192,6 +196,7 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
         deleteAsk = null
         lendAsk = null
         detected = null
+        stackHit = null
         reloc.reset()
     }
     fun startCycle(verb: String) {
@@ -242,6 +247,20 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                     if (verb == null) {
                         BarcodeScanner.haptic(hapticView, success = true) // US-L22: успех
                         detected = code
+                        // T-016 (US-E2): QR набора → карточка стека. Работает и для
+                        // обычного кода, и для HTTPS-ссылки «Шкаф» (app=1&code=…).
+                        stackHit = null
+                        if (!ActionCode.isServiceCode(code)) {
+                            scope.launch {
+                                stackHit = CodeResolver.resolveStack(
+                                    code,
+                                    stackByCode = { Deps.stacks.byCode(it) },
+                                    stackById = { id ->
+                                        Deps.stacks.byId(id)?.takeIf { it.deleted_at == null }
+                                    }
+                                )
+                            }
+                        }
                     } else if (verb == ActionCode.Verb.MOVE && reloc.step == RelocationFlow.STEP_LOCATION) {
                         // Шаг 2 перекладки: ждём ящик.
                         if (reloc.scanLocation(code, locPool)) {
@@ -346,6 +365,14 @@ fun ScannerScreen(nav: androidx.navigation.NavController) {
                             Spacer(Modifier.height(4.dp))
                             Text(code, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(12.dp))
+                            // T-016 (US-E2): код совпал со стеком — прямая дорога к списку входящих.
+                            stackHit?.let { st ->
+                                Button(
+                                    onClick = { nav.navigate("stack/${st.id}") },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Открыть стек «${st.name}»") }
+                                Spacer(Modifier.height(8.dp))
+                            }
                             if (ActionCode.isServiceCode(code)) {
                                 ServiceCodeCard(
                                     nav,
@@ -571,6 +598,8 @@ private fun ServiceCodeCard(
                         "item" -> nav.navigate("item/${parsed.entityId}")
                         "storage" -> nav.navigate("storage/${parsed.entityId}")
                         "location" -> nav.navigate("location/${parsed.entityId}")
+                        // T-016: служебный QR по стеку ведёт в карточку стека.
+                        "stack" -> nav.navigate("stack/${parsed.entityId}")
                         else -> onMessage("Служебный QR: неизвестный тип объекта «${parsed.entityType}»")
                     }
                 } else {

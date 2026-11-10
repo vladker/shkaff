@@ -535,6 +535,10 @@ interface StackDao {
     @Query("SELECT 1 FROM stack WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
     suspend fun existsByCode(code: String, excludeId: String? = null): Int
 
+    // T-016 (US-E2): резолв отсканированного QR стека по его номеру.
+    @Query("SELECT * FROM stack WHERE code = :code AND deleted_at IS NULL LIMIT 1")
+    suspend fun byCode(code: String): StackEntity?
+
     @Query("UPDATE stack SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
     suspend fun softDelete(id: String, now: Long, dev: String)
 

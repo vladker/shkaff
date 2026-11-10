@@ -21,6 +21,10 @@ class StacksRepository(
 
     suspend fun byId(id: String): StackEntity? = dao.byId(id)
 
+    // T-016 (US-E2): находим стек по номеру из отсканированного QR.
+    suspend fun byCode(code: String): StackEntity? =
+        if (code.isBlank()) null else dao.byCode(code)
+
     suspend fun count(): Int = dao.count()
 
     suspend fun members(stackId: String): List<StackMemberEntity> = memberDao.byStack(stackId)

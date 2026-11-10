@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -217,6 +218,11 @@ fun StackDetailScreen(nav: NavController, stackId: String) {
                     }
                 },
                 actions = {
+                    // T-016 (US-E2): выдача QR стека — тот же LabelStudio, что у вещей
+                    // и хранилищ; шаблон хранится отдельно (entity_kind = "stack").
+                    IconButton(onClick = { nav.navigate("label-studio/stack/$stackId/0") }) {
+                        Icon(Icons.Filled.Label, contentDescription = "Этикетка")
+                    }
                     if (Access.can(role, Access.EDIT)) {
                         IconButton(onClick = { showDelete = true }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Удалить стек")
