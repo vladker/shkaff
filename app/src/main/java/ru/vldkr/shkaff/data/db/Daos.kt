@@ -139,6 +139,19 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM item WHERE location_id = :locationId AND deleted_at IS NULL")
     suspend fun countByLocation(locationId: String): Int
 
+    // T-041: мягкое удаление ящика снимает его вещи в «без места» (обещание диалога
+    // удаления). Обновляем updated_at — от него зависит LWW при слиянии (AGENTS.md).
+    @Query("UPDATE item SET location_id = NULL, updated_at = :now, device_last_modified = :dev WHERE location_id = :locId")
+    suspend fun clearLocation(locId: String, now: Long, dev: String): Int
+
+    // Живые вещи ящика — их id возвращаются вызывающему для Undo.
+    @Query("SELECT id FROM item WHERE location_id = :locId AND deleted_at IS NULL")
+    suspend fun idsByLocation(locId: String): List<String>
+
+    // Undo (T-041): возврат вещей в восстановленный ящик.
+    @Query("UPDATE item SET location_id = :locId, updated_at = :now, device_last_modified = :dev WHERE id IN (:ids)")
+    suspend fun assignLocation(ids: List<String>, locId: String, now: Long, dev: String)
+
     @Query(
         "SELECT * FROM item WHERE deleted_at IS NULL AND " +
             "(name LIKE '%' || :q || '%' OR description LIKE '%' || :q || '%' OR code LIKE '%' || :q || '%' OR attributes LIKE '%' || :q || '%') " +

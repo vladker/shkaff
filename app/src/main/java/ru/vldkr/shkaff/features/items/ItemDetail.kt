@@ -86,9 +86,11 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.features.loans.LendDialog
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ItemPhoto
+import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.StatusBadge
 import ru.vldkr.shkaff.ui.components.itemStatus
@@ -120,7 +122,8 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
             val it = Deps.items.byId(itemId)
             item.value = it
             it?.location_id?.let { lid ->
-                val loc = Deps.locations.byId(lid)
+                // T-041: ящик мягко удалён — ссылка «призрак», карта ящика не видна.
+                val loc = Deps.locations.byId(lid)?.takeIf { l -> l.deleted_at == null }
                 if (loc != null) {
                     locationLabel.value = loc.label.ifBlank { loc.name }.ifBlank { "Ящик" }
                     storageName.value = Deps.storages.byId(loc.storage_id)?.name
@@ -181,6 +184,8 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    // T-041: «на месте» только если ящик жив: карта живых ящиков экрана.
+    val liveLocations = LocationMap()
 
     val i = item
     Scaffold(
@@ -273,7 +278,7 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
             }
 
             // Статусы вещи: выдана, срок, место — цветные бейджи как наличие в Ozon
-            val statuses = itemStatuses(i, hasLocation = i.location_id != null, loan = loan)
+            val statuses = itemStatuses(i, hasLocation = LocationPlacement.hasPlace(i.location_id, liveLocations.keys), loan = loan)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(top = 14.dp)
@@ -454,7 +459,7 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                             s,
                             null,
                             { nav.navigate("item/${s.id}") },
-                            status = itemStatus(s, hasLocation = s.location_id != null),
+                            status = itemStatus(s, hasLocation = LocationPlacement.hasPlace(s.location_id, liveLocations.keys)),
                             modifier = Modifier.width(160.dp)
                         )
                     }

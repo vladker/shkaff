@@ -90,6 +90,7 @@ import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.onboarding.OnbStep
 import ru.vldkr.shkaff.domain.onboarding.Onboarding
+import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.util.Expiry
 import java.time.LocalDate
 import ru.vldkr.shkaff.ui.components.EmptyState
@@ -176,15 +177,19 @@ class DashboardVm : ViewModel() {
                 val exp = expiry_date?.let { Expiry.parse(it) } ?: return false
                 return Expiry.daysUntil(exp, today) <= threshold
             }
+            // T-041: ящик считается живым только пока он в живом списке; ссылки на
+            // мягко удалённые ящики («призраки» старых удалений и слияний) — это «без места».
+            val locations = Deps.locations.observeAll().first()
+            val locById = locations.associateBy { it.id }
             fun attentionRank(i: ItemEntity): Int = when {
-                i.location_id == null -> 0
+                !LocationPlacement.hasPlace(i.location_id, locById.keys) -> 0
                 i.code.isBlank() -> 1
                 i.missingRequiredAttrs() -> 2
                 i.needsAttention() -> 3
                 else -> 4
             }
             val orderedItems = items.sortedWith(compareBy({ attentionRank(it) }, { -it.updated_at }))
-            val noLocation = orderedItems.filter { it.location_id == null }
+            val noLocation = orderedItems.filter { !LocationPlacement.hasPlace(it.location_id, locById.keys) }
 
             // ── Метрики «Сводка» ──
             val draftsCount = Deps.drafts.count()
@@ -211,8 +216,6 @@ class DashboardVm : ViewModel() {
             // Свободное место: сумма остатка объёма «внутренних» ящиков с ёмкостью.
             // Ящик внутри ящика не учитывается дважды: считаем только самое внутреннее
             // звено, где задана ёмкость, — его лимит уже покрывает вложенные.
-            val locations = Deps.locations.observeAll().first()
-            val locById = locations.associateBy { it.id }
             fun effLimit(l: LocationEntity): Double? = l.capacity_volume?.let {
                 if (it <= 0) null else if (l.dont_fill_to_brim) it * BRIM_RESERVE_RATIO else it
             }
@@ -558,7 +561,7 @@ fun DashboardScreen(nav: NavController) {
                                 r,
                                 locations[r.location_id]?.displayLabel(),
                                 { nav.navigate("item/${r.id}") },
-                                status = itemStatus(r, hasLocation = r.location_id != null, loan = ui.loansByItem[r.id]),
+                                status = itemStatus(r, hasLocation = LocationPlacement.hasPlace(r.location_id, locations.keys), loan = ui.loansByItem[r.id]),
                                 modifier = Modifier.width(168.dp)
                             )
                         }

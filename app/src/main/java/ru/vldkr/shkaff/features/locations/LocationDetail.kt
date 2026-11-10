@@ -113,13 +113,19 @@ class LocationDetailVm(val locationId: String) : ViewModel() {
         }
     }
 
+    // T-041: вещи, снятые с ящика при его мягком удалении в «без места», — Undo возвращает их.
+    private var detachedItems: List<String> = emptyList()
+
     fun softDelete() {
-        viewModelScope.launch { Deps.locations.softDelete(locationId) }
+        viewModelScope.launch { detachedItems = Deps.locations.softDelete(locationId) }
     }
 
-    // Undo (US-L21): возврат ящика после мягкого удаления.
+    // Undo (US-L21): возврат ящика и его вещей после мягкого удаления.
     fun restore() {
-        viewModelScope.launch { Deps.locations.restore(locationId) }
+        viewModelScope.launch {
+            Deps.locations.restore(locationId, detachedItems)
+            detachedItems = emptyList()
+        }
     }
 }
 

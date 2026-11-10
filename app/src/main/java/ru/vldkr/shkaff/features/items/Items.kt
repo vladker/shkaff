@@ -48,6 +48,7 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.domain.search.ItemMatch
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
@@ -254,7 +255,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(list, key = { it.id }) { it ->
-                        val status = itemStatus(it, hasLocation = it.location_id != null, loan = ui.loansByItem[it.id])
+                        val status = itemStatus(it, hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys), loan = ui.loansByItem[it.id])
                         ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),

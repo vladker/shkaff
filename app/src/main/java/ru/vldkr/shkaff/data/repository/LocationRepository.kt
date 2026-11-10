@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff.data.repository
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import ru.vldkr.shkaff.data.AttrJson
 import ru.vldkr.shkaff.data.db.LocationEntity
@@ -95,16 +96,30 @@ class LocationRepository(
         return input
     }
 
-    suspend fun softDelete(id: String) {
+    // T-041: мягкое удаление ящика в одной транзакции со снятием его вещей в «без места»
+    // (так обещает диалог удаления; иначе вещь — «призрак»: не видна ни в ящике, ни в «без места»).
+    // Возвращает id отцепленных живых вещей — Undo (restore) возвращает их обратно.
+    suspend fun softDelete(id: String): List<String> {
         val e = dao.byId(id)
-        dao.softDelete(id, System.currentTimeMillis(), deviceId())
+        val now = System.currentTimeMillis()
+        val detached = db.itemDao().idsByLocation(id)
+        db.withTransaction {
+            db.itemDao().clearLocation(id, now, deviceId())
+            dao.softDelete(id, now, deviceId())
+        }
         e?.let { Deps.actionLog.log("delete", "location", id, mapOf("name" to it.label.ifBlank { it.name })) }
+        return detached
     }
 
-    // Undo: возврат ящика после мягкого удаления.
-    suspend fun restore(id: String) {
+    // Undo: возврат ящика и (T-041) его вещей. Это восстановление прежнего состояния,
+    // а не новая раскладка — гейт заполненности не применяется.
+    suspend fun restore(id: String, itemIds: List<String> = emptyList()) {
         val e = dao.byId(id)
-        dao.restore(id, System.currentTimeMillis(), deviceId())
+        val now = System.currentTimeMillis()
+        db.withTransaction {
+            dao.restore(id, now, deviceId())
+            if (itemIds.isNotEmpty()) db.itemDao().assignLocation(itemIds, id, now, deviceId())
+        }
         e?.let { Deps.actionLog.log("restore", "location", id, mapOf("name" to it.label.ifBlank { it.name })) }
     }
 
