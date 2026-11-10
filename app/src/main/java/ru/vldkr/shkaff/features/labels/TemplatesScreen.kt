@@ -129,7 +129,33 @@ class TemplatesVm : ViewModel() {
             val now = System.currentTimeMillis()
             val dev = Deps.deviceId
             val id = f.id ?: newId()
-            val t = LabelTemplateEntity(
+            val dao = Deps.db.labelTemplateDao()
+            val existing = dao.byId(id)
+            // T-045: форма покрывает только часть полей. У существующего шаблона
+            // (upsert — REPLACE) остальные поля обязаны переписаться из сохранённой
+            // записи, иначе правка имени зонального шаблона молча возвращает
+            // layout_mode=classic, qr_count=1, qr_scale=1, обнуляет смещения на
+            // листе, label_attrs и logo_path.
+            val t = if (existing != null) existing.copy(
+                name = f.name.trim(),
+                format = f.format,
+                width_mm = w,
+                height_mm = h,
+                margin_mm = m,
+                show_text = f.showText,
+                text_content = f.textContent,
+                text_position = f.textPosition,
+                show_number = f.showNumber,
+                app_link = f.appLink,
+                font_size = fs,
+                text_color = f.textColor,
+                bg_color = f.bgColor,
+                invert = f.invert,
+                quiet_zone = f.quietZone,
+                updated_at = now,
+                deleted_at = null,
+                device_last_modified = dev
+            ) else LabelTemplateEntity(
                 id = id,
                 name = f.name.trim(),
                 format = f.format,
@@ -145,14 +171,13 @@ class TemplatesVm : ViewModel() {
                 text_color = f.textColor,
                 bg_color = f.bgColor,
                 invert = f.invert,
-                logo_path = null,
                 quiet_zone = f.quietZone,
-                created_at = Deps.db.labelTemplateDao().byId(id)?.created_at ?: now,
+                created_at = now,
                 updated_at = now,
                 deleted_at = null,
                 device_last_modified = dev
             )
-            Deps.db.labelTemplateDao().upsert(t)
+            dao.upsert(t)
             form = null
         }
     }
