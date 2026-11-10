@@ -49,7 +49,12 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ErrorState
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.rememberRole
+import ru.vldkr.shkaff.ui.state.ListFeed
+import ru.vldkr.shkaff.ui.state.UiState
+import ru.vldkr.shkaff.ui.state.mergeFeeds
 import ru.vldkr.shkaff.ui.theme.Ozon
 
 class StoragesVm : ViewModel() {
@@ -62,7 +67,10 @@ class StoragesVm : ViewModel() {
         val rows: List<Row> = emptyList(),
         val locationsCount: Map<String, Int> = emptyMap(),
         val usage: Map<String, Usage> = emptyMap(),
-        val query: String = ""
+        val query: String = "",
+        // T-040: «Хранилищ пока нет» враньё и до первой эмиссии БД, и после сбоя подписки.
+        val loading: Boolean = true,
+        val error: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
@@ -70,27 +78,52 @@ class StoragesVm : ViewModel() {
     private val locs = MutableStateFlow<List<ru.vldkr.shkaff.data.db.LocationEntity>>(emptyList())
     private val items = MutableStateFlow<List<ru.vldkr.shkaff.data.db.ItemEntity>>(emptyList())
 
+    private val storagesFeed = ListFeed(viewModelScope) { Deps.storages.observeAll() }
+    private val locationsFeed = ListFeed(viewModelScope) { Deps.locations.observeAll() }
+    private val itemsFeed = ListFeed(viewModelScope) { Deps.items.observeAll() }
+    private val feeds = listOf(storagesFeed, locationsFeed, itemsFeed)
+
     init {
+        feeds.forEach { it.start() }
         viewModelScope.launch {
-            Deps.storages.observeAll().collect { l ->
-                all.value = l
-                ui.value = ui.value.copy(rows = flatten(l))
-                recomputeUsage()
+            mergeFeeds(feeds).collect { g ->
+                ui.value = ui.value.copy(
+                    loading = g is UiState.Loading,
+                    error = (g as? UiState.Error)?.message
+                )
             }
         }
         viewModelScope.launch {
-            Deps.locations.observeAll().collect { l ->
-                locs.value = l
-                ui.value = ui.value.copy(locationsCount = l.groupBy { it.storage_id }.mapValues { e -> e.value.size })
-                recomputeUsage()
+            storagesFeed.state.collect { s ->
+                if (s is UiState.Success) {
+                    all.value = s.data
+                    ui.value = ui.value.copy(rows = flatten(s.data))
+                    recomputeUsage()
+                }
             }
         }
         viewModelScope.launch {
-            Deps.items.observeAll().collect { l ->
-                items.value = l
-                recomputeUsage()
+            locationsFeed.state.collect { s ->
+                if (s is UiState.Success) {
+                    locs.value = s.data
+                    ui.value = ui.value.copy(locationsCount = s.data.groupBy { it.storage_id }.mapValues { e -> e.value.size })
+                    recomputeUsage()
+                }
             }
         }
+        viewModelScope.launch {
+            itemsFeed.state.collect { s ->
+                if (s is UiState.Success) {
+                    items.value = s.data
+                    recomputeUsage()
+                }
+            }
+        }
+    }
+
+    /** «Повторить» в error-состоянии: переподписка ко всем потокам экрана. */
+    fun retry() {
+        feeds.forEach { it.retry() }
     }
 
     // Суммируем по каждому хранилищу ёмкость его ящиков и занятое объёмом вещей.
@@ -185,7 +218,13 @@ fun StoragesScreen(nav: NavController) {
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (ui.rows.isEmpty()) {
+            // T-040: сбой подписки и загрузка — отдельные ветки, «пока нет» только по факту пустоты.
+            val error = ui.error
+            if (error != null) {
+                ErrorState(error) { vm.retry() }
+            } else if (ui.loading) {
+                ListSkeleton(rows = 6)
+            } else if (ui.rows.isEmpty()) {
                 val canCreate = Access.can(role, Access.CREATE)
                 EmptyState(
                     "Хранилищ пока нет.\nДобавьте первое: шкаф, стеллаж, комод. Хранилища можно вкладывать друг в друга, потом — ящики и вещи внутри.",

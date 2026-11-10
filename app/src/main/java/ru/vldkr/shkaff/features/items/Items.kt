@@ -50,9 +50,13 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.search.ItemMatch
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.components.itemStatus
+import ru.vldkr.shkaff.ui.state.ListFeed
+import ru.vldkr.shkaff.ui.state.UiState
+import ru.vldkr.shkaff.ui.state.mergeFeeds
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.LocationMap
@@ -68,10 +72,19 @@ class ItemsVm : ViewModel() {
         val tagOptions: List<String> = emptyList(),
         val loansByItem: Map<String, LoanEntity> = emptyMap(),
         // US-O8: true до первой выдачи списка — показываем skeleton.
-        val loading: Boolean = true
+        val loading: Boolean = true,
+        // T-040: сбой подписки (Room/DAO) — текст причины на экране + «Повторить».
+        val error: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
+
+    // T-040: подписки идут через ListFeed, а не голым collect: без catch упавший поток
+    // молча умирал, loading оставался true и экран крутил skeleton вечно.
+    private val itemsFeed = ListFeed(viewModelScope) { Deps.items.observeAll() }
+    private val tagsFeed = ListFeed(viewModelScope) { Deps.tags.observeAll() }
+    private val loansFeed = ListFeed(viewModelScope) { Deps.loans.observeActive() }
+    private val feeds = listOf(itemsFeed, tagsFeed, loansFeed)
 
     val list = ui.map { u ->
         val t = u.query.trim()
@@ -84,21 +97,36 @@ class ItemsVm : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        feeds.forEach { it.start() }
+        // T-040: общий гейт подписок экрана: loading пока хоть одна грузится, error — если любая упала.
         viewModelScope.launch {
-            Deps.items.observeAll().collect {
-                ui.value = ui.value.copy(allItems = it, loading = false)
+            mergeFeeds(feeds).collect { g ->
+                ui.value = ui.value.copy(
+                    loading = g is UiState.Loading,
+                    error = (g as? UiState.Error)?.message
+                )
             }
         }
         viewModelScope.launch {
-            Deps.tags.observeAll().collect { tags ->
-                ui.value = ui.value.copy(tagOptions = tags.map { e -> e.name }.distinct().sorted())
+            itemsFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(allItems = s.data) }
+        }
+        viewModelScope.launch {
+            tagsFeed.state.collect { s ->
+                if (s is UiState.Success) ui.value = ui.value.copy(tagOptions = s.data.map { e -> e.name }.distinct().sorted())
             }
         }
         viewModelScope.launch {
-            Deps.loans.observeActive().collect { loans ->
-                ui.value = ui.value.copy(loansByItem = loans.filter { it.entity_type == "item" }.associateBy { it.entity_id })
+            loansFeed.state.collect { s ->
+                if (s is UiState.Success) {
+                    ui.value = ui.value.copy(loansByItem = s.data.filter { it.entity_type == "item" }.associateBy { it.entity_id })
+                }
             }
         }
+    }
+
+    /** «Повторить» в error-состоянии: переподписка ко всем потокам экрана. */
+    fun retry() {
+        feeds.forEach { it.retry() }
     }
 }
 
@@ -201,7 +229,11 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     }
                 }
             }
-            if (ui.loading) {
+            // T-040: сначала сбой подписки (он важнее «пусто»), потом загрузка, потом пустота.
+            val error = ui.error
+            if (error != null) {
+                ErrorState(error) { vm.retry() }
+            } else if (ui.loading) {
                 ListSkeleton(rows = 6)
             } else if (list.isEmpty()) {
                 if (queryText.isBlank()) {

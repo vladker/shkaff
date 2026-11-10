@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -107,6 +108,43 @@ fun EmptyState(
                         .padding(horizontal = 8.dp)
                 ) {
                     Text(actionLabel)
+                }
+            }
+        }
+    }
+}
+
+// T-040: сбой подписки (Room/DAO) — не пустой список: показываем причину и «Повторить».
+@Composable
+fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+            if (onRetry != null) {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Text("Повторить")
                 }
             }
         }
@@ -663,9 +701,5 @@ fun ListSkeleton(rows: Int = 5, modifier: Modifier = Modifier) {
     }
 }
 
-// US-O8: единое состояние экрана (Loading | Success | Error) вместо набора MutableStateFlow.
-sealed interface UiState<out T> {
-    data object Loading : UiState<Nothing>
-    data class Error(val message: String) : UiState<Nothing>
-    data class Success<T>(val data: T) : UiState<T>
-}
+// T-040: sealed UiState(Loading|Error|Success) переехал в ui/state/ListFeed.kt — там он
+// реально используется подписками списков (был объявлен и не применялся нигде).

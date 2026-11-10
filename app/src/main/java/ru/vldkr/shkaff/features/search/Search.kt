@@ -48,8 +48,13 @@ import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.search.ItemMatch
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ErrorState
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.displayLabel
+import ru.vldkr.shkaff.ui.state.ListFeed
+import ru.vldkr.shkaff.ui.state.UiState
+import ru.vldkr.shkaff.ui.state.mergeFeeds
 import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.ScanBus
 
@@ -60,7 +65,10 @@ class SearchVm : ViewModel() {
         val items: List<ItemEntity> = emptyList(),
         val locations: List<LocationEntity> = emptyList(),
         val storages: List<StorageEntity> = emptyList(),
-        val query: String = ""
+        val query: String = "",
+        // T-040: без этих флагов до первой эмиссии БД экран врал «Ничего не найдено».
+        val loading: Boolean = true,
+        val error: String? = null
     )
 
     data class Results(
@@ -70,6 +78,13 @@ class SearchVm : ViewModel() {
     )
 
     val ui = MutableStateFlow(Ui())
+
+    // T-040: подписки через ListFeed — до первой эмиссии loading (skeleton), сбой потока
+    // (Room/DAO) превращается в error вместо «пустого» списка.
+    private val itemsFeed = ListFeed(viewModelScope) { Deps.items.observeAll() }
+    private val locationsFeed = ListFeed(viewModelScope) { Deps.locations.observeAll() }
+    private val storagesFeed = ListFeed(viewModelScope) { Deps.storages.observeAll() }
+    private val feeds = listOf(itemsFeed, locationsFeed, storagesFeed)
 
     val results = ui.map { u ->
         val t = u.query.trim()
@@ -86,9 +101,29 @@ class SearchVm : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Results())
 
     init {
-        viewModelScope.launch { Deps.items.observeAll().collect { ui.value = ui.value.copy(items = it) } }
-        viewModelScope.launch { Deps.locations.observeAll().collect { ui.value = ui.value.copy(locations = it) } }
-        viewModelScope.launch { Deps.storages.observeAll().collect { ui.value = ui.value.copy(storages = it) } }
+        feeds.forEach { it.start() }
+        viewModelScope.launch {
+            mergeFeeds(feeds).collect { g ->
+                ui.value = ui.value.copy(
+                    loading = g is UiState.Loading,
+                    error = (g as? UiState.Error)?.message
+                )
+            }
+        }
+        viewModelScope.launch {
+            itemsFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(items = s.data) }
+        }
+        viewModelScope.launch {
+            locationsFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(locations = s.data) }
+        }
+        viewModelScope.launch {
+            storagesFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(storages = s.data) }
+        }
+    }
+
+    /** «Повторить» в error-состоянии: переподписка ко всем потокам экрана. */
+    fun retry() {
+        feeds.forEach { it.retry() }
     }
 }
 
@@ -97,6 +132,7 @@ class SearchVm : ViewModel() {
 fun SearchScreen(nav: NavController) {
     val vm: SearchVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val results by vm.results.collectAsState()
+    val ui by vm.ui.collectAsState()
     var queryText by remember { mutableStateOf(vm.ui.value.query) }
     val storageNames = remember(results.storages) { results.storages.associateBy { it.id } }
     // Scan-first (PLAN_ONBOARDING П1.1): скан с камеры/диплинка/HID прямо здесь становится запросом.
@@ -153,13 +189,20 @@ fun SearchScreen(nav: NavController) {
                 )
             )
             val q = queryText.trim()
-            if (q.isEmpty()) {
+            // T-040: сбой подписки и загрузка — отдельные ветки; «Ничего не найдено» только
+            // когда данные реально пришли и совпадений нет.
+            val error = ui.error
+            if (error != null) {
+                ErrorState(error) { vm.retry() }
+            } else if (q.isEmpty()) {
                 // Крупное скан-действие вместо голой подсказки: скан = глагол (WMS-подход).
                 EmptyState(
                     "Введите название, код, EAN или номер — поищем по всем сущностям.",
                     actionLabel = "Сканировать",
                     onAction = { nav.navigate("scan") }
                 )
+            } else if (ui.loading) {
+                ListSkeleton(rows = 5)
             } else if (results.items.isEmpty() && results.locations.isEmpty() && results.storages.isEmpty()) {
                 EmptyState("Ничего не найдено по «$q».")
             } else {

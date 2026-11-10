@@ -57,11 +57,16 @@ import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ItemPhoto
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.PillBadge
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.rememberRole
+import ru.vldkr.shkaff.ui.state.ListFeed
+import ru.vldkr.shkaff.ui.state.UiState
+import ru.vldkr.shkaff.ui.state.mergeFeeds
 import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.Expiry
 import java.time.LocalDate
@@ -72,10 +77,17 @@ class ProductsVm : ViewModel() {
 
     data class Ui(
         val allItems: List<ItemEntity> = emptyList(),
-        val query: String = ""
+        val query: String = "",
+        // T-040: «Продуктов пока нет» показывалось и до первой эмиссии БД, и после сбоя
+        // подписки — теперь загрузка и сбой это отдельные ветки.
+        val loading: Boolean = true,
+        val error: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
+
+    private val itemsFeed = ListFeed(viewModelScope) { Deps.items.observeAll() }
+    private val feeds = listOf(itemsFeed)
 
     val list = ui.map { u ->
         val t = u.query.trim()
@@ -93,9 +105,23 @@ class ProductsVm : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        feeds.forEach { it.start() }
         viewModelScope.launch {
-            Deps.items.observeAll().collect { ui.value = ui.value.copy(allItems = it) }
+            mergeFeeds(feeds).collect { g ->
+                ui.value = ui.value.copy(
+                    loading = g is UiState.Loading,
+                    error = (g as? UiState.Error)?.message
+                )
+            }
         }
+        viewModelScope.launch {
+            itemsFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(allItems = s.data) }
+        }
+    }
+
+    /** «Повторить» в error-состоянии: переподписка к потоку списка. */
+    fun retry() {
+        feeds.forEach { it.retry() }
     }
 }
 
@@ -104,6 +130,7 @@ class ProductsVm : ViewModel() {
 fun ProductsScreen(nav: NavController) {
     val vm: ProductsVm = androidx.lifecycle.viewmodel.compose.viewModel()
     val list by vm.list.collectAsState()
+    val ui by vm.ui.collectAsState()
     val locations = LocationMap()
     var queryText by remember { mutableStateOf(vm.ui.value.query) }
     val role = rememberRole()
@@ -159,7 +186,13 @@ fun ProductsScreen(nav: NavController) {
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (list.isEmpty()) {
+            // T-040: сбой подписки и загрузка — отдельные ветки, «пока нет» только по факту пустоты.
+            val error = ui.error
+            if (error != null) {
+                ErrorState(error) { vm.retry() }
+            } else if (ui.loading) {
+                ListSkeleton(rows = 6)
+            } else if (list.isEmpty()) {
                 if (queryText.isBlank()) {
                     val canAdd = Access.can(role, Access.CREATE)
                     EmptyState(
