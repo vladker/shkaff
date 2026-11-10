@@ -83,6 +83,7 @@ import ru.vldkr.shkaff.domain.recommend.RecommendCandidate
 import ru.vldkr.shkaff.domain.recommend.RecommendLlm
 import ru.vldkr.shkaff.domain.vision.ItemVision
 import ru.vldkr.shkaff.domain.recommend.StorageSuggestion
+import ru.vldkr.shkaff.domain.scan.ScanPrefill
 import ru.vldkr.shkaff.util.Expiry
 import ru.vldkr.shkaff.ui.components.AttrFields
 import ru.vldkr.shkaff.ui.components.CategoryPicker
@@ -194,9 +195,11 @@ class ItemFormVm(
         }
         if (itemId == null) {
             locationId = preselectLocationId
-            val scanned = ScanBus.lastCode
+            val scanned = ScanBus.lastCode?.trim()
             if (scanned != null) {
-                code = scanned
+                // T-010: товарный штрихкод (числовые 8–13 разрядов) в «Код / номер» —
+                // и умный поиск товара, и «Найти» по штрихкоду не заводятся; ean-подобное идёт в EAN.
+                if (ScanPrefill.isEanLike(scanned)) ean = scanned else code = scanned
                 ScanBus.lastCode = null
             }
         }
