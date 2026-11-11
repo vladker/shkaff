@@ -65,12 +65,7 @@ class ExportVm : ViewModel() {
             error.value = null
             try {
                 val sheet = sheet(kind)
-                ctx.contentResolver.openOutputStream(uri)?.use { os ->
-                    when (fmt) {
-                        Fmt.XLSX -> sheet.toXlsx(os)
-                        Fmt.CSV -> os.write(sheet.csvBytes())
-                    }
-                } ?: throw IllegalStateException("Не удалось открыть файл для записи")
+                writeToUri(ctx, uri, sheet, fmt)
                 message.value = "«${sheet.title}» сохранено (${fmt.label()})"
             } catch (e: Exception) {
                 error.value = "Ошибка экспорта: ${e.message}"
@@ -79,6 +74,18 @@ class ExportVm : ViewModel() {
             }
         }
     }
+
+    // Экспорт через SAF: OOXML-сериализация и запись в поток уходят на Dispatchers.IO —
+    // на большой базе файл готовится секунды, на главном потоке UI подвисает (T-029).
+    internal suspend fun writeToUri(ctx: Context, uri: Uri, sheet: Sheet, fmt: Fmt) =
+        withContext(Dispatchers.IO) {
+            ctx.contentResolver.openOutputStream(uri)?.use { os ->
+                when (fmt) {
+                    Fmt.XLSX -> sheet.toXlsx(os)
+                    Fmt.CSV -> os.write(sheet.csvBytes())
+                }
+            } ?: throw IllegalStateException("Не удалось открыть файл для записи")
+        }
 
     fun share(ctx: Context, kind: Kind, fmt: Fmt) {
         viewModelScope.launch {
