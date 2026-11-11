@@ -243,6 +243,7 @@ fun ItemWizardScreen(nav: NavController) {
                     },
                     onPickLocation = { showLocationPicker = true },
                     onScanBox = { showScanBox = true },
+                    onPrintLocationLabel = { id -> nav.navigate("label-studio/location/$id/0") },
                     onBack = { step = WStep.LABEL },
                     onSave = {
                         vm.save { id ->
@@ -783,6 +784,22 @@ private fun LabelStep(
     }
 }
 
+// П1.3: подсказка «распечатать этикетку ящика» для шага «QR ящика».
+// Возвращает id ящика, которому нужна этикетка (иначе шаг сканирования бесполезен):
+// выбранный ящик ещё не маркирован — подсказываем именно его; ящик не выбран
+// и ни один ещё не печатали — подсказываем первый. Пустой список — не здесь
+// (сверху висит предупреждение П0.4 про отсутствие ящиков).
+internal fun qrPrintHintLocationId(
+    locations: List<ru.vldkr.shkaff.data.db.LocationEntity>,
+    selectedId: String?
+): String? {
+    if (locations.isEmpty()) return null
+    val selected = selectedId?.let { id -> locations.firstOrNull { it.id == id } }
+    if (selected != null && selected.labelled_at == null) return selected.id
+    if (locations.none { it.labelled_at != null }) return locations.first().id
+    return null
+}
+
 @Composable
 private fun StorageStep(
     vm: ItemFormVm,
@@ -793,6 +810,7 @@ private fun StorageStep(
     onAiRec: () -> Unit,
     onPickLocation: () -> Unit,
     onScanBox: () -> Unit,
+    onPrintLocationLabel: (String) -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -827,6 +845,22 @@ private fun StorageStep(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = onScanBox, modifier = Modifier.weight(1f)) { Text("QR ящика") }
         OutlinedButton(onClick = onAiRec, enabled = !aiRecBusy, modifier = Modifier.weight(1f)) { Text(if (aiRecBusy) "Думаем…" else "ИИ-подсказка") }
+    }
+    // П1.3: пока у ящиков нет напечатанных QR, шаг «QR ящика» бесполезен —
+    // подсказываем распечатать этикетку и уводим в LabelStudio ящика.
+    qrPrintHintLocationId(locations, vm.locationId)?.let { hintId ->
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (hintId == vm.locationId)
+                "У выбранного ящика ещё нет напечатанной QR-этикетки — сканировать нечего."
+            else
+                "У ящиков ещё нет напечатанных QR — сканировать код ящика нечего.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = { onPrintLocationLabel(hintId) }) {
+            Text("Распечатать этикетку ящика", color = MaterialTheme.colorScheme.primary)
+        }
     }
     scanMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     if (aiRecs.isNotEmpty()) {
