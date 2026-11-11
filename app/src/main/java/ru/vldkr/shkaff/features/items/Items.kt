@@ -50,6 +50,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.domain.search.ItemMatch
+import ru.vldkr.shkaff.domain.tags.TagChipRow
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
@@ -72,6 +73,8 @@ class ItemsVm : ViewModel() {
         val query: String = "",
         val tagFilter: String = "",
         val tagOptions: List<String> = emptyList(),
+        // T-039: чипы ряда — словарь + активный тег (которого может в словаре не быть), см. TagChipRow.
+        val tagChips: List<String> = emptyList(),
         val loansByItem: Map<String, LoanEntity> = emptyMap(),
         // US-O8: true до первой выдачи списка — показываем skeleton.
         val loading: Boolean = true,
@@ -114,7 +117,10 @@ class ItemsVm : ViewModel() {
         }
         viewModelScope.launch {
             tagsFeed.state.collect { s ->
-                if (s is UiState.Success) ui.value = ui.value.copy(tagOptions = s.data.map { e -> e.name }.distinct().sorted())
+                if (s is UiState.Success) {
+                    val names = s.data.map { e -> e.name }.distinct().sorted()
+                    ui.value = ui.value.copy(tagOptions = names, tagChips = TagChipRow.row(names, ui.value.tagFilter))
+                }
             }
         }
         viewModelScope.launch {
@@ -130,6 +136,14 @@ class ItemsVm : ViewModel() {
     fun retry() {
         feeds.forEach { it.retry() }
     }
+
+    /** T-039: тег-фильтр ставит и роут items/<tag> (дашборд ведёт по тегам вещей), и чипы;
+     * row чипов считается независимо от словаря — активный тег виден и снимается всегда. */
+    fun setTagFilter(tag: String) {
+        ui.value = ui.value.copy(tagFilter = tag, tagChips = TagChipRow.row(ui.value.tagOptions, tag))
+    }
+
+    fun clearTagFilter() = setTagFilter("")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,7 +159,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
     var activeTag by remember { mutableStateOf(effectiveTag) }
     val role = rememberRole()
     LaunchedEffect(Unit) {
-        if (effectiveTag.isNotEmpty()) vm.ui.value = vm.ui.value.copy(tagFilter = effectiveTag)
+        if (effectiveTag.isNotEmpty()) vm.setTagFilter(effectiveTag)
         ScanBus.lastCode?.let { code ->
             queryText = code
             vm.ui.value = vm.ui.value.copy(query = code)
@@ -158,7 +172,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
             ScanBus.lastCode = null
         }
     }
-    LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.ui.value = vm.ui.value.copy(tagFilter = effectiveTag) }
+    LaunchedEffect(effectiveTag) { if (effectiveTag.isNotEmpty()) vm.setTagFilter(effectiveTag) }
 
     Scaffold(
         topBar = {
@@ -204,31 +218,31 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (ui.tagOptions.isNotEmpty()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
-                        .horizontalScroll(rememberScrollState())
-                ) {
+            // T-039: ряд рендерится всегда (без гейта по словарю): минимум чип «Все»,
+            // а при активном фильтре из роута — ещё и чип тега, даже нетого в словаре.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                FilterChip(
+                    selected = activeTag.isEmpty(),
+                    onClick = { activeTag = ""; vm.clearTagFilter() },
+                    label = { Text("Все") },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                ui.tagChips.forEach { t ->
                     FilterChip(
-                        selected = activeTag.isEmpty(),
-                        onClick = { activeTag = ""; vm.ui.value = vm.ui.value.copy(tagFilter = "") },
-                        label = { Text("Все") },
+                        selected = activeTag.equals(t, ignoreCase = true),
+                        onClick = {
+                            val next = if (activeTag.equals(t, ignoreCase = true)) "" else t
+                            activeTag = next
+                            vm.setTagFilter(next)
+                        },
+                        label = { Text(t) },
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    ui.tagOptions.forEach { t ->
-                        FilterChip(
-                            selected = activeTag.equals(t, ignoreCase = true),
-                            onClick = {
-                                val next = if (activeTag.equals(t, ignoreCase = true)) "" else t
-                                activeTag = next
-                                vm.ui.value = vm.ui.value.copy(tagFilter = next)
-                            },
-                            label = { Text(t) },
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                    }
                 }
             }
             // T-040: сначала сбой подписки (он важнее «пусто»), потом загрузка, потом пустота.
@@ -247,7 +261,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                         if (filterActive) "Под фильтр «${ui.tagFilter}» ничего нет." else "Список пуст.",
                         actionLabel = EmptyStateCta.itemsEmpty(filterActive, canAdd),
                         onAction = if (filterActive) {
-                            { activeTag = ""; vm.ui.value = vm.ui.value.copy(tagFilter = "") }
+                            { activeTag = ""; vm.clearTagFilter() }
                         } else if (canAdd) {
                             { nav.navigate("item-wizard") }
                         } else null
