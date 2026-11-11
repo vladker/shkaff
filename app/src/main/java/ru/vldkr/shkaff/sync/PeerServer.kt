@@ -19,7 +19,8 @@ import java.net.Socket
 //   HELLO <deviceId>   → OK <deviceId сервера>
 //   PULL <deviceId>    → DATA <n> + n байт JSON | DENIED
 //   PUSH <deviceId> <n> (n байт JSON) → OK <added> <changed> <deleted> | CONFLICTS <n> | DENIED
-// Доверие проверяется на стороне сервера: пиру отдаётся только его область (PeerScope),
+// Доверие проверяется на стороне сервера в обе стороны: пиру отдаётся только его
+// область (PeerScope), и принятое от пира тоже обрезается к его области (T-065);
 // PUSH принимают только роли с правом добавления.
 
 object PeerServer {
@@ -118,7 +119,11 @@ object PeerServer {
                         }
                         val len = parts.getOrElse(2) { "0" }.toIntOrNull() ?: 0
                         val bytes = readExact(inStream, len)
-                        val remote = Backup.fromJson(bytes.toString(Charsets.UTF_8))
+                        val remoteRaw = Backup.fromJson(bytes.toString(Charsets.UTF_8))
+                        // T-065: PUSH обрезается к области доверия так же, как PULL, —
+                        // иначе пир со scope=some добавляет и перезаписывает у нас
+                        // хранилища, которые ему никогда не выдавались.
+                        val remote = PeerScope.apply(remoteRaw, trust)
                         val local = runBlocking { Backup.buildInput(Deps.db) }
                         val result = MergeEngine.merge(local, remote, remoteWins = true)
                         val sanitized = MergeSanitizer.sanitize(result.merged)

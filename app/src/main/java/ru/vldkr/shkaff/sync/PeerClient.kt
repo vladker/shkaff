@@ -83,16 +83,19 @@ object PeerClient {
     }
 
     // Чтение строки побайтно (BufferedReader съел бы байты следующего кадра).
+    // Строку обрезаем с обоих концов: сервер пишет кадр «DENIED\n», а сравнение
+    // line == "DENIED" с висячим переводом строки никогда не срабатывало
+    // (отказ роли превращался в PeerException «Пир ответил: DENIED»).
     private fun readLine(sock: Socket): String? {
         val inStream = sock.getInputStream()
         val buf = ByteArrayOutputStream()
         while (true) {
             val b = inStream.read()
-            if (b == -1) return buf.size().let { if (it > 0) buf.toString(Charsets.UTF_8) else null }
+            if (b == -1) return buf.size().let { if (it > 0) buf.toString(Charsets.UTF_8).trim() else null }
             buf.write(b)
             if (b == '\n'.code) break
         }
-        return buf.toString(Charsets.UTF_8).trimEnd('\r')
+        return buf.toString(Charsets.UTF_8).trim()
     }
 
     private fun readExact(sock: Socket, len: Int): ByteArray {
