@@ -13,12 +13,15 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.lifecycle.Observer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,6 +87,8 @@ import ru.vldkr.shkaff.data.db.StackEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.ActiveRole
+import ru.vldkr.shkaff.domain.camera.CamState
+import ru.vldkr.shkaff.domain.camera.CameraInitTracker
 import ru.vldkr.shkaff.domain.actions.ActionCode
 import ru.vldkr.shkaff.domain.actions.Relocation
 import ru.vldkr.shkaff.domain.actions.RelocationFlow
@@ -663,17 +669,49 @@ fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
     }
-    val executor = remember { Executors.newSingleThreadExecutor() }
     val enabledRef = remember { mutableStateOf(enabled) }
     enabledRef.value = enabled
     val onDetectedRef = remember { mutableStateOf(onDetected) }
     onDetectedRef.value = onDetected
 
-    DisposableEffect(Unit) {
+    // T-012 (US-I5): сбой камеры — не «молча чёрное превью»: машина состояний из
+    // domain/camera, текст ошибки поверх превью и «Повторить» = повторная
+    // инициализация без перезапуска приложения.
+    val tracker = remember { CameraInitTracker() }
+    var camState by remember { mutableStateOf<CamState>(tracker.state) }
+    var initTick by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(initTick) {
+        tracker.attempt()
+        camState = tracker.state
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        // Экзекьютор новый на каждую попытку: старый гасится в onDispose, иначе
+        // после «Повторить» анализатор молча умер бы на выключенном экзекьюторе.
+        val executor = Executors.newSingleThreadExecutor()
+        var boundCamera: Camera? = null
+        val stateObs = Observer<CameraState> { st ->
+            // Рантайм: камеру отобрали (eviction) или служба камеры умерла —
+            // возвращаемся в состояние ошибки с тем же текстовым оверлеем.
+            st.error?.let { err ->
+                // StateError — не Throwable; переводим код отказа в обычную формулировку
+                // и отдаём общей карте текстов из domain/camera.
+                val reason = when (err.code) {
+                    CameraState.ERROR_MAX_CAMERAS_IN_USE -> "Достигнут максимум одновременно используемых камер (max cameras)"
+                    CameraState.ERROR_CAMERA_IN_USE -> "Камеру забрало другое приложение (camera in use)"
+                    CameraState.ERROR_CAMERA_DISABLED -> "Камера отключена политикой устройства (camera disabled)"
+                    CameraState.ERROR_CAMERA_FATAL_ERROR -> "Служба камеры вышла из строя (camera service disconnected)"
+                    CameraState.ERROR_CAMERA_REMOVED -> "Камера отключена/удалена (no camera present)"
+                    CameraState.ERROR_DO_NOT_DISTURB_MODE_ENABLED -> "Камера недоступна из-за режима «Не беспокоить»"
+                    else -> "Камера принудительно остановлена (code=${err.code})"
+                }
+                tracker.fail(IllegalStateException(reason))
+                camState = tracker.state
+            }
+        }
         scope.launch {
             runCatching {
                 val provider = ProcessCameraProvider.getInstance(context).get()
+                provider.unbindAll()
                 analysis.setAnalyzer(executor) { image: ImageProxy ->
                     try {
                         if (!enabledRef.value) return@setAnalyzer
@@ -690,18 +728,46 @@ fun ScanCameraPreview(enabled: Boolean, onDetected: (String) -> Unit) {
                     }
                 }
                 preview.surfaceProvider = previewView.surfaceProvider
-                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                val cam = provider.bindToLifecycle(
+                    lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis
+                )
+                boundCamera = cam
+                cam.cameraInfo.cameraState.observeForever(stateObs)
             }
+                .onSuccess {
+                    tracker.ready()
+                    camState = tracker.state
+                }
+                .onFailure {
+                    tracker.fail(it)
+                    camState = tracker.state
+                }
         }
         onDispose {
             scope.cancel()
+            runCatching { boundCamera?.cameraInfo?.cameraState?.removeObserver(stateObs) }
             runCatching { analysis.clearAnalyzer() }
             executor.shutdown()
         }
     }
 
-    AndroidView(
-        factory = { previewView },
-        modifier = Modifier.fillMaxSize()
-    )
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.fillMaxSize()
+        )
+        val st = camState
+        if (st is CamState.Failed) {
+            Card(Modifier.align(Alignment.Center).padding(24.dp)) {
+                Column(
+                    Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(st.message, style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = { initTick++ }) { Text("Повторить") }
+                }
+            }
+        }
+    }
 }
