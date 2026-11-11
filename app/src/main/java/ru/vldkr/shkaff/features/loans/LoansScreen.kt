@@ -40,6 +40,7 @@ import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.ActiveRole
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.util.formatDate
@@ -114,7 +115,15 @@ fun LoansScreen(nav: NavController) {
                 )
             }
             if (ui.loans.isEmpty()) {
-                item { EmptyState("Нет активных выдач.") }
+                // П1.4: один CTA — выдача начинается с карточки вещи (US-D3), туда и ведём.
+                val ctaLabel = EmptyStateCta.loansEmpty(canManage)
+                item {
+                    EmptyState(
+                        "Нет активных выдач.\nВыдачу оформляют карточки вещи и хранилища: «Выдать временно».",
+                        actionLabel = ctaLabel,
+                        onAction = if (ctaLabel != null) { { nav.navigate("items/0") } } else null
+                    )
+                }
             } else {
                 items(ui.loans, key = { it.id }) { l ->
                     val overdue = l.due_at != null && l.due_at < now

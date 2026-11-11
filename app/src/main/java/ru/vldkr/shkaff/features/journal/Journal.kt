@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ActionLogEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.util.formatDate
 
@@ -136,7 +137,19 @@ fun JournalScreen(nav: NavController) {
             }
             LazyColumn(Modifier.fillMaxSize()) {
                 if (ui.entries.isEmpty()) {
-                    item { EmptyState("Журнал пуст.\nДействия начнут записываться после первого изменения.") }
+                    item {
+                        // П1.4: под фильтром журнал не пуст — пуст срез; CTA снимает фильтр.
+                        val filterActive = ui.filter != null
+                        EmptyState(
+                            if (filterActive) "Под этот фильтр записей нет." else "Журнал пуст.\nДействия начнут записываться после первого изменения.",
+                            actionLabel = EmptyStateCta.journalEmpty(filterActive),
+                            onAction = if (filterActive) {
+                                { vm.setFilter(null) }
+                            } else {
+                                { nav.navigate("item-wizard") }
+                            }
+                        )
+                    }
                 } else {
                     items(ui.entries, key = { it.id }) { e ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {

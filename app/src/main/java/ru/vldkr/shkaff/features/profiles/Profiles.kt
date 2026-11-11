@@ -67,6 +67,8 @@ import ru.vldkr.shkaff.data.db.UserEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
+import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.theme.Ozon
@@ -270,12 +272,13 @@ fun ProfilesScreen(nav: NavController) {
 
             item { SectionTitle("Члены семьи") }
             if (ui.users.isEmpty()) {
+                // П1.4: пустой список профилей — один CTA «создать профиль» (только для админа).
+                val ctaLabel = EmptyStateCta.profilesEmpty(isAdmin)
                 item {
-                    androidx.compose.material3.Text(
-                        "Добавьте профили членов семьи — у каждого своя роль и права.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Ozon.TextSecondary,
-                        modifier = Modifier.padding(vertical = 4.dp)
+                    EmptyState(
+                        "Профилей членов семьи пока нет.\nУ каждого — своя роль и права: кто-то только смотрит, кто-то создаёт и выдаёт вещи.",
+                        actionLabel = ctaLabel,
+                        onAction = if (ctaLabel != null) { { vm.openNew() } } else null
                     )
                 }
             }

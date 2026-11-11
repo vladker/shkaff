@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
+import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.util.newId
 
@@ -236,11 +238,12 @@ fun TemplatesScreen(nav: NavController) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
         ) {
             if (ui.templates.isEmpty()) {
+                // П1.4: пустой список шаблонов — один CTA «создать шаблон» (тот же vm.openNew, что и «+»).
                 item {
-                    Text(
-                        "Шаблонов пока нет. Нажмите «+» чтобы создать.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(vertical = 24.dp)
+                    EmptyState(
+                        "Шаблонов пока нет.\nШаблон задаёт размер этикетки, QR и подписи — по нему печатаются все наклейки.",
+                        actionLabel = EmptyStateCta.NEW_TEMPLATE,
+                        onAction = { vm.openNew() }
                     )
                 }
             }

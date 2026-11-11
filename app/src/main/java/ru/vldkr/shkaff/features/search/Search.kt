@@ -47,6 +47,7 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.search.ItemMatch
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
@@ -204,7 +205,14 @@ fun SearchScreen(nav: NavController) {
             } else if (ui.loading) {
                 ListSkeleton(rows = 5)
             } else if (results.items.isEmpty() && results.locations.isEmpty() && results.storages.isEmpty()) {
-                EmptyState("Ничего не найдено по «$q».")
+                EmptyState(
+                    "Ничего не найдено по «$q».",
+                    actionLabel = EmptyStateCta.RESET_SEARCH,
+                    onAction = {
+                        queryText = ""
+                        vm.ui.value = vm.ui.value.copy(query = "")
+                    }
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

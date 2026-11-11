@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ItemPhoto
@@ -201,7 +202,14 @@ fun ProductsScreen(nav: NavController) {
                         onAction = if (canAdd) { { nav.navigate("item-wizard") } } else null
                     )
                 } else {
-                    EmptyState("Ничего не найдено по «$queryText».")
+                    EmptyState(
+                        "Ничего не найдено по «$queryText».",
+                        actionLabel = EmptyStateCta.RESET_SEARCH,
+                        onAction = {
+                            queryText = ""
+                            vm.ui.value = vm.ui.value.copy(query = "")
+                        }
+                    )
                 }
             } else {
                 LazyVerticalGrid(

@@ -63,6 +63,7 @@ import ru.vldkr.shkaff.domain.basket.PickPlanner
 import ru.vldkr.shkaff.domain.basket.PickStep
 import ru.vldkr.shkaff.domain.basket.PickTask
 import ru.vldkr.shkaff.domain.levels.Levels
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.rememberRole
 
@@ -120,7 +121,13 @@ fun BasketScreen(nav: NavController) {
     ) { padding ->
         if (rows.isEmpty()) {
             Column(Modifier.padding(padding).padding(16.dp)) {
-                EmptyState("Корзина — список вещей «на вынос». Соберите набор вещей, а приложение покажет план извлечения по местам: всё из одной коробки — один шаг.")
+                // П1.4: один явный CTA — создать первую корзину (нужно право CREATE).
+                val canCreate = Access.can(role, Access.CREATE)
+                EmptyState(
+                    "Корзина — список вещей «на вынос». Соберите набор вещей, а приложение покажет план извлечения по местам: всё из одной коробки — один шаг.",
+                    actionLabel = EmptyStateCta.basketEmpty(canCreate),
+                    onAction = if (canCreate) { { showCreate = true } } else null
+                )
             }
         } else {
             LazyColumn(

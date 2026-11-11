@@ -50,6 +50,7 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.domain.search.ItemMatch
+import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
@@ -238,14 +239,28 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 ListSkeleton(rows = 6)
             } else if (list.isEmpty()) {
                 if (queryText.isBlank()) {
+                    // П1.4: при активном фильтре тега существующие вещи скрыты — первым делом снять фильтр,
+                    // иначе (с правом CREATE) — мастер вещи.
+                    val filterActive = ui.tagFilter.isNotEmpty()
                     val canAdd = Access.can(role, Access.CREATE)
                     EmptyState(
-                        "Список пуст.",
-                        actionLabel = if (canAdd) "Добавить вещь" else null,
-                        onAction = if (canAdd) { { nav.navigate("item-wizard") } } else null
+                        if (filterActive) "Под фильтр «${ui.tagFilter}» ничего нет." else "Список пуст.",
+                        actionLabel = EmptyStateCta.itemsEmpty(filterActive, canAdd),
+                        onAction = if (filterActive) {
+                            { activeTag = ""; vm.ui.value = vm.ui.value.copy(tagFilter = "") }
+                        } else if (canAdd) {
+                            { nav.navigate("item-wizard") }
+                        } else null
                     )
                 } else {
-                    EmptyState("Ничего не найдено по «$queryText».")
+                    EmptyState(
+                        "Ничего не найдено по «$queryText».",
+                        actionLabel = EmptyStateCta.RESET_SEARCH,
+                        onAction = {
+                            queryText = ""
+                            vm.ui.value = vm.ui.value.copy(query = "")
+                        }
+                    )
                 }
             } else {
                 LazyVerticalGrid(
