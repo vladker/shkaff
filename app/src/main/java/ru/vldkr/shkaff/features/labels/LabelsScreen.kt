@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,6 +95,9 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.labels.GridRegion
 import ru.vldkr.shkaff.domain.labels.GridSpec
 import ru.vldkr.shkaff.domain.labels.LabelGrid
+import ru.vldkr.shkaff.domain.labels.TEMPLATE_DELETED_MSG
+import ru.vldkr.shkaff.domain.labels.TemplatePick
+import ru.vldkr.shkaff.domain.labels.pickTemplate
 import ru.vldkr.shkaff.domain.printer.LabelMath
 import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
 import ru.vldkr.shkaff.ui.components.ItemCard
@@ -147,6 +151,8 @@ class LabelsVm(
         val name: String = "",
         val templates: List<LabelTemplateEntity> = emptyList(),
         val template: LabelTemplateEntity? = null,
+        // T-050: запрошенный/выбранный шаблон удалён — ждём новый выбор, не подменяем первым.
+        val templateMissing: Boolean = false,
         val attrDefs: List<AttributeDefEntity> = emptyList(),
         val bitmap: Bitmap? = null,
         val savedMsg: String? = null,
@@ -190,6 +196,10 @@ class LabelsVm(
 
     val ui = MutableStateFlow(Ui())
 
+    // T-050: id исчезнувшего (удалённого) запрошенного шаблона — пока он не выбран
+    // заново, подписка держит состояние Missing и не подставляет первый попавшийся.
+    private var lostTemplateId: String? = null
+
     /** Текущая сетка из полей «Размер этикетки» + «Клетка». */
     val spec: GridSpec
         get() {
@@ -215,9 +225,11 @@ class LabelsVm(
 
     fun setTemplate(id: String) {
         val t = ui.value.templates.firstOrNull { it.id == id } ?: return
+        lostTemplateId = null
         update {
             it.copy(
                 template = t,
+                templateMissing = false,
                 sizeW = if (it.sizeW.isEmpty()) t.width_mm.toInt().toString() else it.sizeW,
                 sizeH = if (it.sizeH.isEmpty()) t.height_mm.toInt().toString() else it.sizeH
             )
@@ -1075,31 +1087,42 @@ class LabelsVm(
         viewModelScope.launch {
             Deps.db.labelTemplateDao().observeAll().collect { list ->
                 val cur = ui.value
-                val t = list.firstOrNull { it.id == (templateId ?: cur.template?.id) } ?: list.firstOrNull()
-                if (t == null) {
-                    update { it.copy(templates = list, template = null) }
-                    return@collect
-                }
-                update { cur ->
-                    // Оверрайды инициализируем из шаблона один раз, при первом выборе.
-                    if (cur.sizeW.isEmpty()) {
-                        cur.copy(
-                            templates = list,
-                            template = t,
-                            sizeW = t.width_mm.toInt().toString(),
-                            sizeH = t.height_mm.toInt().toString(),
-                            textPosition = t.text_position,
-                            showText = t.show_text,
-                            showNumber = t.show_number
-                        )
-                    } else {
-                        cur.copy(templates = list, template = t)
+                // T-050: сначала текущий выбор (ручной выбор пользователя сильнее роута),
+                // затем шаблон из роута, затем id потерянного выбора — состояние
+                // «шаблон удалён» живёт до нового явного выбора.
+                val wanted = cur.template?.id ?: templateId?.takeIf { it.isNotBlank() } ?: lostTemplateId
+                when (val pick = pickTemplate(list, wanted)) {
+                    is TemplatePick.Found, is TemplatePick.Defaulted -> {
+                        val t = pick.resolved!!
+                        lostTemplateId = null
+                        update { cur ->
+                            // Оверрайды инициализируем из шаблона один раз, при первом выборе.
+                            if (cur.sizeW.isEmpty()) {
+                                cur.copy(
+                                    templates = list,
+                                    template = t,
+                                    templateMissing = false,
+                                    sizeW = t.width_mm.toInt().toString(),
+                                    sizeH = t.height_mm.toInt().toString(),
+                                    textPosition = t.text_position,
+                                    showText = t.show_text,
+                                    showNumber = t.show_number
+                                )
+                            } else {
+                                cur.copy(templates = list, template = t, templateMissing = false)
+                            }
+                        }
+                        // Сохранённые настройки/атрибуты (если субъект уже известен) — перед перерисовкой.
+                        applySavedSettings()
+                        applySavedAttrs()
+                        regenerate()
                     }
+                    TemplatePick.Missing -> {
+                        lostTemplateId = wanted
+                        update { it.copy(templates = list, template = null, templateMissing = true) }
+                    }
+                    TemplatePick.Empty -> update { it.copy(templates = list, template = null, templateMissing = false) }
                 }
-                // Сохранённые настройки/атрибуты (если субъект уже известен) — перед перерисовкой.
-                applySavedSettings()
-                applySavedAttrs()
-                regenerate()
             }
         }
         viewModelScope.launch {
@@ -1204,6 +1227,9 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
     var showPrintPicker by remember { mutableStateOf(false) }
     var showRibbonPicker by remember { mutableStateOf(false) }
 
+    // T-050: запрошенный шаблон удалён — сразу открываем пикер; баннер висит до нового выбора.
+    LaunchedEffect(ui.templateMissing) { if (ui.templateMissing) showTemplatePicker = true }
+
     val pickers = rememberPhotoPickers(
         onCaptured = { vm.onPhoto(it) },
         onPicked = { vm.onPhoto(it) }
@@ -1235,6 +1261,28 @@ fun LabelsScreen(nav: NavController, itemId: String, templateId: String, entityK
         ) {
             Stepper(ui.step)
             Spacer(Modifier.height(12.dp))
+
+            if (ui.templateMissing) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            TEMPLATE_DELETED_MSG,
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Button(onClick = { showTemplatePicker = true }) { Text("Выбрать шаблон") }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
 
             when (ui.step) {
                 0 -> {

@@ -67,6 +67,9 @@ import ru.vldkr.shkaff.data.printer.PrintManager
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
 import ru.vldkr.shkaff.domain.batch.BatchPlan
+import ru.vldkr.shkaff.domain.labels.TEMPLATE_DELETED_MSG
+import ru.vldkr.shkaff.domain.labels.TemplatePick
+import ru.vldkr.shkaff.domain.labels.pickTemplate
 import ru.vldkr.shkaff.features.labels.LabelGenerator
 import ru.vldkr.shkaff.features.labels.TemplatePickerDialog
 import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
@@ -101,10 +104,16 @@ class BatchVm : ViewModel() {
         val printError: String? = null,
         val templates: List<LabelTemplateEntity> = emptyList(),
         val template: LabelTemplateEntity? = null,
+        // T-050: выбранный шаблон удалён — ждём новый выбор, не подменяем первым.
+        val templateMissing: Boolean = false,
         val profiles: List<PrinterProfileEntity> = emptyList()
     )
 
     val ui = MutableStateFlow(Ui())
+
+    // T-050: id исчезнувшего (удалённого) выбранного шаблона — подписка держит
+    // состояние Missing, пока пользователь явно не выберет другой.
+    private var lostTemplateId: String? = null
     val locations = MutableStateFlow<List<LocationEntity>>(emptyList())
     val attrDefs = MutableStateFlow<List<AttributeDefEntity>>(emptyList())
     val tagDict = MutableStateFlow<List<String>>(emptyList())
@@ -158,8 +167,14 @@ class BatchVm : ViewModel() {
         it.copy(tags = it.tags.filterNot { x -> x.equals(t, ignoreCase = true) })
     }
 
-    fun setTemplate(id: String) = update {
-        it.copy(template = it.templates.firstOrNull { t -> t.id == id })
+    fun setTemplate(id: String) {
+        lostTemplateId = null
+        update {
+            it.copy(
+                template = it.templates.firstOrNull { t -> t.id == id },
+                templateMissing = false
+            )
+        }
     }
 
     fun start() {
@@ -321,8 +336,21 @@ class BatchVm : ViewModel() {
         viewModelScope.launch {
             Deps.db.labelTemplateDao().observeAll().collect { list ->
                 val cur = ui.value
-                val t = list.firstOrNull { it.id == cur.template?.id } ?: list.firstOrNull()
-                update { it.copy(templates = list, template = t) }
+                // T-050: сначала текущий выбор, затем id потерянного — состояние
+                // «шаблон удалён» живёт до нового явного выбора (кнопка «Сменить»).
+                val wanted = cur.template?.id ?: lostTemplateId
+                when (val pick = pickTemplate(list, wanted)) {
+                    is TemplatePick.Found, is TemplatePick.Defaulted -> {
+                        val t = pick.resolved!!
+                        lostTemplateId = null
+                        update { it.copy(templates = list, template = t, templateMissing = false) }
+                    }
+                    TemplatePick.Missing -> {
+                        lostTemplateId = wanted
+                        update { it.copy(templates = list, template = null, templateMissing = true) }
+                    }
+                    TemplatePick.Empty -> update { it.copy(templates = list, template = null, templateMissing = false) }
+                }
             }
         }
         viewModelScope.launch {
@@ -346,6 +374,9 @@ fun BatchEntryScreen(nav: NavController, fromId: String? = null) {
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPrintPicker by remember { mutableStateOf(false) }
     var showCancelConfirm by remember { mutableStateOf(false) }
+
+    // T-050: выбранный шаблон удалён — сразу открываем пикер; баннер висит до нового выбора.
+    LaunchedEffect(ui.templateMissing) { if (ui.templateMissing) showTemplatePicker = true }
 
     Scaffold(
         topBar = {
@@ -710,6 +741,14 @@ private fun DonePhase(
             }
         }
         Spacer(Modifier.height(8.dp))
+        if (ui.templateMissing) {
+            Text(
+                TEMPLATE_DELETED_MSG,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "Шаблон: ${ui.template?.name ?: "нет шаблона"}",
