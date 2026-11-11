@@ -47,6 +47,7 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.search.ItemMatch
+import ru.vldkr.shkaff.domain.search.SearchSubtitles
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
@@ -135,7 +136,9 @@ fun SearchScreen(nav: NavController) {
     val results by vm.results.collectAsState()
     val ui by vm.ui.collectAsState()
     var queryText by remember { mutableStateOf(vm.ui.value.query) }
-    val storageNames = remember(results.storages) { results.storages.associateBy { it.id } }
+    // T-043: карта строится из полных ui.storages, а не из results.storages (только
+    // совпадения + .take(50)) — иначе у ящика шкафа, не задетого запросом, подпись теряется.
+    val storageNames = remember(ui.storages) { SearchSubtitles.storageById(ui.storages) }
     // Scan-first (PLAN_ONBOARDING П1.1): скан с камеры/диплинка/HID прямо здесь становится запросом.
     LaunchedEffect(Unit) {
         ScanBus.lastCode?.let { code ->
@@ -229,7 +232,7 @@ fun SearchScreen(nav: NavController) {
                         items(results.locations, key = { "l-${it.id}" }) { it ->
                             SearchRow(
                                 title = it.displayLabel(),
-                                subtitle = storageNames[it.storage_id]?.name,
+                                subtitle = SearchSubtitles.locationStorageName(it, storageNames),
                                 onClick = { nav.navigate("location/${it.id}") }
                             )
                         }
