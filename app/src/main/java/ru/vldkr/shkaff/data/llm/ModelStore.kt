@@ -12,6 +12,7 @@ import org.json.JSONObject
 import ru.vldkr.shkaff.domain.llm.ModelPreset
 import ru.vldkr.shkaff.domain.llm.ModelQuantization
 import ru.vldkr.shkaff.domain.llm.ModelRegistry
+import ru.vldkr.shkaff.domain.llm.StorageFit
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -136,6 +137,21 @@ class ModelStore(private val context: Context) {
     /** Запуск выбранной модели: сигналит foreground-сервису выполнить скачивание. */
     fun start(row: ModelRow) {
         if (_state.value.activeName != null) return
+        // T-052: GGUF до 10 ГБ писались вслепую и ловили ENOSPC посреди загрузки —
+        // сперва сверяем остаток (с учётом *.part) со свободным местом и запасом.
+        val needed = StorageFit.requiredBytes(
+            mainSize = row.sizeBytes,
+            mainDone = partBytes(row.file),
+            mmprojSize = if (row.mmprojFile != null && row.mmprojUrl != null) row.mmprojSizeBytes else null,
+            mmprojDone = row.mmprojFile?.let { partBytes(it) } ?: 0L,
+        )
+        val usable = dir.usableSpace
+        if (!StorageFit.fits(needed, usable)) {
+            updateRow(row.id) {
+                it.copy(state = ModelState.ERROR, message = StorageFit.notEnoughSpaceText(needed, usable))
+            }
+            return
+        }
         updateRow(row.id) { it.copy(state = ModelState.DOWNLOADING, message = null) }
         _state.value = _state.value.copy(activeId = row.id, activeName = row.file)
         val i = Intent(context, ModelDownloadService::class.java)
@@ -179,7 +195,8 @@ class ModelStore(private val context: Context) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            updateRow(row.id) { it.copy(state = ModelState.ERROR, message = e.message ?: "Ошибка загрузки") }
+            // ENOSPC из середины докачки показываем по-русски (T-052), прочее — как есть.
+            updateRow(row.id) { it.copy(state = ModelState.ERROR, message = StorageFit.errorText(e)) }
         } finally {
             // После завершения (успех/ошибка/отмена) сбрасываем «активную загрузку»,
             // иначе UI зависает на прогресс-баре и другие модели скачать нельзя
