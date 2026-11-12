@@ -88,6 +88,7 @@ import ru.vldkr.shkaff.domain.access.ActiveRole
 import ru.vldkr.shkaff.domain.access.Role
 import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.features.loans.LendDialog
+import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ItemPhoto
 import ru.vldkr.shkaff.ui.components.LocationMap
@@ -103,6 +104,9 @@ import java.io.File
 class ItemDetailVm(val itemId: String) : ViewModel() {
 
     val item = MutableStateFlow<ItemEntity?>(null)
+    // T-028: различать «ещё не загружено» и «загружено, но вещи нет» — по этому
+    // флагу UI решает показать EmptyState вместо молчаливой пустой колонки.
+    val loaded = MutableStateFlow(false)
     val locationLabel = MutableStateFlow<String?>(null)
     val storageName = MutableStateFlow<String?>(null)
     val activeLoan = MutableStateFlow<LoanEntity?>(null)
@@ -121,6 +125,7 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
         viewModelScope.launch {
             val it = Deps.items.byId(itemId)
             item.value = it
+            loaded.value = true // T-028: с этого момента null в item означает «вещи нет», а не «ещё грузится»
             it?.location_id?.let { lid ->
                 // T-041: ящик мягко удалён — ссылка «призрак», карта ящика не видна.
                 val loc = Deps.locations.byId(lid)?.takeIf { l -> l.deleted_at == null }
@@ -172,6 +177,7 @@ class ItemDetailVm(val itemId: String) : ViewModel() {
 fun ItemDetailScreen(nav: NavController, itemId: String) {
     val vm: ItemDetailVm = viewModel(factory = ItemDetailVm.Factory(itemId))
     val item by vm.item.collectAsState()
+    val loaded by vm.loaded.collectAsState()
     val locationLabel by vm.locationLabel.collectAsState()
     val storageName by vm.storageName.collectAsState()
     val similar by vm.similar.collectAsState()
@@ -244,7 +250,18 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            if (i == null) return@Column
+            if (i == null) {
+                // T-028: «загружено, но вещи нет» — отдельное состояние: честное
+                // объяснение вместо молчаливой пустой колонки. Пока идёт загрузка — пусто.
+                if (loaded) {
+                    EmptyState(
+                        text = "Вещь не найдена или удалена",
+                        actionLabel = "Назад",
+                        onAction = { nav.popBackStack() }
+                    )
+                }
+                return@Column
+            }
 
             ItemPhoto(
                 i.photo_path,
@@ -492,8 +509,6 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                     }
                     Spacer(Modifier.height(8.dp))
                 }
-                ActionStub("Фотография и удаление фона", "M5")
-                ActionStub("Отсканировать код этой вещи", "M3")
                 Spacer(Modifier.height(4.dp))
                 OutlinedButton(
                     onClick = { showBasket = true },
@@ -559,19 +574,6 @@ fun ItemDetailScreen(nav: NavController, itemId: String) {
                 }
             }
         )
-    }
-}
-
-@Composable
-private fun ActionStub(text: String, stage: String) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = Ozon.TextPrimary, modifier = Modifier.weight(1f))
-        Text(stage, style = MaterialTheme.typography.labelLarge, color = Ozon.TextSecondary)
     }
 }
 
