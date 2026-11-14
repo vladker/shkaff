@@ -68,6 +68,9 @@ class ModelStoreVm : ViewModel() {
         val rows: List<RowVm> = emptyList(),
         val customUrl: String = "",
         val error: String? = null,
+        // T-057: ошибка чтения индекса своих моделей (битый .custom.json) —
+        // видна баннером, пока не перезаписан валидный индекс.
+        val customsError: String? = null,
     )
 
     private val _ui = MutableStateFlow(Ui())
@@ -77,6 +80,7 @@ class ModelStoreVm : ViewModel() {
         viewModelScope.launch {
             Deps.modelStore.state.collect { s ->
                 _ui.value = _ui.value.copy(
+                    customsError = s.customsError,
                     rows = s.rows.map { row ->
                         var fraction = 0f
                         var activeFile: String? = null
@@ -165,6 +169,18 @@ fun ModelStoreScreen(nav: NavController) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp)
                 )
+            }
+            // T-057: битый индекс своих моделей — видимое предупреждение вместо
+            // молча опустевшего списка.
+            ui.customsError?.let { err ->
+                item {
+                    Text(
+                        err,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
             }
             items(ui.rows, key = { it.row.id }) { rv ->
                 ModelCard(vm, rv)

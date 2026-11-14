@@ -49,6 +49,9 @@ data class StoreState(
     val activeName: String? = null,
     val bytes: Long = 0,
     val total: Long = 0,
+    // T-057: битый индекс своих моделей — список не должен молча исчезать в ноль,
+    // экран обязан показать причину.
+    val customsError: String? = null,
 )
 
 private data class CustomModel(
@@ -82,13 +85,14 @@ class ModelStore(private val context: Context) {
             ?: File(context.filesDir, "models").also { it.mkdirs() }
 
     fun reload() {
+        val (customs, customsError) = readCustoms()
         val rows = ModelRegistry.presets.flatMap { preset ->
             preset.quantizations.map { quant ->
                 rowOf(preset, quant)
             }
         } + customs.map { rowOf(it) }
         val prevActive = _state.value.activeName
-        _state.value = StoreState(rows = rows, activeName = prevActive)
+        _state.value = StoreState(rows = rows, activeName = prevActive, customsError = customsError)
     }
 
     private fun rowOf(p: ModelPreset, q: ModelQuantization) = ModelRow(
@@ -311,18 +315,31 @@ class ModelStore(private val context: Context) {
 
     private fun customIndex() = File(dir, ".custom.json")
 
-    private val customs: List<CustomModel>
-        get() {
-            val f = customIndex()
-            if (!f.exists()) return emptyList()
-            return kotlin.runCatching {
-                val arr = JSONArray(f.readText())
-                (0 until arr.length()).mapNotNull { i ->
-                    val o = arr.getJSONObject(i)
-                    CustomModel(o.getString("id"), o.getString("name"), o.getString("file"), o.getString("url"), o.getLong("sizeBytes"))
-                }
-            }.getOrDefault(emptyList())
+    /**
+     * T-057: чтение индекса своих моделей. Битый файл нельзя молча превращать
+     * в пустой список: сохраняем копию битого («.custom.json.corrupt») и
+     * возвращаем русское сообщение об ошибке для флага в StoreState.
+     */
+    private fun readCustoms(): Pair<List<CustomModel>, String?> {
+        val f = customIndex()
+        if (!f.exists()) return emptyList<CustomModel>() to null
+        return try {
+            val arr = JSONArray(f.readText())
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                CustomModel(o.getString("id"), o.getString("name"), o.getString("file"), o.getString("url"), o.getLong("sizeBytes"))
+            } to null
+        } catch (e: Exception) {
+            val bak = File(dir, customIndex().name + ".corrupt")
+            runCatching { f.copyTo(bak, overwrite = true) }
+            emptyList<CustomModel>() to
+                "Список своих моделей повреждён: файл индекса не разобрался. Копия битого файла сохранена " +
+                "как «${bak.name}», список очищен. Добавьте модели заново — индекс будет перезаписан."
         }
+    }
+
+    private val customs: List<CustomModel>
+        get() = readCustoms().first
 
     private fun saveCustoms(list: List<CustomModel>) {
         val arr = JSONArray()
