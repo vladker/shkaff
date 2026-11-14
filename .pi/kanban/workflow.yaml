@@ -1,0 +1,21 @@
+name: shkaff backlog
+initial: new
+
+statuses:
+  - id: new
+    label: "Новая (TODO_AGENT / PLAN)"
+  - id: doing
+    label: "В работе"
+    active: true
+  - id: waiting_device
+    label: "Ждёт установки на телефон"
+    active: true
+  - id: done
+    label: "Готово"
+    terminal: true
+
+transitions:
+  new: [doing]
+  doing: [new, waiting_device, done]
+  waiting_device: [doing, done]
+  done: [doing]
