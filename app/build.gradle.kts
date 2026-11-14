@@ -91,6 +91,7 @@ dependencies {
     implementation(project(":llama"))
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.exifinterface)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)

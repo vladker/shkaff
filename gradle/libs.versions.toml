@@ -42,6 +42,7 @@ androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", 
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version = "1.3.7" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 
 [plugins]
