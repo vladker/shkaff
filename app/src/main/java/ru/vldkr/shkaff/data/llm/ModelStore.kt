@@ -262,10 +262,16 @@ class ModelStore(private val context: Context) {
     private fun done() = _state.value.bytes
 
     fun delete(row: ModelRow) {
-        if (_state.value.activeName == row.file) cancel()
+        // T-054: во время докачки vision-файла activeName == mmprojFile — без
+        // отмены сервис после удаления переименовывает *.part обратно в файл.
+        val active = _state.value.activeName
+        if (active == row.file || (row.mmprojFile != null && active == row.mmprojFile)) cancel()
         File(dir, row.file).delete()
         File(dir, row.file + PART).delete()
-        row.mmprojFile?.let { File(dir, it).delete() }
+        row.mmprojFile?.let {
+            File(dir, it).delete()
+            File(dir, it + PART).delete()
+        }
         if (row.custom) {
             val rest = customs.filterNot { it.id == row.id }
             saveCustoms(rest)
