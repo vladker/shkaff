@@ -61,15 +61,19 @@ object ShkaffLabelStudioDeps : LabelStudioDeps {
 
     override suspend fun saveTemplateDoc(entityKind: String, doc: LabelDoc): TemplateSummary {
         val dao = Deps.db.labelDocDao()
-        val existing = dao.byKind(entityKind)
+        val now = System.currentTimeMillis()
+        // T-067: повторное сохранение того же id — правка, а не новый макет:
+        // «по умолчанию» и created_at берём из существующей строки, иначе правка
+        // дефолтного макета снимала дефолт у вида и двигала created_at (LWW при слиянии).
+        val current = dao.byId(doc.id)
         val entity = LabelDocEntity(
             id = doc.id,
             name = doc.name,
             entity_kind = entityKind,
             doc_json = LabelDocCodec.toJson(doc),
-            is_default = existing.isEmpty(),
-            created_at = System.currentTimeMillis(),
-            updated_at = System.currentTimeMillis(),
+            is_default = current?.is_default ?: dao.byKind(entityKind).isEmpty(),
+            created_at = current?.created_at ?: now,
+            updated_at = now,
             deleted_at = null,
             device_last_modified = Deps.deviceId
         )

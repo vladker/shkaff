@@ -2,6 +2,7 @@ package ru.vldkr.shkaff.features.labelstudio
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,5 +54,37 @@ class ShkaffLabelStudioDepsTest {
     fun `unknown kinds stay unsupported`() = runBlocking {
         val st = Deps.stacks.create("Проверка типа", "T016-KIND-" + System.nanoTime())
         assertEquals(null, ShkaffLabelStudioDeps.loadSubject("basket", st.id))
+    }
+
+    // T-067: правка дефолтного макета не должна снимать с него «по умолчанию»
+    // (иначе у вида перестаёт читаться дефолт) и не должна передвигать created_at.
+    @Test
+    fun `editing default template keeps default flag and creation date`() = runBlocking {
+        val kind = "t067-" + System.nanoTime()
+        val doc = ru.vldkr.shkaff.features.labelstudio.domain.LabelDoc(name = "Дефолт вида")
+        val saved = ShkaffLabelStudioDeps.saveTemplateDoc(kind, doc)
+        val first = Deps.db.labelDocDao().byId(saved.id)
+        assertNotNull("документ должен сохраниться", first)
+        assertTrue("первый документ вида становится по умолчанию", first!!.is_default)
+        val createdAt = first.created_at
+        // Тот же документ, повторное сохранение — это правка, а не новый макет.
+        ShkaffLabelStudioDeps.saveTemplateDoc(kind, doc.copy(name = "Дефолт вида (правка)"))
+        val second = Deps.db.labelDocDao().byId(saved.id)!!
+        assertFalse("правка не снимает «по умолчанию»", second.is_default.not())
+        assertEquals("created_at не уезжает на правку", createdAt, second.created_at)
+        assertTrue("updated_at обязан обновиться", second.updated_at >= first.updated_at)
+        // Дефолт вида по-прежнему читается без id.
+        val def = ShkaffLabelStudioDeps.loadTemplateDoc(kind, null)
+        assertNotNull("у вида остаётся дефолтный макет", def)
+        assertEquals("Дефолт вида (правка)", def!!.name)
+    }
+
+    @Test
+    fun `second template of a kind does not become default`() = runBlocking {
+        val kind = "t067b-" + System.nanoTime()
+        val firstSaved = ShkaffLabelStudioDeps.saveTemplateDoc(kind, ru.vldkr.shkaff.features.labelstudio.domain.LabelDoc(name = "Первый"))
+        val secondSaved = ShkaffLabelStudioDeps.saveTemplateDoc(kind, ru.vldkr.shkaff.features.labelstudio.domain.LabelDoc(name = "Второй"))
+        assertTrue("первый сохранённый макет вида — по умолчанию", Deps.db.labelDocDao().byId(firstSaved.id)!!.is_default)
+        assertFalse("второй макет вида не становится по умолчанию", Deps.db.labelDocDao().byId(secondSaved.id)!!.is_default)
     }
 }
