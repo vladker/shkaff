@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.labels.ColorHex
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
@@ -145,7 +146,9 @@ class TemplatesVm : ViewModel() {
         if (w == null || h == null || w < 10 || h < 10) { ui.value = ui.value.copy(error = "Ширина/высота — число от 10 мм"); return }
         if (m == null || m < 0) { ui.value = ui.value.copy(error = "Поля — число от 0 мм"); return }
         if (fs == null || fs < 6) { ui.value = ui.value.copy(error = "Размер шрифта — число от 6"); return }
-        if (f.bgColor.isBlank() || f.textColor.isBlank()) { ui.value = ui.value.copy(error = "Укажите цвета"); return }
+        // T-048: цвет обязан быть HEX (#RRGGBB / #AARRGGBB) — иначе печать
+        // молча уйдёт в fallback-цвета вместо того, что ввёл пользователь.
+        if (!ColorHex.isHexColor(f.bgColor) || !ColorHex.isHexColor(f.textColor)) { ui.value = ui.value.copy(error = "Цвета — в формате #RRGGBB, например #FF8800"); return }
         if (f.textPosition != "top" && f.textPosition != "bottom") { ui.value = ui.value.copy(error = "Выберите расположение текста"); return }
         viewModelScope.launch {
             val now = System.currentTimeMillis()

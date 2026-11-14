@@ -775,8 +775,8 @@ class LabelsVm(
         if (ui.value.step != 1) return
         val u = ui.value
         val base = u.template ?: u.templates.firstOrNull() ?: return
-        val fg = LabelGenerator.parseColor(base.text_color)
-        val bg = LabelGenerator.parseColor(base.bg_color)
+        val fg = LabelGenerator.parseColor(base.text_color, Color.BLACK)
+        val bg = LabelGenerator.parseColor(base.bg_color, Color.WHITE)
         val light = if (base.invert == true) fg else bg
         val (sheetW, sheetH) = sheetSize()
         val sheet = Bitmap.createBitmap(
@@ -966,8 +966,8 @@ class LabelsVm(
 
                 // Цвета из базового шаблона (логика как в PrintManager.printLabel).
                 val base = ui.value.template ?: ui.value.templates.firstOrNull()
-                val fg = LabelGenerator.parseColor(base?.text_color ?: "#000000")
-                val bg = LabelGenerator.parseColor(base?.bg_color ?: "#FFFFFF")
+                val fg = LabelGenerator.parseColor(base?.text_color ?: "#000000", Color.BLACK)
+                val bg = LabelGenerator.parseColor(base?.bg_color ?: "#FFFFFF", Color.WHITE)
                 val dark = if (base?.invert == true) bg else fg
                 val light = if (base?.invert == true) fg else bg
 

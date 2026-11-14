@@ -90,8 +90,8 @@ object LabelGenerator {
         val pxPerMm = dpi / 25.4f
         val W = ((template.width_mm * pxPerMm).toInt()).coerceAtLeast(16)
         val H = ((template.height_mm * pxPerMm).toInt()).coerceAtLeast(16)
-        val bg = parseColor(template.bg_color)
-        val fg = parseColor(template.text_color)
+        val bg = parseColor(template.bg_color, Color.WHITE)
+        val fg = parseColor(template.text_color, Color.BLACK)
         val margin = if (template.quiet_zone)
             ((template.margin_mm * pxPerMm).toInt()).coerceAtLeast(2)
         else 2
@@ -168,8 +168,8 @@ object LabelGenerator {
         val pxPerMm = dpi / 25.4f
         val W = ((template.width_mm * pxPerMm).toInt()).coerceAtLeast(16)
         val H = ((template.height_mm * pxPerMm).toInt()).coerceAtLeast(16)
-        val bg = parseColor(template.bg_color)
-        val fg = parseColor(template.text_color)
+        val bg = parseColor(template.bg_color, Color.WHITE)
+        val fg = parseColor(template.text_color, Color.BLACK)
         val isSquare = fmt == BarcodeFormat.QR_CODE || fmt == BarcodeFormat.DATA_MATRIX
 
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
@@ -322,8 +322,8 @@ object LabelGenerator {
         val W = ((widthMm * pxPerMm).toInt()).coerceAtLeast(32)
         val stripH = ((stripMm * pxPerMm).toInt()).coerceAtLeast(16)
         val H = (stripH * list.size).coerceAtLeast(16)
-        val bg = parseColor(bgHex)
-        val fg = parseColor(fgHex)
+        val bg = parseColor(bgHex, Color.WHITE)
+        val fg = parseColor(fgHex, Color.BLACK)
         val margin = (1f * pxPerMm).toInt().coerceAtLeast(2)
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
@@ -395,11 +395,16 @@ object LabelGenerator {
         return bmp
     }
 
-    fun parseColor(hex: String): Int = try {
+    // T-048: битый HEX больше не прячется в чёрный. parseColorOrNull — явный
+    // сигнал неудачи (null); parseColor требует fallback от вызывающей стороны:
+    // фон при битом значении белый, текст — чёрный, а не «всё чёрное».
+    fun parseColorOrNull(hex: String): Int? = try {
         Color.parseColor(hex)
     } catch (e: Exception) {
-        Color.BLACK
+        null
     }
+
+    fun parseColor(hex: String, fallback: Int): Int = parseColorOrNull(hex) ?: fallback
 
     fun sanitizeFileName(s: String): String =
         s.replace(Regex("[^a-zA-Z0-9А-Яа-яЁё _\\-]"), "_")

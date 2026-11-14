@@ -50,8 +50,8 @@ object PrintManager {
             ?: return Result.failure(
                 IllegalStateException("Не удалось сгенерировать этикетку: пустой код или неизвестный формат")
             )
-        val fg = LabelGenerator.parseColor(template.text_color)
-        val bg = LabelGenerator.parseColor(template.bg_color)
+        val fg = LabelGenerator.parseColor(template.text_color, Color.BLACK)
+        val bg = LabelGenerator.parseColor(template.bg_color, Color.WHITE)
         val dark = if (template.invert) bg else fg
         val light = if (template.invert) fg else bg
         // Печатать с реальным размером этикетки, а не на всю ширину бумаги.
