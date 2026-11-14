@@ -51,16 +51,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.pullToRefreshIndicator
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -295,9 +291,9 @@ fun DashboardScreen(nav: NavController) {
     val vm: DashboardVm = viewModel()
     val ui by vm.ui.collectAsState()
     val loading by vm.loading.collectAsState()
-    val scope = rememberCoroutineScope()
-    var refreshing by remember { mutableStateOf(false) }
-    val pullState = rememberPullToRefreshState()
+    // Pull-to-refresh снят: на OneUI/Android 16 (Samsung) Modifier.pullToRefresh делает
+    // контент LazyColumn невидимым и глухим к свайпам (проверено экспериментальной сборкой).
+    // Экраны и так обновляются при каждой навигации (LaunchedEffect -> vm.refresh()).
     // US-O8: skeleton только на первой загрузке без данных (не при pull-to-refresh).
     val showSkeleton = loading && ui.itemsCount == 0 && ui.recent.isEmpty()
     LaunchedEffect(Unit) { vm.refresh() }
@@ -364,23 +360,7 @@ fun DashboardScreen(nav: NavController) {
                 LazyColumn(
                     modifier = Modifier
                         .padding(padding)
-                        .fillMaxSize()
-                        .pullToRefresh(
-                            enabled = true,
-                            state = pullState,
-                            isRefreshing = refreshing,
-                            onRefresh = {
-                                scope.launch {
-                                    refreshing = true
-                                    vm.refresh()
-                                    refreshing = false
-                                }
-                            }
-                        )
-                        .pullToRefreshIndicator(
-                            state = pullState,
-                            isRefreshing = refreshing
-                        ),
+                        .fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
                 ) {
             item {
