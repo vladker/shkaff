@@ -47,6 +47,7 @@ class PeerServerPushScopeTest {
 
     @Before
     fun setUp() {
+        runBlocking { Deps.db.clearAllTables() } // Deps.db — синглтон песочницы, чистим остатки чужих классов
         MergeSession.clear()
         PeerServer.stop()
         assertNull("сервер должен встать на эфемерный порт", PeerServer.start(0))
