@@ -1,26 +1,18 @@
 package ru.vldkr.shkaff.features.products
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -37,13 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -54,16 +42,18 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.db.ItemEntity
+import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.access.Access
+import ru.vldkr.shkaff.domain.locations.LocationPlacement
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
-import ru.vldkr.shkaff.ui.components.ItemPhoto
+import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.LocationMap
-import ru.vldkr.shkaff.ui.components.PillBadge
 import ru.vldkr.shkaff.ui.components.displayLabel
+import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.state.ListFeed
 import ru.vldkr.shkaff.ui.state.UiState
@@ -79,6 +69,9 @@ class ProductsVm : ViewModel() {
     data class Ui(
         val allItems: List<ItemEntity> = emptyList(),
         val query: String = "",
+        // T-042: активные выдачи вещей — как на «Вещах»: без неё выданный
+        // продукт на карточке выглядел свободным.
+        val loansByItem: Map<String, LoanEntity> = emptyMap(),
         // T-040: «Продуктов пока нет» показывалось и до первой эмиссии БД, и после сбоя
         // подписки — теперь загрузка и сбой это отдельные ветки.
         val loading: Boolean = true,
@@ -88,7 +81,8 @@ class ProductsVm : ViewModel() {
     val ui = MutableStateFlow(Ui())
 
     private val itemsFeed = ListFeed(viewModelScope) { Deps.items.observeAll() }
-    private val feeds = listOf(itemsFeed)
+    private val loansFeed = ListFeed(viewModelScope) { Deps.loans.observeActive() }
+    private val feeds = listOf(itemsFeed, loansFeed)
 
     val list = ui.map { u ->
         val t = u.query.trim()
@@ -117,6 +111,14 @@ class ProductsVm : ViewModel() {
         }
         viewModelScope.launch {
             itemsFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(allItems = s.data) }
+        }
+        // T-042: карта активных выдач по вещам — зеркало ItemsVm (ключ — entity_id вещи).
+        viewModelScope.launch {
+            loansFeed.state.collect { s ->
+                if (s is UiState.Success) {
+                    ui.value = ui.value.copy(loansByItem = s.data.filter { it.entity_type == "item" }.associateBy { it.entity_id })
+                }
+            }
         }
     }
 
@@ -222,12 +224,21 @@ fun ProductsScreen(nav: NavController) {
                         val date = Expiry.parse(it.expiry_date)
                         val today = LocalDate.now()
                         val days = date?.let { d -> Expiry.daysUntil(d, today) }
-                        ProductCard(
+                        // T-042: общая ItemCard со статусом по активной выдаче — как на «Вещах»;
+                        // «место» считаем по живым ящикам (T-041), «призрак» — не место.
+                        val status = itemStatus(
+                            it,
+                            hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys),
+                            loan = ui.loansByItem[it.id]
+                        )
+                        ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),
+                            { nav.navigate("item/${it.id}") },
                             expiryText = date?.let { d -> Expiry.label(d, today) },
                             expiryColor = if ((days ?: 1) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            onClick = { nav.navigate("item/${it.id}") }
+                            status = status,
+                            ean = it.ean
                         )
                     }
                 }
@@ -236,83 +247,3 @@ fun ProductsScreen(nav: NavController) {
     }
 }
 
-// Карточка продукта: фото, название, EAN, срок годности, ящик.
-@Composable
-private fun ProductCard(
-    item: ItemEntity,
-    locationLabel: String?,
-    expiryText: String?,
-    expiryColor: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Ozon.Card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column {
-            ItemPhoto(item.photo_path, Modifier.fillMaxWidth().aspectRatio(1f))
-            Column(Modifier.padding(10.dp)) {
-                Text(
-                    item.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Ozon.TextPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                item.ean?.let { ean ->
-                    Text(
-                        "EAN $ean",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = Ozon.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                if (item.code.isNotBlank()) {
-                    Text(
-                        item.code,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Ozon.Pink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                if (expiryText != null) {
-                    PillBadge(
-                        text = expiryText,
-                        color = expiryColor,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-                if (locationLabel != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Place,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = Ozon.TextSecondary
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            locationLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Ozon.TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

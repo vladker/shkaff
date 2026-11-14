@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,9 @@ fun ItemCard(
     expiryText: String? = null,
     expiryColor: Color = MaterialTheme.colorScheme.primary,
     status: ItemStatus? = null,
+    // T-042: строка рыночного штрихкода для «Продуктов» — общая карточка вместо
+    // дублирующей ProductCard.
+    ean: String? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -114,6 +118,17 @@ fun ItemCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (ean != null) {
+                    Text(
+                        "EAN $ean",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = Ozon.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 if (item.code.isNotBlank()) {
                     Text(
                         item.code,
