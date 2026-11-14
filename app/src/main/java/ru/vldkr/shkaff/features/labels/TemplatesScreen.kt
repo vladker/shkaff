@@ -1,5 +1,6 @@
 package ru.vldkr.shkaff.features.labels
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,7 +61,10 @@ class TemplatesVm : ViewModel() {
         // mutableStateOf отдельно — держатель отслеживал только смену ссылки,
         // запись в поле (чекбокс/формат) не инвалидировала композицию.
         // Форма неизменяемая: каждая правка — copy и новый экземпляр Ui.
-        val form: Form? = null
+        val form: Form? = null,
+        // T-047: снимок формы на момент открытия — по нему определяется
+        // «грязнота»: Back закрывает грязную форму только через подтверждение.
+        val formInitial: Form? = null
     )
 
     val ui = MutableStateFlow(Ui())
@@ -91,34 +95,39 @@ class TemplatesVm : ViewModel() {
     }
 
     fun openNew() {
-        ui.value = ui.value.copy(error = null, form = Form())
+        val f = Form()
+        ui.value = ui.value.copy(error = null, form = f, formInitial = f)
     }
 
     fun openEdit(t: LabelTemplateEntity) {
-        ui.value = ui.value.copy(
-            error = null,
-            form = Form(
-                id = t.id,
-                name = t.name,
-                format = t.format,
-                widthMm = t.width_mm.toString(),
-                heightMm = t.height_mm.toString(),
-                marginMm = t.margin_mm.toString(),
-                showText = t.show_text,
-                textContent = t.text_content,
-                textPosition = t.text_position,
-                showNumber = t.show_number,
-                appLink = t.app_link,
-                fontSize = t.font_size.toString(),
-                textColor = t.text_color,
-                bgColor = t.bg_color,
-                invert = t.invert,
-                quietZone = t.quiet_zone
-            )
+        val f = Form(
+            id = t.id,
+            name = t.name,
+            format = t.format,
+            widthMm = t.width_mm.toString(),
+            heightMm = t.height_mm.toString(),
+            marginMm = t.margin_mm.toString(),
+            showText = t.show_text,
+            textContent = t.text_content,
+            textPosition = t.text_position,
+            showNumber = t.show_number,
+            appLink = t.app_link,
+            fontSize = t.font_size.toString(),
+            textColor = t.text_color,
+            bgColor = t.bg_color,
+            invert = t.invert,
+            quietZone = t.quiet_zone
         )
+        ui.value = ui.value.copy(error = null, form = f, formInitial = f)
     }
 
-    fun closeForm() { ui.value = ui.value.copy(form = null) }
+    // T-047: форма изменена, если отличается от снимка на момент открытия.
+    fun isDirty(): Boolean {
+        val f = ui.value.form ?: return false
+        return f != ui.value.formInitial
+    }
+
+    fun closeForm() { ui.value = ui.value.copy(form = null, formInitial = null) }
 
     // Единственная точка правки формы: copy -> новый Ui -> инвалидация композиции.
     fun editForm(edit: (Form) -> Form) {
@@ -191,7 +200,7 @@ class TemplatesVm : ViewModel() {
                 device_last_modified = dev
             )
             dao.upsert(t)
-            ui.value = ui.value.copy(form = null)
+            ui.value = ui.value.copy(form = null, formInitial = null)
         }
     }
 
@@ -208,13 +217,21 @@ fun TemplatesScreen(nav: NavController) {
     val vm: TemplatesVm = viewModel()
     val ui by vm.ui.collectAsState()
     var confirmDelete by remember { mutableStateOf<LabelTemplateEntity?>(null) }
+    // T-047: открытая форма обязана перехватывать «Назад» (системную клавишу
+    // и стрелку тулбара): чистая закрывается сразу, грязная — через
+    // подтверждение, иначе правки терялись молча при выходе с экрана.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val backFromForm: () -> Unit = {
+        if (vm.isDirty()) confirmDiscard = true else vm.closeForm()
+    }
+    BackHandler(enabled = ui.form != null && !confirmDiscard) { backFromForm() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Шаблоны этикеток") },
                 navigationIcon = {
-                    IconButton(onClick = { nav.popBackStack() }) {
+                    IconButton(onClick = { if (ui.form != null) backFromForm() else nav.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
@@ -227,7 +244,23 @@ fun TemplatesScreen(nav: NavController) {
         }
     ) { padding ->
         if (ui.form != null) {
-            TemplateFormContent(vm)
+            TemplateFormContent(vm, onCancel = backFromForm)
+            if (confirmDiscard) {
+                AlertDialog(
+                    onDismissRequest = { confirmDiscard = false },
+                    title = { Text("Закрыть форму?") },
+                    text = { Text("Несохранённые правки пропадут.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            confirmDiscard = false
+                            vm.closeForm()
+                        }) { Text("Закрыть", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmDiscard = false }) { Text("Продолжить правки") }
+                    }
+                )
+            }
             return@Scaffold
         }
         LazyColumn(
@@ -287,7 +320,7 @@ fun TemplatesScreen(nav: NavController) {
 }
 
 @Composable
-private fun TemplateFormContent(vm: TemplatesVm) {
+private fun TemplateFormContent(vm: TemplatesVm, onCancel: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val f = ui.form ?: return
     Column(
@@ -432,7 +465,7 @@ private fun TemplateFormContent(vm: TemplatesVm) {
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { vm.save() }, modifier = Modifier.weight(1f)) { Text("Сохранить") }
-            OutlinedButton(onClick = { vm.closeForm() }, modifier = Modifier.weight(1f)) { Text("Отмена") }
+            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
         }
     }
 }
