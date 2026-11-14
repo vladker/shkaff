@@ -136,7 +136,15 @@ class ModelStore(private val context: Context) {
 
     /** Запуск выбранной модели: сигналит foreground-сервису выполнить скачивание. */
     fun start(row: ModelRow) {
-        if (_state.value.activeName != null) return
+        // T-055: параллельная загрузка запрещена, но молча игнорировать нажатие
+        // нельзя — строка обязана объяснить, почему «Скачать» не сработало.
+        val busy = _state.value.activeName
+        if (busy != null) {
+            updateRow(row.id) {
+                it.copy(state = ModelState.ERROR, message = "Одновременно качается другая модель («$busy»). Дождитесь её или отмените.")
+            }
+            return
+        }
         // T-052: GGUF до 10 ГБ писались вслепую и ловили ENOSPC посреди загрузки —
         // сперва сверяем остаток (с учётом *.part) со свободным местом и запасом.
         val needed = StorageFit.requiredBytes(
@@ -167,11 +175,18 @@ class ModelStore(private val context: Context) {
         context.startService(
             Intent(context, ModelDownloadService::class.java).setAction(ModelDownloadService.ACTION_CANCEL)
         )
-        _state.value = _state.value.copy(activeId = null, activeName = null, bytes = 0, total = 0)
-        val s = _state.value.rows
-        if (s.isNotEmpty()) {
-            _state.value = _state.value.copy(rows = s.map { it.copy(state = ModelState.IDLE, message = null) })
-        }
+        val s = _state.value
+        val activeId = s.activeId
+        val activeFile = s.activeName
+        _state.value = s.copy(
+            activeId = null, activeName = null, bytes = 0, total = 0,
+            // T-055: сбрасываем только отменённую строку — чужие состояния
+            // (например, ошибка «недостаточно места») терять нельзя.
+            rows = s.rows.map {
+                if (it.id == activeId || it.file == activeFile || it.mmprojFile == activeFile)
+                    it.copy(state = ModelState.IDLE, message = null) else it
+            },
+        )
     }
 
     /**
