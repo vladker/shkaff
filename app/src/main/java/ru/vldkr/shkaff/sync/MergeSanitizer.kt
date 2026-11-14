@@ -51,14 +51,24 @@ object MergeSanitizer {
             ok
         }
 
+        // Слоты листа: FK на sheet_layout — сироты не вставятся (SQLITE_CONSTRAINT_FOREIGNKEY).
+        val sheetLayoutIds = input.sheetLayouts.map { it.id }.toSet()
+        var droppedSheetSlots = 0
+        val sheetSlots = input.sheetSlots.filter { s ->
+            val ok = s.layout_id in sheetLayoutIds
+            if (!ok) droppedSheetSlots++
+            ok
+        }
+
         if (orphanStorageParents > 0) warnings.add("$orphanStorageParents хранилищ(и) без родительского — вынесены наверх")
         if (droppedLocations > 0) warnings.add("$droppedLocations ящик(ов) без шкафа — не импортированы")
         if (orphanLocationParents > 0) warnings.add("$orphanLocationParents ящик(ов) без родительского ящика — вынесены наверх")
         if (orphanItems > 0) warnings.add("$orphanItems вещей без ящика — сохранены как «без локации»")
         if (droppedAnnotations > 0) warnings.add("$droppedAnnotations размеченных областей без владельца — отброшены")
+        if (droppedSheetSlots > 0) warnings.add("$droppedSheetSlots слот(ов) без листа — отброшены")
 
         return SanitizeResult(
-            input.copy(storages = storages, locations = locations, items = items, annotations = annotations),
+            input.copy(storages = storages, locations = locations, items = items, annotations = annotations, sheetSlots = sheetSlots),
             warnings
         )
     }

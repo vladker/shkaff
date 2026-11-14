@@ -8,6 +8,8 @@ import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.db.SheetLayoutEntity
+import ru.vldkr.shkaff.data.db.SheetSlotEntity
 import ru.vldkr.shkaff.data.db.BasketEntity
 import ru.vldkr.shkaff.data.db.BasketItemEntity
 import ru.vldkr.shkaff.data.db.StackEntity
@@ -24,6 +26,8 @@ data class MergeInput(
     val annotations: List<AnnotationEntity> = emptyList(),
     val labelTemplates: List<LabelTemplateEntity> = emptyList(),
     val labelDocs: List<LabelDocEntity> = emptyList(),
+    val sheetLayouts: List<SheetLayoutEntity> = emptyList(),
+    val sheetSlots: List<SheetSlotEntity> = emptyList(),
     val printers: List<PrinterProfileEntity> = emptyList(),
     val tags: List<TagEntity> = emptyList(),
     val users: List<UserEntity> = emptyList(),
@@ -251,7 +255,20 @@ object MergeEngine {
         )
         allConflicts += c15
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15)
+        // Листы этикеток (T-069): слоты мержим после листов — FK на sheet_layout.
+        val (layouts, c16, s16) = mergeTable(
+            "sheet_layouts", local.sheetLayouts, remote.sheetLayouts,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
+        )
+        allConflicts += c16
+
+        val (slots, c17, s17) = mergeTable(
+            "sheet_slots", local.sheetSlots, remote.sheetSlots,
+            { it.id }, { it.updated_at }, { it.deleted_at }, { it.layout_id }, remoteWins
+        )
+        allConflicts += c17
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17)
         val total = MergeStats(
             added = all.sumOf { it.added },
             changed = all.sumOf { it.changed },
@@ -269,6 +286,8 @@ object MergeEngine {
             annotations = anns,
             labelTemplates = tpls,
             labelDocs = docs,
+            sheetLayouts = layouts,
+            sheetSlots = slots,
             printers = printers,
             tags = tags,
             users = users,

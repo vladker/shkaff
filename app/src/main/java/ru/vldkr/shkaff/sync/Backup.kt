@@ -11,6 +11,8 @@ import ru.vldkr.shkaff.data.db.LabelTemplateEntity
 import ru.vldkr.shkaff.data.db.LoanEntity
 import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
+import ru.vldkr.shkaff.data.db.SheetLayoutEntity
+import ru.vldkr.shkaff.data.db.SheetSlotEntity
 import ru.vldkr.shkaff.data.db.ShkaffDatabase
 import ru.vldkr.shkaff.data.db.BasketEntity
 import ru.vldkr.shkaff.data.db.BasketItemEntity
@@ -29,24 +31,31 @@ object Backup {
     const val FORMAT = "shkaff-backup"
     const val VERSION = 1
 
-    suspend fun buildInput(db: ShkaffDatabase): MergeInput = MergeInput(
-        attributeDefs = db.attributeDao().allWithDeleted(),
-        storages = db.storageDao().allWithDeleted(),
-        locations = db.locationDao().allWithDeleted(),
-        items = db.itemDao().allWithDeleted(),
-        annotations = db.annotationDao().allWithDeleted(),
-        labelTemplates = db.labelTemplateDao().allWithDeleted(),
-        labelDocs = db.labelDocDao().allWithDeleted(),
-        printers = db.printerDao().allWithDeleted(),
-        tags = db.tagDao().allWithDeleted(),
-        users = db.userDao().allWithDeleted(),
-        loans = db.loanDao().allWithDeleted(),
-        stacks = db.stackDao().allWithDeleted(),
-        stackMembers = db.stackMemberDao().allWithDeleted(),
-        baskets = db.basketDao().allWithDeleted(),
-        basketItems = db.basketItemDao().allWithDeleted(),
-        lastModified = System.currentTimeMillis()
-    )
+    // T-068: снимок всех таблиц — в одной транзакции, иначе правка, попавшая между
+    // чтениями, уходит в бэкап/PULL смешанной версией (вещь со старым location_id при
+    // уже новой локации и т. п.). Для сравнения applyMerge уже обёрнут в withTransaction.
+    suspend fun buildInput(db: ShkaffDatabase): MergeInput = db.withTransaction {
+        MergeInput(
+            attributeDefs = db.attributeDao().allWithDeleted(),
+            storages = db.storageDao().allWithDeleted(),
+            locations = db.locationDao().allWithDeleted(),
+            items = db.itemDao().allWithDeleted(),
+            annotations = db.annotationDao().allWithDeleted(),
+            labelTemplates = db.labelTemplateDao().allWithDeleted(),
+            labelDocs = db.labelDocDao().allWithDeleted(),
+            sheetLayouts = db.sheetLayoutDao().allWithDeleted(),
+            sheetSlots = db.sheetSlotDao().allWithDeleted(),
+            printers = db.printerDao().allWithDeleted(),
+            tags = db.tagDao().allWithDeleted(),
+            users = db.userDao().allWithDeleted(),
+            loans = db.loanDao().allWithDeleted(),
+            stacks = db.stackDao().allWithDeleted(),
+            stackMembers = db.stackMemberDao().allWithDeleted(),
+            baskets = db.basketDao().allWithDeleted(),
+            basketItems = db.basketItemDao().allWithDeleted(),
+            lastModified = System.currentTimeMillis()
+        )
+    }
 
     private fun o(e: AttributeDefEntity): JSONObject = JSONObject().apply {
         put("id", e.id); put("scope", e.scope); put("key", e.key); put("label", e.label)
@@ -238,6 +247,42 @@ object Backup {
         device_last_modified = j.optString("device", "")
     )
 
+    private fun o(e: SheetLayoutEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("name", e.name)
+        put("paper_w_mm", e.paper_w_mm); put("paper_h_mm", e.paper_h_mm)
+        put("margin_mm", e.margin_mm)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun sheetLayout(j: JSONObject): SheetLayoutEntity = SheetLayoutEntity(
+        id = j.getString("id"), name = j.optString("name", ""),
+        paper_w_mm = j.optDouble("paper_w_mm", 0.0), paper_h_mm = j.optDouble("paper_h_mm", 0.0),
+        margin_mm = j.optDouble("margin_mm", 0.0),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
+    private fun o(e: SheetSlotEntity): JSONObject = JSONObject().apply {
+        put("id", e.id); put("layout_id", e.layout_id)
+        put("x_mm", e.x_mm); put("y_mm", e.y_mm); put("w_mm", e.w_mm); put("h_mm", e.h_mm)
+        put("style_template_id", e.style_template_id); put("sort_order", e.sort_order)
+        put("created_at", e.created_at); put("updated_at", e.updated_at)
+        put("deleted_at", e.deleted_at ?: 0); put("device", e.device_last_modified)
+    }
+
+    private fun sheetSlot(j: JSONObject): SheetSlotEntity = SheetSlotEntity(
+        id = j.getString("id"), layout_id = j.getString("layout_id"),
+        x_mm = j.optDouble("x_mm", 0.0), y_mm = j.optDouble("y_mm", 0.0),
+        w_mm = j.optDouble("w_mm", 0.0), h_mm = j.optDouble("h_mm", 0.0),
+        style_template_id = j.optString("style_template_id", ""),
+        sort_order = j.optInt("sort_order", 0),
+        created_at = j.optLong("created_at", 0L), updated_at = j.optLong("updated_at", 0L),
+        deleted_at = j.optLong("deleted_at", 0L).takeIf { it > 0 },
+        device_last_modified = j.optString("device", "")
+    )
+
     private fun o(e: PrinterProfileEntity): JSONObject = JSONObject().apply {
         put("id", e.id); put("name", e.name); put("transport", e.transport)
         put("host", e.host); put("port", e.port); put("bt_mac", e.bt_mac); put("protocol", e.protocol)
@@ -387,6 +432,8 @@ object Backup {
         root.put("annotations", JSONArray().apply { input.annotations.forEach { put(o(it)) } })
         root.put("label_templates", JSONArray().apply { input.labelTemplates.forEach { put(o(it)) } })
         root.put("label_docs", JSONArray().apply { input.labelDocs.forEach { put(o(it)) } })
+        root.put("sheet_layouts", JSONArray().apply { input.sheetLayouts.forEach { put(o(it)) } })
+        root.put("sheet_slots", JSONArray().apply { input.sheetSlots.forEach { put(o(it)) } })
         root.put("printers", JSONArray().apply { input.printers.forEach { put(o(it)) } })
         root.put("tags", JSONArray().apply { input.tags.forEach { put(o(it)) } })
         root.put("users", JSONArray().apply { input.users.forEach { put(o(it)) } })
@@ -415,6 +462,8 @@ object Backup {
             annotations = arr("annotations") { anno(it) },
             labelTemplates = arr("label_templates") { tpl(it) },
             labelDocs = arr("label_docs") { doc(it) },
+            sheetLayouts = arr("sheet_layouts") { sheetLayout(it) },
+            sheetSlots = arr("sheet_slots") { sheetSlot(it) },
             printers = arr("printers") { printer(it) },
             tags = arr("tags") { tag(it) },
             users = arr("users") { user(it) },
@@ -535,6 +584,8 @@ object Backup {
             db.annotationDao().upsertAll(m.annotations)
             db.labelTemplateDao().upsertAll(m.labelTemplates)
             db.labelDocDao().upsertAll(m.labelDocs)
+            db.sheetLayoutDao().upsertAll(m.sheetLayouts) // слоты ссылаются на листы — листы первыми
+            db.sheetSlotDao().upsertAll(m.sheetSlots)
             db.printerDao().upsertAll(m.printers)
             db.tagDao().upsertAll(m.tags)
             db.userDao().upsertAll(m.users)
