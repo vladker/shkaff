@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -91,6 +92,8 @@ import ru.vldkr.shkaff.features.scan.ScannerScreen
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.data.printer.UsbPermission
 import ru.vldkr.shkaff.domain.links.AppLink
+import ru.vldkr.shkaff.domain.scan.ScanRoute
+import ru.vldkr.shkaff.domain.scan.ScanRouting
 import ru.vldkr.shkaff.util.DeepLinkBus
 import ru.vldkr.shkaff.util.HidScanAccumulator
 import ru.vldkr.shkaff.util.RouteBus
@@ -226,8 +229,7 @@ private fun badgeText(count: Int): String? = when {
 }
 
 @Composable
-fun AppRoot() {
-    val navController = rememberNavController()
+fun AppRoot(navController: NavHostController = rememberNavController()) {
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val onTab = tabs.any { it.matches(currentRoute) }
@@ -248,6 +250,24 @@ fun AppRoot() {
     LaunchedEffect(navController) {
         for (route in RouteBus.routes) {
             runCatching { navController.navigate(route) { launchSingleTop = true } }
+        }
+    }
+
+    // T-058: глобальный подписчик HID-скана. Экраны, которые сами не потребляют
+    // ScanBus (дашборд, настройки, хранилища, детали…), код теряли молча — теперь
+    // он уходит в «Вещи» поиском; маршруты-потребители не перехватываются.
+    LaunchedEffect(navController) {
+        ScanBus.codes.collect { code ->
+            val route = navController.currentBackStackEntry?.destination?.route
+            if (ScanRouting.routeFor(route) == ScanRoute.OpenItems) {
+                ScanBus.lastCode = code
+                runCatching {
+                    navController.navigate("items/0") {
+                        popUpTo(navController.graph.findStartDestination().id)
+                        launchSingleTop = true
+                    }
+                }
+            }
         }
     }
 
