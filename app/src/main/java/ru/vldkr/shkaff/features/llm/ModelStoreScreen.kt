@@ -47,6 +47,7 @@ import kotlinx.coroutines.launch
 import ru.vldkr.shkaff.data.llm.ModelRow
 import ru.vldkr.shkaff.data.llm.ModelState
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.llm.ModelAvailability
 
 class ModelStoreVm : ViewModel() {
 
@@ -57,6 +58,10 @@ class ModelStoreVm : ViewModel() {
         val downloading: Boolean,
         val fraction: Float,
         val activeFile: String?,
+        // T-053: докачанные байты «*.part» и вывод — «Удалить» нужен и у
+        // прерванной/сбойной строки, иначе части висят в каталоге навсегда.
+        val partBytes: Long = 0,
+        val deletable: Boolean = false,
     )
 
     data class Ui(
@@ -79,13 +84,24 @@ class ModelStoreVm : ViewModel() {
                             activeFile = s.activeName
                             fraction = if (s.total > 0) (s.bytes.toFloat() / s.total).coerceIn(0f, 1f) else 0f
                         }
+                        val got = Deps.modelStore.isDownloaded(row)
+                        val partMain = Deps.modelStore.partBytes(row.file)
+                        val partMm = row.mmprojFile?.let { Deps.modelStore.partBytes(it) } ?: 0L
                         RowVm(
                             row = row,
-                            got = Deps.modelStore.isDownloaded(row),
+                            got = got,
                             mmprojGot = Deps.modelStore.mmprojDone(row),
                             downloading = activeFile != null,
                             fraction = fraction,
                             activeFile = activeFile,
+                            partBytes = partMain + partMm,
+                            deletable = ModelAvailability.deletable(
+                                got = got,
+                                custom = row.custom,
+                                error = row.state == ModelState.ERROR,
+                                partMainBytes = partMain,
+                                partMmprojBytes = partMm,
+                            ),
                         )
                     }
                 )
@@ -270,8 +286,18 @@ private fun ActionButton(vm: ModelStoreVm, rv: ModelStoreVm.RowVm, row: ModelRow
                 }
             }
         }
-        else -> OutlinedButton(onClick = { vm.download(row) }, modifier = Modifier.height(48.dp)) {
-            Text(if (rv.got) "Скачать mmproj" else "Скачать")
+        else -> Row {
+            OutlinedButton(onClick = { vm.download(row) }, modifier = Modifier.height(48.dp)) {
+                Text(if (rv.got) "Скачать mmproj" else "Скачать")
+            }
+            // T-053: прерванная загрузка оставляет «*.part», а своя строка с плохим
+            // URL не даёт добавить себя заново — без «Удалить» такой мусор вечен.
+            if (rv.deletable) {
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { vm.delete(row) }, modifier = Modifier.height(48.dp)) {
+                    Text("Удалить")
+                }
+            }
         }
     }
 }
@@ -282,10 +308,14 @@ private fun description(rv: ModelStoreVm.RowVm): String {
         if (row.sizeBytes >= 1e9) "%.1f ГБ".format(row.sizeBytes / 1e9) else "%.0f МБ".format(row.sizeBytes / 1e6)
     } else "размер неизвестен"
     val quantInfo = if (row.quantName.isNotEmpty()) " · ${row.quantName}" else ""
+    // T-053: видимая часть прерванной загрузки — «*.part» остаётся для докачки.
+    val partHint = if (!rv.got && rv.partBytes > 0)
+        " · " + ModelAvailability.partialText(rv.partBytes, row.sizeBytes)
+    else ""
     return when {
         rv.got && rv.mmprojGot -> "$size$quantInfo · скачана, готова к использованию"
         rv.got -> "$size$quantInfo · файл есть (mmproj не хватает)"
-        row.custom -> size
-        else -> "$size$quantInfo · нет на устройстве"
+        row.custom -> size + partHint
+        else -> "$size$quantInfo · нет на устройстве" + partHint
     }
 }
