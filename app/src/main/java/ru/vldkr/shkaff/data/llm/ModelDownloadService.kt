@@ -3,6 +3,7 @@ package ru.vldkr.shkaff.data.llm
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
@@ -12,7 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import ru.vldkr.shkaff.MainActivity
 import ru.vldkr.shkaff.di.Deps
+import ru.vldkr.shkaff.domain.llm.DownloadNotify
 
 /**
  * Foreground-сервис (тип dataSync) для скачивания моделей: удерживает процесс,
@@ -46,6 +49,7 @@ class ModelDownloadService : Service() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                notificationManager?.cancel(FINAL_NOTIFICATION_ID)
                 startForeground(NOTIFICATION_ID, buildNotification(row.name, 0f))
                 scope.launch {
                     var lastFile: String? = null
@@ -60,6 +64,19 @@ class ModelDownloadService : Service() {
                             lastFile = file
                             lastPct = pct
                         }
+                    }
+                    // T-056: обрыв/ошибка молча гасились — по окончании perform
+                    // читаем итоговый статус строки и докладываем баннером.
+                    // Отмена (scope.cancel в onDestroy) кидает CancellationException
+                    // из perform — до этого места не доходит, баннер не показываем.
+                    val fin = Deps.modelStore.state.value.rows.firstOrNull { it.id == id }
+                    when (fin?.state) {
+                        ModelState.ERROR ->
+                            showFinal(DownloadNotify.failTitle(), DownloadNotify.errorText(fin.message))
+                        // IDLE/DOWNLOADING сюда — значит отмена или сброс состояния: молча.
+                        ModelState.IDLE, ModelState.DOWNLOADING -> Unit
+                        // COMPLETED или строка удалена во время скачивания.
+                        else -> showFinal(DownloadNotify.doneTitle(), row.name)
                     }
                     stopSelf()
                 }
@@ -80,14 +97,15 @@ class ModelDownloadService : Service() {
     }
 
     private fun updateNotification(title: String, fraction: Float) {
-        val percent = (fraction * 100).toInt().coerceIn(0, 100)
+        val percent = DownloadNotify.percent(fraction)
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
-            .setContentText("$percent%")
+            .setContentText(DownloadNotify.progressText(fraction))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(100, percent, false)
+            .setContentIntent(openModelsIntent())
             .build()
         notificationManager?.notify(NOTIFICATION_ID, notif)
     }
@@ -96,14 +114,40 @@ class ModelDownloadService : Service() {
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
-            .setContentText("${(fraction * 100).toInt()}%")
+            .setContentText(DownloadNotify.progressText(fraction))
             .setOngoing(true)
-            .setProgress(100, (fraction * 100).toInt(), false)
+            .setProgress(100, DownloadNotify.percent(fraction), false)
+            .setContentIntent(openModelsIntent())
             .build()
+
+    // T-056: итог скачивания — отдельный финальный баннер (id ≠ NOTIFICATION_ID,
+    // чтобы onDestroy его не гасил); при следующем скачивании снимается.
+    private fun showFinal(title: String, text: String) {
+        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
+            .setContentIntent(openModelsIntent())
+            .build()
+        notificationManager?.notify(FINAL_NOTIFICATION_ID, notif)
+    }
+
+    // Тап по любому уведомлению загрузки ведёт на экран «Модели» (роут llm-models).
+    private fun openModelsIntent(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, "llm-models")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
 
     companion object {
         private const val CHANNEL_ID = "model_downloads"
         private const val NOTIFICATION_ID = 1001
+        private const val FINAL_NOTIFICATION_ID = 1002
         const val ACTION_DOWNLOAD = "ru.vldkr.shkaff.llm.DOWNLOAD"
         const val ACTION_CANCEL = "ru.vldkr.shkaff.llm.CANCEL"
         const val EXTRA_ID = "record_id"

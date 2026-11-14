@@ -93,6 +93,7 @@ import ru.vldkr.shkaff.data.printer.UsbPermission
 import ru.vldkr.shkaff.domain.links.AppLink
 import ru.vldkr.shkaff.util.DeepLinkBus
 import ru.vldkr.shkaff.util.HidScanAccumulator
+import ru.vldkr.shkaff.util.RouteBus
 import ru.vldkr.shkaff.util.ScanBus
 import ru.vldkr.shkaff.features.settings.SettingsScreen
 import ru.vldkr.shkaff.features.stacks.StackDetailScreen
@@ -114,6 +115,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         handleDeepLink(intent)
+        handleRoute(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -121,6 +123,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         UsbPermission.onIntent(intent)
         handleDeepLink(intent)
+        handleRoute(intent)
     }
 
     // USB/BLE-сканер-клавиатура: быстрые клавиши + Enter → код на ScanBus.
@@ -142,6 +145,16 @@ class MainActivity : ComponentActivity() {
     private fun handleDeepLink(intent: Intent?) {
         val code = intent?.data?.toString()?.let { AppLink.parse(it) } ?: return
         DeepLinkBus.send(code)
+    }
+
+    // T-056: тап по уведомлению (скачивание модели) открывает нужный экран.
+    private fun handleRoute(intent: Intent?) {
+        val route = intent?.getStringExtra(EXTRA_ROUTE) ?: return
+        RouteBus.send(route)
+    }
+
+    companion object {
+        const val EXTRA_ROUTE = "route"
     }
 }
 
@@ -228,6 +241,13 @@ fun AppRoot() {
                 popUpTo(navController.graph.findStartDestination().id)
                 launchSingleTop = true
             }
+        }
+    }
+
+    // T-056: маршрут из вне-приложенческих интентов (тап по уведомлению загрузки).
+    LaunchedEffect(navController) {
+        for (route in RouteBus.routes) {
+            runCatching { navController.navigate(route) { launchSingleTop = true } }
         }
     }
 
