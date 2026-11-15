@@ -266,12 +266,13 @@ class ItemFormVm(
     }
 
     // ИИ-рекомендация места (мастер): топ с причинами; при выключенном ИИ — правило-фолбэк.
-    suspend fun aiRecommendLocations(): List<RecommendLlm.Recommendation> {
+    // T-026: возвращает источник и причину отказа — UI обязан их показать.
+    suspend fun aiRecommendOutcome(): RecommendLlm.Outcome {
         val categoryKey = attrDefs.value.firstOrNull { it.label == "Категория" }?.key ?: "category"
         val category = attrs[categoryKey]?.trim()?.takeIf { it.isNotEmpty() }
         val volume = volumeLiters.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
         val weight = weightKg.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
-        return RecommendLlm.recommend(
+        return RecommendLlm.recommendOutcome(
             settings = Deps.agentSettings(),
             itemName = name,
             itemCategory = category,
@@ -1209,6 +1210,12 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                     }
                     val recs = recommendations
                     if (recs.isNotEmpty()) {
+                        // T-026 (US-C6): источник подписан — здесь подсказка всегда чисто правила.
+                        Text(
+                            "Подобрано по правилам — ИИ в этой форме не участвует",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         recs.forEach { r ->
                             val selected = r.id == vm.locationId
                             Row(

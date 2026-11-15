@@ -33,6 +33,50 @@ object RecommendLlm {
         val score: Double,
     )
 
+    // T-026 (US-C6): источник подсказки должен быть виден в UI — список по правилам
+    // неотличим от ИИ, а провал ИИ молча проглатывался.
+    enum class Source { AI, RULES }
+
+    data class Outcome(
+        val recommendations: List<Recommendation>,
+        val source: Source,
+        // Почему ИИ не смог (текст для подписи в UI); null — когда список дал ИИ.
+        val aiError: String? = null,
+    )
+
+    // Transport подменяется лямбдой — тесты чистой логики без сети и llama.
+    suspend fun recommendOutcome(
+        settings: AgentSettings,
+        itemName: String,
+        itemCategory: String?,
+        volumeLiters: Double?,
+        weightKg: Double?,
+        candidates: List<CandidateInfo>,
+        top: Int = 5,
+        complete: suspend (String) -> String = { prompt ->
+            withContext(Dispatchers.IO) {
+                Agent.complete(
+                    settings = settings,
+                    messages = listOf(ChatMessage("user", prompt)),
+                    nMaxTokens = 512,
+                )
+            }
+        },
+    ): Outcome {
+        if (candidates.isEmpty()) return Outcome(emptyList(), Source.RULES, null)
+        if (settings.enabled) {
+            try {
+                val prompt = buildPrompt(itemName, itemCategory, volumeLiters, weightKg, candidates, top)
+                val parsed = parse(complete(prompt), candidates, top)
+                if (!parsed.isNullOrEmpty()) return Outcome(parsed, Source.AI, null)
+                return Outcome(ruleBased(itemCategory, volumeLiters, weightKg, candidates, top), Source.RULES, "ответ не разобрался")
+            } catch (e: Exception) {
+                return Outcome(ruleBased(itemCategory, volumeLiters, weightKg, candidates, top), Source.RULES, e.message ?: "ошибка ИИ-запроса")
+            }
+        }
+        return Outcome(ruleBased(itemCategory, volumeLiters, weightKg, candidates, top), Source.RULES, "ИИ выключен в настройках")
+    }
+
     suspend fun recommend(
         settings: AgentSettings,
         itemName: String,
@@ -41,26 +85,16 @@ object RecommendLlm {
         weightKg: Double?,
         candidates: List<CandidateInfo>,
         top: Int = 5,
-    ): List<Recommendation> {
-        if (candidates.isEmpty()) return emptyList()
-        if (settings.enabled) {
-            try {
-                val prompt = buildPrompt(itemName, itemCategory, volumeLiters, weightKg, candidates, top)
-                val text = withContext(Dispatchers.IO) {
-                    Agent.complete(
-                        settings = settings,
-                        messages = listOf(ChatMessage("user", prompt)),
-                        nMaxTokens = 512,
-                    )
-                }
-                val parsed = parse(text, candidates, top)
-                if (!parsed.isNullOrEmpty()) return parsed
-            } catch (_: Exception) {
-                // фолбэк ниже
-            }
-        }
-        return ruleBased(itemCategory, volumeLiters, weightKg, candidates, top)
-    }
+    ): List<Recommendation> =
+        recommendOutcome(
+            settings = settings,
+            itemName = itemName,
+            itemCategory = itemCategory,
+            volumeLiters = volumeLiters,
+            weightKg = weightKg,
+            candidates = candidates,
+            top = top,
+        ).recommendations
 
     // Чистый промпт — удобно тестировать.
     fun buildPrompt(

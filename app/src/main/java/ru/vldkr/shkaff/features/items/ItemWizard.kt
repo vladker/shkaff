@@ -117,6 +117,9 @@ fun ItemWizardScreen(nav: NavController) {
     var showScanBox by remember { mutableStateOf(false) }
     var aiRecs by remember { mutableStateOf(emptyList<RecommendLlm.Recommendation>()) }
     var aiRecBusy by remember { mutableStateOf(false) }
+    // T-026 (US-C6): источник и причина отказа ИИ видны пользователю.
+    var aiRecSource by remember { mutableStateOf<RecommendLlm.Source?>(null) }
+    var aiRecError by remember { mutableStateOf<String?>(null) }
     var scanMsg by remember { mutableStateOf<String?>(null) }
 
     // Сохранено
@@ -233,11 +236,21 @@ fun ItemWizardScreen(nav: NavController) {
                     locations = locations,
                     aiRecs = aiRecs,
                     aiRecBusy = aiRecBusy,
+                    aiRecSource = aiRecSource,
+                    aiRecError = aiRecError,
                     scanMsg = scanMsg,
                     onAiRec = {
                         aiRecBusy = true
+                        aiRecError = null
                         scope.launch {
-                            aiRecs = try { vm.aiRecommendLocations() } catch (_: Exception) { emptyList() }
+                            val out = try {
+                                vm.aiRecommendOutcome()
+                            } catch (e: Exception) {
+                                RecommendLlm.Outcome(emptyList(), RecommendLlm.Source.RULES, e.message ?: "запрос не выполнен")
+                            }
+                            aiRecs = out.recommendations
+                            aiRecSource = out.source
+                            aiRecError = out.aiError
                             aiRecBusy = false
                         }
                     },
@@ -262,7 +275,7 @@ fun ItemWizardScreen(nav: NavController) {
                         vm.volumeLiters = ""; vm.weightKg = ""; vm.expiryDate = ""
                         vm.attrs = emptyMap(); vm.tags = emptyList()
                         vm.locationId = null; vm.photoPath = null; vm.barcodePhotoPath = null
-                        aiRecs = emptyList(); scanMsg = null; labelMsg = null; labelErr = null
+                        aiRecs = emptyList(); aiRecSource = null; aiRecError = null; scanMsg = null; labelMsg = null; labelErr = null
                         savedId = null; savedName = ""
                         step = WStep.PHOTO
                     },
@@ -806,6 +819,8 @@ private fun StorageStep(
     locations: List<ru.vldkr.shkaff.data.db.LocationEntity>,
     aiRecs: List<RecommendLlm.Recommendation>,
     aiRecBusy: Boolean,
+    aiRecSource: RecommendLlm.Source?,
+    aiRecError: String?,
     scanMsg: String?,
     onAiRec: () -> Unit,
     onPickLocation: () -> Unit,
@@ -863,9 +878,18 @@ private fun StorageStep(
         }
     }
     scanMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    // T-026 (US-C6): провал ИИ больше не проглатывается — источник всегда подписан.
     if (aiRecs.isNotEmpty()) {
         Spacer(Modifier.height(8.dp))
         SectionTitle("Подходит для этой вещи")
+        Text(
+            if (aiRecSource == RecommendLlm.Source.AI)
+                "составил ИИ"
+            else
+                "по правилам" + if (aiRecError != null) " (ИИ недоступен: $aiRecError)" else "",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         aiRecs.forEach { r ->
             val selected = r.id == vm.locationId
             Row(
@@ -885,6 +909,9 @@ private fun StorageStep(
                 }
             }
         }
+    } else if (aiRecError != null) {
+        // T-026: пустой результат провала виден пользователю, а не проглочен.
+        Text("ИИ недоступен: $aiRecError", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     Spacer(Modifier.height(16.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
