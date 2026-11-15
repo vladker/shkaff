@@ -172,6 +172,9 @@ fun LendDialog(
     var borrower by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var due by remember { mutableStateOf("") }
+    // T-024: невалидная «Вернуть до» больше не молча превращается в выдачу без
+    // срока — диалог подсказывает формат (как «Срок годности» в ItemForm).
+    var dueError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -194,19 +197,33 @@ fun LendDialog(
                 )
                 OutlinedTextField(
                     value = due,
-                    onValueChange = { due = it },
+                    onValueChange = { due = it; dueError = null },
                     label = { Text("Вернуть до: ДД.ММ.ГГГГ (необязательно)") },
                     singleLine = true,
+                    isError = dueError != null,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
+                dueError?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = borrower.isNotBlank(),
                 onClick = {
-                    val dueAt = dateToEpoch(due)
-                    onConfirm(borrower, note, dueAt)
+                    val rawDue = due.trim()
+                    val dueAt = if (rawDue.isEmpty()) null else dateToEpoch(rawDue)
+                    if (rawDue.isNotEmpty() && dueAt == null) {
+                        dueError = "Не распознал «Вернуть до». Формат: ДД.ММ.ГГГГ"
+                    } else {
+                        onConfirm(borrower, note, dueAt)
+                    }
                 }
             ) { Text("Выдать") }
         },
@@ -216,12 +233,23 @@ fun LendDialog(
     )
 }
 
-private fun dateToEpoch(ddMMyyyy: String): Long? {
-    val p = ddMMyyyy.trim().split(".")
-    if (p.size != 3) return null
-    val d = p[0].toIntOrNull() ?: return null
-    val m = p[1].toIntOrNull() ?: return null
-    val y = p[2].toIntOrNull() ?: return null
-    if (m !in 1..12 || d !in 1..31) return null
-    return java.time.LocalDate.of(y, m, d).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+// T-024: форматы снисходительные, как у Expiry, но несуществующие даты (30.02)
+// отвергаются: STRICT-резолвер (во всех паттернах uuuu вместо yyyy — иначе STRICT
+// требует эру и отвергает любой ввод) и DateTimeParseException вместо падения
+// LocalDate.of.
+private val DUE_FORMATS = listOf("dd.MM.uuuu", "d.M.uuuu", "uuuu-MM-dd", "dd/MM/uuuu", "d/M/uuuu")
+    .map { java.time.format.DateTimeFormatter.ofPattern(it)
+        .withResolverStyle(java.time.format.ResolverStyle.STRICT) }
+
+private fun dateToEpoch(text: String): Long? {
+    val v = text.trim()
+    if (v.isEmpty()) return null
+    for (p in DUE_FORMATS) {
+        try {
+            return java.time.LocalDate.parse(v, p)
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } catch (_: java.time.format.DateTimeParseException) {
+        }
+    }
+    return null
 }
