@@ -263,7 +263,7 @@ class DashboardVm : ViewModel() {
                 overdueLoans = loans.count { it.due_at != null && it.due_at < now },
                 loansByItem = itemLoans,
                 canCreate = Access.can(role, Access.CREATE),
-                activeProfile = Deps.users.activeUser()?.name,
+                activeProfile = Onboarding.profileInHeader(Deps.users.activeUser()?.name, Deps.db.peerDao().all().isNotEmpty()),
                 draftsCount = draftsCount,
                 noLocationCount = noLocationCount,
                 avitoValue = avitoValue,

@@ -97,6 +97,7 @@ object Deps {
         backfillExpiryDates()
         seedTagDictionaryOnce()
         seedDefaultProfile()
+        renameLegacyAdminOnce()  // П4.4: старые установки с «Админ» → «Я», однократно
         // Активная роль — в наблюдаемое состояние сразу, до первого кадра UI (П0.2/T-009).
         ActiveRole.set(runBlocking { users.activeUser() }?.role)
         pruneJournal()
@@ -159,10 +160,26 @@ object Deps {
         m.upsert(SchemaMetaEntity("agentModel", s.model))
     }
 
-    // Профиль (US-G1): при первом запуске заводим «Админ», чтобы было с кого начать.
-    private fun seedDefaultProfile() {
+    // Профиль (US-G1): при первом запуске заводим «Я» (П4.4), чтобы было с кого начать
+    // и чтобы первое знакомство с приложением не пугала «администратор» — переименовать
+    // можно в экране «Профили». internal — ради теста П4.4.
+    internal fun seedDefaultProfile() {
         if (db.userDao().count() > 0) return
-        runBlocking { users.create("Админ", Role.ADMIN) }
+        runBlocking { users.create("Я", Role.ADMIN) }
+    }
+
+    // П4.4: старые установки сидированы «Админ» — переименовываем такие сиды в «Я»
+    // один раз (meta-флаг). Имена, данные пользователем, не трогаем. updated_at растёт —
+    // LWW-слияние донесёт переименование до других устройств.
+    internal fun renameLegacyAdminOnce() {
+        if (meta().get("adminProfileRenamed") == "1") return
+        val rows = runBlocking { db.userDao().all() }
+        for (u in rows) {
+            if (u.deleted_at == null && u.name == "Админ") {
+                runBlocking { users.update(u.id, "Я", Role.parse(u.role)) }
+            }
+        }
+        meta().upsert(SchemaMetaEntity("adminProfileRenamed", "1"))
     }
 
     private fun pruneJournal() {

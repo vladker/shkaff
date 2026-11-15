@@ -36,4 +36,10 @@ object Onboarding {
         !dismissed && steps.any { !it.done }
 
     fun progress(steps: List<OnbStep>): String = "${steps.count { it.done }}/${steps.size}"
+
+    // П4.4: строка «Профиль: X» в шапке — подсказка про профили. На одном устройстве
+    // она только путает (профиль один, смысл «переключать» не раскрывается). Показываем
+    // её, когда появляется второе устройство — федерация, и имя профиля становится значимым.
+    fun profileInHeader(profileName: String?, hasPeerDevice: Boolean): String? =
+        if (hasPeerDevice) profileName else null
 }
