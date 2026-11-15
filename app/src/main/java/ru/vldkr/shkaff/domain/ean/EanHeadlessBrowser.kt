@@ -7,7 +7,6 @@ import ru.vldkr.shkaff.domain.agent.Agent
 import ru.vldkr.shkaff.domain.agent.AgentSettings
 import ru.vldkr.shkaff.domain.agent.ChatClient
 import ru.vldkr.shkaff.domain.agent.ChatMessage
-import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -53,9 +52,12 @@ class EanHeadlessBrowser(
 
     /**
      * Поиск по произвольному запросу (название, бренд, категория)
+     *
+     * @throws SearchException с понятной причиной сбоя (вместо тихого null,
+     *         см. комментарий к SearchException) и CancellationException при отмене.
      */
     suspend fun lookupByQuery(query: SearchQuery, onStep: (String) -> Unit = {}): EanProduct? {
-        val json = runCatching { smartLookup(query, emptyMap(), onStep) }.getOrNull() ?: return null
+        val json = smartLookup(query, emptyMap(), onStep)
         val name = json.optString("name", "").trim()
         if (name.isBlank()) return null
         val attrs = json.optJSONObject("attributes") ?: JSONObject()
@@ -272,16 +274,4 @@ ${scraped.snippets.take(5).joinToString("\n")}
         val url: String = "",
         val error: String? = null
     )
-}
-
-/**
- * Комбинированный провайдер: сначала OpenFoodFacts, затем headless браузер с ИИ
- */
-class EanLookupWithHeadless(
-    private val headlessProvider: EanHeadlessBrowser
-) : EanProvider {
-    
-    override suspend fun lookup(ean: String): EanProduct? {
-        return OpenFoodFactsEan.lookup(ean) ?: headlessProvider.lookup(ean)
-    }
 }
