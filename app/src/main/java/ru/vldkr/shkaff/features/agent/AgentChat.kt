@@ -214,11 +214,7 @@ fun AgentScreen(nav: NavController) {
 
     // Индикатор LLM (US-L): онлайн (cloud/local) или офлайн (модель на устройстве).
     val llmOnline = !Agent.isDevice(settings)
-    val llmLabel = when {
-        !llmOnline -> "Офлайн (Локальная модель)"
-        settings.provider.trim().lowercase() == Agent.PROVIDER_LOCAL -> "Онлайн (Локальная сеть)"
-        else -> "Онлайн (Qwen API)"
-    }
+    val llmLabel = Agent.llmStatusLabel(settings)
     val llmColor = if (llmOnline) MaterialTheme.colorScheme.tertiary else Ozon.Orange
 
     Scaffold(

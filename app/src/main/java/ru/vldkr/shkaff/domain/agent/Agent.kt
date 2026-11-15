@@ -11,6 +11,24 @@ object Agent {
     fun isDevice(settings: AgentSettings): Boolean =
         settings.provider.trim().lowercase() == PROVIDER_DEVICE
 
+    // Подпись индикатора режима (T-034): вместо хардкода «Qwen API» облачный
+    // провайдер показывает реальный хост из baseUrl; локальная сеть и устройство — свои метки.
+    fun llmStatusLabel(settings: AgentSettings): String {
+        if (isDevice(settings)) return "Офлайн (Локальная модель)"
+        if (settings.provider.trim().lowercase() == PROVIDER_LOCAL) return "Онлайн (Локальная сеть)"
+        val host = hostLabel(settings.baseUrl)
+        return if (host != null) "Онлайн ($host)" else "Онлайн (Облако)"
+    }
+
+    // Человекочитаемый хост из baseUrl: без схемы, логина и пути («https://user:pw@API.DeepSeek.com/v1» -> «api.deepseek.com»).
+    private fun hostLabel(baseUrl: String): String? {
+        var s = baseUrl.trim()
+        val scheme = s.indexOf("://")
+        if (scheme >= 0) s = s.substring(scheme + 3)
+        s = s.substringBefore('/').substringBefore('?').substringAfterLast('@')
+        return s.ifBlank { null }?.lowercase()
+    }
+
     suspend fun complete(
         settings: AgentSettings,
         messages: List<ChatMessage>,
