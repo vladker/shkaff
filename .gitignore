@@ -81,3 +81,6 @@ htmlcov/
 *.tar.xz
 *.tar.zst
 PLAN_ONBOARDING.md
+
+# пустой побочный файл kanban-инструмента (борд = .pi/kanban/tasks/*.md)
+.pi/kanban/kanban.db
