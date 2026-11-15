@@ -129,6 +129,9 @@ class ItemFormVm(
     val eanLookupBusy = MutableStateFlow(false)
     val eanLookupResult = MutableStateFlow<List<EanRow>?>(null)
     val eanLookupError = MutableStateFlow<String?>(null)
+    // T-023: значение применено, но справочник не обновился — короткое
+    // предупреждение вместо молчаливой потери словарного значения.
+    val dictWarning = MutableStateFlow<String?>(null)
 
     // US-B2: поиск через headless браузер с ИИ (все поля карточки)
     // accepted=true — предложение ИИ принято по умолчанию; крестик отменяет.
@@ -400,8 +403,10 @@ class ItemFormVm(
                 if ((0 until opts.length()).none { opts.optString(it).equals(v, ignoreCase = true) }) {
                     viewModelScope.launch {
                         try {
-                            Deps.attributes.addOption(def.id, v, Deps.deviceId)
-                        } catch (_: Exception) {
+                            if (!Deps.attributes.addOption(def.id, v, Deps.deviceId))
+                                dictWarning.value = "Справочник «${def.label}» не обновлён"
+                        } catch (e: Exception) {
+                            dictWarning.value = "Справочник «${def.label}» не обновлён: ${e.message}"
                         }
                     }
                 }
@@ -635,8 +640,10 @@ class ItemFormVm(
         if ((0 until opts.length()).none { opts.optString(it).equals(value, ignoreCase = true) }) {
             viewModelScope.launch {
                 try {
-                    Deps.attributes.addOption(def.id, value, Deps.deviceId)
-                } catch (_: Exception) {
+                    if (!Deps.attributes.addOption(def.id, value, Deps.deviceId))
+                        dictWarning.value = "Справочник «${def.label}» не обновлён"
+                } catch (e: Exception) {
+                    dictWarning.value = "Справочник «${def.label}» не обновлён: ${e.message}"
                 }
             }
         }
@@ -1317,6 +1324,15 @@ fun ItemFormScreen(nav: NavController, id: String, locationId: String) {
                         vm.attrs = if (v.isEmpty()) vm.attrs - k else vm.attrs + (k to v)
                     }
                 }
+                // T-023: справочник не обновился — предупреждаем явно.
+                vm.dictWarning.collectAsState().value?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
@@ -1464,16 +1480,20 @@ fun SmartSearchDialog(vm: ItemFormVm) {
 fun TagChipsField(vm: ItemFormVm) {
     val scope = rememberCoroutineScope()
     var newTag by remember { mutableStateOf("") }
+    // T-023: провал добавления в словарь тегов не должен молчать.
+    var tagDictError by remember { mutableStateOf<String?>(null) }
     val dict by vm.tagDict.collectAsState()
 
     fun commitTag(raw: String) {
         val t = raw.trim()
         if (t.isEmpty()) return
         vm.tags = if (vm.tags.none { it.equals(t, ignoreCase = true) }) vm.tags + t else vm.tags
+        tagDictError = null
         scope.launch {
             try {
                 Deps.tags.add(t)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                tagDictError = "Тег «$t» не добавлен в словарь"
             }
         }
         newTag = ""

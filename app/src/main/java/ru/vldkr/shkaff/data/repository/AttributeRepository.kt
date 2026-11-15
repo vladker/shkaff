@@ -19,8 +19,10 @@ class AttributeRepository(private val db: ShkaffDatabase) {
         dao.upsert(a)
     }
 
-    suspend fun addOption(defId: String, option: String, deviceId: String) {
-        val d = dao.byId(defId) ?: return
+    // T-023: возвращает false, если определения нет в БД — вызывающий обязан
+    // показать предупреждение вместо молчаливой потери значения.
+    suspend fun addOption(defId: String, option: String, deviceId: String): Boolean {
+        val d = dao.byId(defId) ?: return false
         dao.upsert(
             d.copy(
                 options = AttrJson.optionsWithNew(d.options, option),
@@ -28,6 +30,7 @@ class AttributeRepository(private val db: ShkaffDatabase) {
                 device_last_modified = deviceId
             )
         )
+        return true
     }
 
     suspend fun remove(id: String) {

@@ -327,21 +327,31 @@ private fun SelectField(def: AttributeDefEntity, value: String, onChange: (Strin
     var adding by remember { mutableStateOf(false) }
     var newOption by remember { mutableStateOf("") }
     val busy = remember { mutableStateOf(false) }
+    var addError by remember { mutableStateOf<String?>(null) }
 
     fun commitOption() {
         val t = newOption.trim()
         if (t.isEmpty() || busy.value) return
         busy.value = true
+        addError = null
         scope.launch {
-            try {
+            // T-023: запись словаря не должна ронять процесс и значение
+            // применяется только после успешного addOption.
+            val ok = try {
                 Deps.attributes.addOption(def.id, t, Deps.deviceId)
+            } catch (e: Exception) {
+                false
             } finally {
                 busy.value = false
             }
+            if (ok) {
+                onChange(def.key, t)
+                newOption = ""
+                adding = false
+            } else {
+                addError = "Словарь не обновлён — значение не применено"
+            }
         }
-        onChange(def.key, t)
-        newOption = ""
-        adding = false
     }
 
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -366,9 +376,17 @@ private fun SelectField(def: AttributeDefEntity, value: String, onChange: (Strin
                 TextButton(onClick = { commitOption() }, modifier = Modifier.padding(start = 4.dp)) {
                     Text("Добавить")
                 }
-                IconButton(onClick = { adding = false; newOption = "" }) {
+                IconButton(onClick = { adding = false; newOption = ""; addError = null }) {
                     Icon(Icons.Filled.Close, contentDescription = "Отмена")
                 }
+            }
+            addError?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         } else {
             Row(
