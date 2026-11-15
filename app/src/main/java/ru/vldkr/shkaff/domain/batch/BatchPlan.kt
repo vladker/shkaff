@@ -14,6 +14,14 @@ object BatchPlan {
         return if (p.contains("{n}")) p.replace("{n}", index.toString()) else p
     }
 
+    // T-027: серия из нескольких вещей без {n} даёт N одинаковых имён —
+    // предупреждаем до старта, это почти всегда ошибка шаблона.
+    fun duplicateNameWarning(pattern: String, count: Int): String? {
+        val p = pattern.trim()
+        if (count < 2 || p.isEmpty() || p.contains("{n}")) return null
+        return "Без {n} все $count вещей серии получат одинаковое имя — добавьте {n} в название."
+    }
+
     // Общие атрибуты: всё, что НЕ отмечено «для каждого».
     fun copiedAttrs(all: Map<String, String>, perItem: Set<String>): Map<String, String> =
         all.filterKeys { it !in perItem }

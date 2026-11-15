@@ -1,6 +1,8 @@
 package ru.vldkr.shkaff.features.batch
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,7 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -73,11 +78,13 @@ import ru.vldkr.shkaff.domain.labels.pickTemplate
 import ru.vldkr.shkaff.features.labels.LabelGenerator
 import ru.vldkr.shkaff.features.labels.TemplatePickerDialog
 import ru.vldkr.shkaff.features.printers.PrinterPickerDialog
+import ru.vldkr.shkaff.util.PhotoCapture
 import ru.vldkr.shkaff.ui.components.ConfirmDialog
 import ru.vldkr.shkaff.ui.components.FieldRow
 import ru.vldkr.shkaff.ui.components.LocationPickerDialog
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.parseOptions
+import java.io.File
 
 class BatchVm : ViewModel() {
 
@@ -87,6 +94,8 @@ class BatchVm : ViewModel() {
         val phase: Phase = Phase.SETUP,
         val namePattern: String = "",
         val description: String = "",
+        // T-027: общее фото серии (префилл из шаблон-вещи), копируется каждой вещи.
+        val photoPath: String? = null,
         val locationId: String? = null,
         val tags: List<String> = emptyList(),
         val attrs: Map<String, String> = emptyMap(),
@@ -132,6 +141,8 @@ class BatchVm : ViewModel() {
     fun setDescription(s: String) = update { it.copy(description = s) }
 
     fun setCount(s: String) = update { it.copy(count = s) }
+
+    fun setPhoto(path: String?) = update { it.copy(photoPath = path) }
 
     fun setSetupAttr(key: String, value: String) = update {
         it.copy(attrs = if (value.isEmpty()) it.attrs - key else it.attrs + (key to value))
@@ -216,6 +227,7 @@ class BatchVm : ViewModel() {
                         description = u.description.trim(),
                         attributes = attrs,
                         locationId = u.locationId,
+                        photoPath = u.photoPath,
                         tags = u.tags
                     ),
                     allowOverCapacity = true
@@ -305,6 +317,7 @@ class BatchVm : ViewModel() {
                 it.copy(
                     namePattern = e.name,
                     description = e.description,
+                    photoPath = e.photo_path,
                     locationId = e.location_id,
                     tags = TagsJson.toList(e.tags),
                     attrs = AttrJson.toMap(e.attributes),
@@ -476,7 +489,8 @@ private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntit
                 onValueChange = { vm.setName(it) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(nameFocus),
+                    .focusRequester(nameFocus)
+                    .testTag("batchName"),
                 placeholder = { Text("Напр.: Гвозди 3×70 или Батарея AA {n}") },
                 supportingText = { Text("{n} — номер позиции в серии") },
                 singleLine = true
@@ -507,10 +521,53 @@ private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntit
             OutlinedTextField(
                 value = ui.count,
                 onValueChange = { vm.setCount(it) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("batchCount"),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true
             )
+        }
+        // T-027: count>1 без {n} — N одинаковых имён; предупреждаем до старта.
+        BatchPlan.duplicateNameWarning(ui.namePattern, ui.count.trim().toIntOrNull() ?: 0)?.let { w ->
+            Text(
+                w,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+        // T-027: общее фото серии (префилл из шаблон-вещи) — достанется каждой вещи.
+        ui.photoPath?.let { path ->
+            val bmp = remember(path) {
+                if (File(path).exists())
+                    runCatching { BitmapFactory.decodeFile(path)?.let { PhotoCapture.maxBmp(it, 600) } }
+                        .getOrNull()
+                else null
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Общее фото серии",
+                        modifier = Modifier.size(72.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+                Text(
+                    "Общее фото серии — попадёт во все вещи",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = { vm.setPhoto(null) }) {
+                    Text("Убрать", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
         }
         if (defs.isNotEmpty()) {
             SectionTitle("Атрибуты")
@@ -541,7 +598,7 @@ private fun SetupPhase(vm: BatchVm, ui: BatchVm.Ui, defs: List<AttributeDefEntit
 }
 
 @Composable
-private fun BatchAttrField(
+internal fun BatchAttrField(
     def: AttributeDefEntity,
     value: String,
     perItem: Boolean,
@@ -555,13 +612,16 @@ private fun BatchAttrField(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(def.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // T-027: без принудительных 32×32 dp чекбокс получает дефолтный
+            // тач-таргет M3 (48 dp); плюс клик по всей строке «галочка + подпись».
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onTogglePerItem() }
+            ) {
                 Checkbox(
                     checked = perItem,
                     onCheckedChange = { onTogglePerItem() },
-                    modifier = Modifier
-                        .width(32.dp)
-                        .height(32.dp)
+                    modifier = Modifier.testTag("perItemCheck")
                 )
                 Text(
                     "для каждого",
