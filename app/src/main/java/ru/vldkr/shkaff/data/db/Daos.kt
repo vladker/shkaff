@@ -18,11 +18,19 @@ interface StorageDao {
     suspend fun upsert(s: StorageEntity)
 
     @Query("UPDATE storage SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     // Отмена мягкого удаления (Undo, US-L21).
     @Query("UPDATE storage SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun restore(id: String, now: Long, dev: String)
+    suspend fun restore(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM storage WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -31,7 +39,10 @@ interface StorageDao {
     suspend fun count(): Int
 
     @Query("SELECT 1 FROM storage WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
-    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+    suspend fun existsByCode(
+        code: String,
+        excludeId: String? = null,
+    ): Int
 
     @Query("SELECT * FROM storage")
     suspend fun allWithDeleted(): List<StorageEntity>
@@ -41,7 +52,11 @@ interface StorageDao {
 
     // Пометить, что этикетке напечатана.
     @Query("UPDATE storage SET labelled_at = :at, updated_at = :at, device_last_modified = :dev WHERE id = :id")
-    suspend fun markLabelled(id: String, at: Long, dev: String)
+    suspend fun markLabelled(
+        id: String,
+        at: Long,
+        dev: String,
+    )
 }
 
 @Dao
@@ -49,7 +64,9 @@ interface LocationDao {
     @Query("SELECT * FROM location WHERE deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED")
     fun observeAll(): Flow<List<LocationEntity>>
 
-    @Query("SELECT * FROM location WHERE storage_id = :storageId AND deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED")
+    @Query(
+        "SELECT * FROM location WHERE storage_id = :storageId AND deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED",
+    )
     fun observeByStorage(storageId: String): Flow<List<LocationEntity>>
 
     @Query("SELECT * FROM location WHERE storage_id = :storageId AND deleted_at IS NULL")
@@ -61,18 +78,28 @@ interface LocationDao {
     @Query("SELECT * FROM location WHERE parent_id = :parentId AND deleted_at IS NULL")
     suspend fun children(parentId: String): List<LocationEntity>
 
-    @Query("SELECT * FROM location WHERE parent_id = :parentId AND deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED")
+    @Query(
+        "SELECT * FROM location WHERE parent_id = :parentId AND deleted_at IS NULL ORDER BY label COLLATE LOCALIZED, name COLLATE LOCALIZED",
+    )
     fun observeChildren(parentId: String): Flow<List<LocationEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(l: LocationEntity)
 
     @Query("UPDATE location SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     // Отмена мягкого удаления (Undo, US-L21).
     @Query("UPDATE location SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun restore(id: String, now: Long, dev: String)
+    suspend fun restore(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM location WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -84,7 +111,10 @@ interface LocationDao {
     suspend fun countByStorage(storageId: String): Int
 
     @Query("SELECT 1 FROM location WHERE label = :label AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
-    suspend fun existsByLabel(label: String, excludeId: String? = null): Int
+    suspend fun existsByLabel(
+        label: String,
+        excludeId: String? = null,
+    ): Int
 
     @Query("SELECT * FROM location")
     suspend fun allWithDeleted(): List<LocationEntity>
@@ -94,7 +124,11 @@ interface LocationDao {
 
     // Пометить, что этикетке напечатана.
     @Query("UPDATE location SET labelled_at = :at, updated_at = :at, device_last_modified = :dev WHERE id = :id")
-    suspend fun markLabelled(id: String, at: Long, dev: String)
+    suspend fun markLabelled(
+        id: String,
+        at: Long,
+        dev: String,
+    )
 }
 
 @Dao
@@ -115,7 +149,10 @@ interface ItemDao {
     suspend fun byCode(code: String): ItemEntity?
 
     @Query("SELECT 1 FROM item WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
-    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+    suspend fun existsByCode(
+        code: String,
+        excludeId: String? = null,
+    ): Int
 
     @Query("SELECT * FROM item WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): ItemEntity?
@@ -124,11 +161,19 @@ interface ItemDao {
     suspend fun upsert(i: ItemEntity)
 
     @Query("UPDATE item SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     // Отмена мягкого удаления (Undo, US-L21).
     @Query("UPDATE item SET deleted_at = NULL, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun restore(id: String, now: Long, dev: String)
+    suspend fun restore(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM item WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -142,7 +187,11 @@ interface ItemDao {
     // T-041: мягкое удаление ящика снимает его вещи в «без места» (обещание диалога
     // удаления). Обновляем updated_at — от него зависит LWW при слиянии (AGENTS.md).
     @Query("UPDATE item SET location_id = NULL, updated_at = :now, device_last_modified = :dev WHERE location_id = :locId")
-    suspend fun clearLocation(locId: String, now: Long, dev: String): Int
+    suspend fun clearLocation(
+        locId: String,
+        now: Long,
+        dev: String,
+    ): Int
 
     // Живые вещи ящика — их id возвращаются вызывающему для Undo.
     @Query("SELECT id FROM item WHERE location_id = :locId AND deleted_at IS NULL")
@@ -150,12 +199,17 @@ interface ItemDao {
 
     // Undo (T-041): возврат вещей в восстановленный ящик.
     @Query("UPDATE item SET location_id = :locId, updated_at = :now, device_last_modified = :dev WHERE id IN (:ids)")
-    suspend fun assignLocation(ids: List<String>, locId: String, now: Long, dev: String)
+    suspend fun assignLocation(
+        ids: List<String>,
+        locId: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query(
         "SELECT * FROM item WHERE deleted_at IS NULL AND " +
             "(name LIKE '%' || :q || '%' OR description LIKE '%' || :q || '%' OR code LIKE '%' || :q || '%' OR attributes LIKE '%' || :q || '%') " +
-            "ORDER BY updated_at DESC LIMIT 100"
+            "ORDER BY updated_at DESC LIMIT 100",
     )
     suspend fun likeSearch(q: String): List<ItemEntity>
 
@@ -185,12 +239,18 @@ interface ItemDao {
 
     // Пометить, что этикетке напечатана.
     @Query("UPDATE item SET labelled_at = :at, updated_at = :at, device_last_modified = :dev WHERE id = :id")
-    suspend fun markLabelled(id: String, at: Long, dev: String)
+    suspend fun markLabelled(
+        id: String,
+        at: Long,
+        dev: String,
+    )
 }
 
 @Dao
 interface AttributeDao {
-    @Query("SELECT * FROM attribute_def WHERE deleted_at IS NULL AND (scope = :scope OR scope = '*') ORDER BY scope, sort_order, label COLLATE LOCALIZED")
+    @Query(
+        "SELECT * FROM attribute_def WHERE deleted_at IS NULL AND (scope = :scope OR scope = '*') ORDER BY scope, sort_order, label COLLATE LOCALIZED",
+    )
     suspend fun forScope(scope: String): List<AttributeDefEntity>
 
     @Query("SELECT * FROM attribute_def WHERE deleted_at IS NULL ORDER BY scope, sort_order, label COLLATE LOCALIZED")
@@ -233,7 +293,11 @@ interface AnnotationDao {
     suspend fun upsertAll(list: List<AnnotationEntity>)
 
     @Query("UPDATE annotation SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM annotation WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -266,7 +330,11 @@ interface LabelTemplateDao {
     fun count(): Int
 
     @Query("UPDATE label_template SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM label_template WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -293,7 +361,11 @@ interface SheetLayoutDao {
     suspend fun count(): Int
 
     @Query("UPDATE sheet_layout SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM sheet_layout WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -323,7 +395,11 @@ interface SheetSlotDao {
     suspend fun countByLayout(layoutId: String): Int
 
     @Query("UPDATE sheet_slot SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM sheet_slot WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -350,7 +426,11 @@ interface PrinterDao {
     suspend fun allWithDeleted(): List<PrinterProfileEntity>
 
     @Query("UPDATE printer_profile SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM printer_profile WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -380,7 +460,11 @@ interface LabelDocDao {
     suspend fun allWithDeleted(): List<LabelDocEntity>
 
     @Query("UPDATE label_doc SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM label_doc WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -419,7 +503,11 @@ interface TagDao {
     suspend fun upsertAll(list: List<TagEntity>)
 
     @Query("UPDATE tag SET deleted_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("SELECT COUNT(*) FROM tag")
     suspend fun count(): Int
@@ -476,7 +564,11 @@ interface UserDao {
     suspend fun allWithDeleted(): List<UserEntity>
 
     @Query("UPDATE \"user\" SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("SELECT COUNT(*) FROM \"user\" WHERE deleted_at IS NULL")
     fun count(): Int
@@ -485,14 +577,19 @@ interface UserDao {
 @Dao
 interface LoanDao {
     // Активные (не возвращённые) выдачи, просроченные — первыми.
-    @Query("SELECT * FROM loan WHERE returned_at IS NULL ORDER BY (due_at IS NOT NULL AND due_at < :now) DESC, due_at IS NULL, due_at ASC, lent_at DESC")
+    @Query(
+        "SELECT * FROM loan WHERE returned_at IS NULL ORDER BY (due_at IS NOT NULL AND due_at < :now) DESC, due_at IS NULL, due_at ASC, lent_at DESC",
+    )
     fun observeActive(now: Long): Flow<List<LoanEntity>>
 
     @Query("SELECT * FROM loan ORDER BY lent_at DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<LoanEntity>
 
     @Query("SELECT * FROM loan WHERE entity_type = :entityType AND entity_id = :entityId AND returned_at IS NULL LIMIT 1")
-    suspend fun activeForEntity(entityType: String, entityId: String): LoanEntity?
+    suspend fun activeForEntity(
+        entityType: String,
+        entityId: String,
+    ): LoanEntity?
 
     @Query("SELECT * FROM loan WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): LoanEntity?
@@ -507,7 +604,12 @@ interface LoanDao {
     suspend fun allWithDeleted(): List<LoanEntity>
 
     @Query("UPDATE loan SET returned_at = :returnedAt, updated_at = :updatedAt, device_last_modified = :dev WHERE id = :id")
-    suspend fun markReturned(id: String, returnedAt: Long, updatedAt: Long, dev: String)
+    suspend fun markReturned(
+        id: String,
+        returnedAt: Long,
+        updatedAt: Long,
+        dev: String,
+    )
 }
 
 @Dao
@@ -515,11 +617,24 @@ interface ActionLogDao {
     @Query("SELECT * FROM action_log ORDER BY at DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<ActionLogEntity>>
 
-    @Query("SELECT * FROM action_log WHERE (:action IS NULL OR action = :action) AND (:from IS NULL OR at >= :from) AND (:to IS NULL OR at <= :to) ORDER BY at DESC LIMIT :limit")
-    fun observeFiltered(action: String?, from: Long?, to: Long?, limit: Int): Flow<List<ActionLogEntity>>
+    @Query(
+        "SELECT * FROM action_log WHERE (:action IS NULL OR action = :action) AND (:from IS NULL OR at >= :from) AND (:to IS NULL OR at <= :to) ORDER BY at DESC LIMIT :limit",
+    )
+    fun observeFiltered(
+        action: String?,
+        from: Long?,
+        to: Long?,
+        limit: Int,
+    ): Flow<List<ActionLogEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(l: ActionLogEntity)
+
+    @Query("SELECT * FROM action_log")
+    suspend fun all(): List<ActionLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<ActionLogEntity>)
 
     @Query("DELETE FROM action_log WHERE at < :before")
     suspend fun deleteOlderThan(before: Long)
@@ -546,14 +661,21 @@ interface StackDao {
     suspend fun count(): Int
 
     @Query("SELECT 1 FROM stack WHERE code = :code AND deleted_at IS NULL AND (:excludeId IS NULL OR id <> :excludeId) LIMIT 1")
-    suspend fun existsByCode(code: String, excludeId: String? = null): Int
+    suspend fun existsByCode(
+        code: String,
+        excludeId: String? = null,
+    ): Int
 
     // T-016 (US-E2): резолв отсканированного QR стека по его номеру.
     @Query("SELECT * FROM stack WHERE code = :code AND deleted_at IS NULL LIMIT 1")
     suspend fun byCode(code: String): StackEntity?
 
     @Query("UPDATE stack SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM stack WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -565,7 +687,10 @@ interface StackMemberDao {
     suspend fun byStack(stackId: String): List<StackMemberEntity>
 
     @Query("SELECT * FROM stack_member WHERE entity_type = :entityType AND entity_id = :entityId AND deleted_at IS NULL")
-    suspend fun groupsForEntity(entityType: String, entityId: String): List<StackMemberEntity>
+    suspend fun groupsForEntity(
+        entityType: String,
+        entityId: String,
+    ): List<StackMemberEntity>
 
     @Query("SELECT COUNT(*) FROM stack_member WHERE stack_id = :stackId AND deleted_at IS NULL")
     suspend fun countByStack(stackId: String): Int
@@ -580,7 +705,11 @@ interface StackMemberDao {
     suspend fun allWithDeleted(): List<StackMemberEntity>
 
     @Query("UPDATE stack_member SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM stack_member WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -610,7 +739,11 @@ interface BasketDao {
     suspend fun count(): Int
 
     @Query("UPDATE basket SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM basket WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -631,7 +764,11 @@ interface PeerDao {
     suspend fun upsert(p: PeerEntity)
 
     @Query("UPDATE peer_db SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM peer_db WHERE id = :id")
     suspend fun hardDelete(id: String)
@@ -649,10 +786,18 @@ interface BasketItemDao {
     suspend fun countPickedByBasket(basketId: String): Int
 
     @Query("SELECT 1 FROM basket_item WHERE basket_id = :basketId AND item_id = :itemId AND deleted_at IS NULL LIMIT 1")
-    suspend fun exists(basketId: String, itemId: String): Int
+    suspend fun exists(
+        basketId: String,
+        itemId: String,
+    ): Int
 
     @Query("UPDATE basket_item SET picked_ts = :pickedTs, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun updatePicked(id: String, pickedTs: Long?, now: Long, dev: String)
+    suspend fun updatePicked(
+        id: String,
+        pickedTs: Long?,
+        now: Long,
+        dev: String,
+    )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(b: BasketItemEntity)
@@ -664,7 +809,11 @@ interface BasketItemDao {
     suspend fun allWithDeleted(): List<BasketItemEntity>
 
     @Query("UPDATE basket_item SET deleted_at = :now, updated_at = :now, device_last_modified = :dev WHERE id = :id")
-    suspend fun softDelete(id: String, now: Long, dev: String)
+    suspend fun softDelete(
+        id: String,
+        now: Long,
+        dev: String,
+    )
 
     @Query("DELETE FROM basket_item WHERE id = :id")
     suspend fun hardDelete(id: String)
