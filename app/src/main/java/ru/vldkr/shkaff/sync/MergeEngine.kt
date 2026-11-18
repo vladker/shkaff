@@ -1,7 +1,10 @@
 package ru.vldkr.shkaff.sync
 
+import ru.vldkr.shkaff.data.db.ActionLogEntity
 import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.data.db.AttributeDefEntity
+import ru.vldkr.shkaff.data.db.BasketEntity
+import ru.vldkr.shkaff.data.db.BasketItemEntity
 import ru.vldkr.shkaff.data.db.ItemEntity
 import ru.vldkr.shkaff.data.db.LabelDocEntity
 import ru.vldkr.shkaff.data.db.LabelTemplateEntity
@@ -10,8 +13,6 @@ import ru.vldkr.shkaff.data.db.LocationEntity
 import ru.vldkr.shkaff.data.db.PrinterProfileEntity
 import ru.vldkr.shkaff.data.db.SheetLayoutEntity
 import ru.vldkr.shkaff.data.db.SheetSlotEntity
-import ru.vldkr.shkaff.data.db.BasketEntity
-import ru.vldkr.shkaff.data.db.BasketItemEntity
 import ru.vldkr.shkaff.data.db.StackEntity
 import ru.vldkr.shkaff.data.db.StackMemberEntity
 import ru.vldkr.shkaff.data.db.StorageEntity
@@ -36,7 +37,8 @@ data class MergeInput(
     val stackMembers: List<StackMemberEntity> = emptyList(),
     val baskets: List<BasketEntity> = emptyList(),
     val basketItems: List<BasketItemEntity> = emptyList(),
-    val lastModified: Long = 0L
+    val actionLogs: List<ActionLogEntity> = emptyList(),
+    val lastModified: Long = 0L,
 )
 
 data class Conflict(
@@ -45,25 +47,29 @@ data class Conflict(
     val label: String,
     val localRow: String,
     val remoteRow: String,
-    val resolution: String
+    val resolution: String,
 )
 
 data class MergeStats(
     val added: Int = 0,
     val changed: Int = 0,
     val deleted: Int = 0,
-    val kept: Int = 0
+    val kept: Int = 0,
 )
 
 data class MergeResult(
     val merged: MergeInput,
     val conflicts: List<Conflict>,
-    val stats: MergeStats
+    val stats: MergeStats,
 )
 
 object MergeEngine {
-
-    private data class TableStats(var added: Int = 0, var changed: Int = 0, var deleted: Int = 0, var kept: Int = 0)
+    private data class TableStats(
+        var added: Int = 0,
+        var changed: Int = 0,
+        var deleted: Int = 0,
+        var kept: Int = 0,
+    )
 
     private fun <T> mergeTable(
         table: String,
@@ -73,7 +79,7 @@ object MergeEngine {
         tsOf: (T) -> Long,
         delOf: (T) -> Long?,
         labelOf: (T) -> String,
-        remoteWins: Boolean
+        remoteWins: Boolean,
     ): Triple<List<T>, List<Conflict>, TableStats> {
         val conflicts = mutableListOf<Conflict>()
         val stats = TableStats()
@@ -90,10 +96,12 @@ object MergeEngine {
                     out[id] = a
                     if (delOf(a) != null) stats.kept++ else stats.kept++
                 }
+
                 a == null && b != null -> {
                     out[id] = b
                     stats.added++
                 }
+
                 else -> {
                     val x = a!!
                     val y = b!!
@@ -114,12 +122,15 @@ object MergeEngine {
                             if (xTs == yTs) {
                                 if (xRow != yRow) {
                                     winner = if (remoteWins) y else x
-                                    conflict = Conflict(
-                                        table, id, labelOf(winner),
-                                        if (remoteWins) xRow else yRow,
-                                        if (remoteWins) yRow else xRow,
-                                        if (remoteWins) "remote" else "local"
-                                    )
+                                    conflict =
+                                        Conflict(
+                                            table,
+                                            id,
+                                            labelOf(winner),
+                                            if (remoteWins) xRow else yRow,
+                                            if (remoteWins) yRow else xRow,
+                                            if (remoteWins) "remote" else "local",
+                                        )
                                 } else {
                                     winner = x
                                     conflict = null
@@ -129,15 +140,18 @@ object MergeEngine {
                                 conflict = null
                             }
                         }
+
                         xDeleted && !yDeleted -> {
                             // удалено локально, живо удалённо: если удаление новее — остаётся удалённым
                             winner = if (xDel!! > yTs) x else y
                             conflict = null
                         }
+
                         !xDeleted && yDeleted -> {
                             winner = if (yDel!! > xTs) y else x
                             conflict = null
                         }
+
                         else -> {
                             winner = if (yDel!! >= xDel!!) y else x
                             conflict = null
@@ -147,10 +161,15 @@ object MergeEngine {
                     conflict?.let { conflicts.add(it) }
                     out[id] = winner
 
-                    if (winner === x && xRow == yRow) stats.kept++
-                    else if (delOf(winner) != null && !xDeleted) stats.deleted++
-                    else if (winner.toString() != xRow) stats.changed++
-                    else stats.kept++
+                    if (winner === x && xRow == yRow) {
+                        stats.kept++
+                    } else if (delOf(winner) != null && !xDeleted) {
+                        stats.deleted++
+                    } else if (winner.toString() != xRow) {
+                        stats.changed++
+                    } else {
+                        stats.kept++
+                    }
                 }
             }
         }
@@ -158,151 +177,285 @@ object MergeEngine {
         return Triple(out.values.toList(), conflicts, stats)
     }
 
-    fun merge(local: MergeInput, remote: MergeInput, remoteWins: Boolean): MergeResult {
+    fun merge(
+        local: MergeInput,
+        remote: MergeInput,
+        remoteWins: Boolean,
+    ): MergeResult {
         val allConflicts = mutableListOf<Conflict>()
         val stats = MergeStats()
 
-        val (defs, c1, s1) = mergeTable(
-            "attribute_defs", local.attributeDefs, remote.attributeDefs,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.label }, remoteWins
-        )
+        val (defs, c1, s1) =
+            mergeTable(
+                "attribute_defs",
+                local.attributeDefs,
+                remote.attributeDefs,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.label },
+                remoteWins,
+            )
         allConflicts += c1
 
-        val (stors, c2, s2) = mergeTable(
-            "storages", local.storages, remote.storages,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (stors, c2, s2) =
+            mergeTable(
+                "storages",
+                local.storages,
+                remote.storages,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c2
 
-        val (locs, c3, s3) = mergeTable(
-            "locations", local.locations, remote.locations,
-            { it.id }, { it.updated_at }, { it.deleted_at },
-            { it.label.ifBlank { it.name }.ifBlank { "Ящик" } }, remoteWins
-        )
+        val (locs, c3, s3) =
+            mergeTable(
+                "locations",
+                local.locations,
+                remote.locations,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.label.ifBlank { it.name }.ifBlank { "Ящик" } },
+                remoteWins,
+            )
         allConflicts += c3
 
-        val (items, c4, s4) = mergeTable(
-            "items", local.items, remote.items,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (items, c4, s4) =
+            mergeTable(
+                "items",
+                local.items,
+                remote.items,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c4
 
-        val (anns, c5, s5) = mergeTable(
-            "annotations", local.annotations, remote.annotations,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.label.ifBlank { "Рамка" } }, remoteWins
-        )
+        val (anns, c5, s5) =
+            mergeTable(
+                "annotations",
+                local.annotations,
+                remote.annotations,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.label.ifBlank { "Рамка" } },
+                remoteWins,
+            )
         allConflicts += c5
 
-        val (tpls, c6, s6) = mergeTable(
-            "label_templates", local.labelTemplates, remote.labelTemplates,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (tpls, c6, s6) =
+            mergeTable(
+                "label_templates",
+                local.labelTemplates,
+                remote.labelTemplates,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c6
 
-        val (printers, c7, s7) = mergeTable(
-            "printers", local.printers, remote.printers,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (printers, c7, s7) =
+            mergeTable(
+                "printers",
+                local.printers,
+                remote.printers,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c7
 
         // Словарь тегов неизменяем (нет updated_at) — LWW по created_at
-        val (tags, c8, s8) = mergeTable(
-            "tags", local.tags, remote.tags,
-            { it.id }, { it.created_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (tags, c8, s8) =
+            mergeTable(
+                "tags",
+                local.tags,
+                remote.tags,
+                { it.id },
+                { it.created_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c8
 
-        val (users, c9, s9) = mergeTable(
-            "users", local.users, remote.users,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (users, c9, s9) =
+            mergeTable(
+                "users",
+                local.users,
+                remote.users,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c9
 
         // Выдачи живут по updated_at; удаление — через возврат (returned_at), поэтому deleted_at отсутствует.
-        val (loans, c10, s10) = mergeTable(
-            "loans", local.loans, remote.loans,
-            { it.id }, { it.updated_at }, { _ -> null }, { "${it.entity_type}:${it.entity_id}" }, remoteWins
-        )
+        val (loans, c10, s10) =
+            mergeTable(
+                "loans",
+                local.loans,
+                remote.loans,
+                { it.id },
+                { it.updated_at },
+                { _ -> null },
+                { "${it.entity_type}:${it.entity_id}" },
+                remoteWins,
+            )
         allConflicts += c10
 
-        val (stacks, c11, s11) = mergeTable(
-            "stacks", local.stacks, remote.stacks,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (stacks, c11, s11) =
+            mergeTable(
+                "stacks",
+                local.stacks,
+                remote.stacks,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c11
 
-        val (stackMembers, c12, s12) = mergeTable(
-            "stack_members", local.stackMembers, remote.stackMembers,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { "${it.entity_type}:${it.entity_id}" }, remoteWins
-        )
+        val (stackMembers, c12, s12) =
+            mergeTable(
+                "stack_members",
+                local.stackMembers,
+                remote.stackMembers,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { "${it.entity_type}:${it.entity_id}" },
+                remoteWins,
+            )
         allConflicts += c12
 
-        val (baskets, c13, s13) = mergeTable(
-            "baskets", local.baskets, remote.baskets,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (baskets, c13, s13) =
+            mergeTable(
+                "baskets",
+                local.baskets,
+                remote.baskets,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c13
 
-        val (basketItems, c14, s14) = mergeTable(
-            "basket_items", local.basketItems, remote.basketItems,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { "item:${it.item_id}" }, remoteWins
-        )
+        val (basketItems, c14, s14) =
+            mergeTable(
+                "basket_items",
+                local.basketItems,
+                remote.basketItems,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { "item:${it.item_id}" },
+                remoteWins,
+            )
         allConflicts += c14
 
-        val (docs, c15, s15) = mergeTable(
-            "label_docs", local.labelDocs, remote.labelDocs,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (docs, c15, s15) =
+            mergeTable(
+                "label_docs",
+                local.labelDocs,
+                remote.labelDocs,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c15
 
         // Листы этикеток (T-069): слоты мержим после листов — FK на sheet_layout.
-        val (layouts, c16, s16) = mergeTable(
-            "sheet_layouts", local.sheetLayouts, remote.sheetLayouts,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.name }, remoteWins
-        )
+        val (layouts, c16, s16) =
+            mergeTable(
+                "sheet_layouts",
+                local.sheetLayouts,
+                remote.sheetLayouts,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.name },
+                remoteWins,
+            )
         allConflicts += c16
 
-        val (slots, c17, s17) = mergeTable(
-            "sheet_slots", local.sheetSlots, remote.sheetSlots,
-            { it.id }, { it.updated_at }, { it.deleted_at }, { it.layout_id }, remoteWins
-        )
+        val (slots, c17, s17) =
+            mergeTable(
+                "sheet_slots",
+                local.sheetSlots,
+                remote.sheetSlots,
+                { it.id },
+                { it.updated_at },
+                { it.deleted_at },
+                { it.layout_id },
+                remoteWins,
+            )
         allConflicts += c17
 
-        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17)
-        val total = MergeStats(
-            added = all.sumOf { it.added },
-            changed = all.sumOf { it.changed },
-            deleted = all.sumOf { it.deleted },
-            kept = all.sumOf { it.kept }
-        )
+        // Журнал append-only (T-073): строки не мутируются, id уникальны — объединяем по id,
+        // без LWW и конфликтов; идемпотентный upsert по id защищает от петель PULL/PUSH.
+        val s18 = TableStats()
+        val actLogs = LinkedHashMap<String, ActionLogEntity>()
+        local.actionLogs.forEach { actLogs[it.id] = it }
+        for (r in remote.actionLogs) {
+            if (actLogs.putIfAbsent(r.id, r) == null) s18.added++ else s18.kept++
+        }
+
+        val all = listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17, s18)
+        val total =
+            MergeStats(
+                added = all.sumOf { it.added },
+                changed = all.sumOf { it.changed },
+                deleted = all.sumOf { it.deleted },
+                kept = all.sumOf { it.kept },
+            )
 
         val lastModified = maxOf(local.lastModified, remote.lastModified, System.currentTimeMillis())
 
-        val merged = MergeInput(
-            attributeDefs = defs,
-            storages = stors,
-            locations = locs,
-            items = items,
-            annotations = anns,
-            labelTemplates = tpls,
-            labelDocs = docs,
-            sheetLayouts = layouts,
-            sheetSlots = slots,
-            printers = printers,
-            tags = tags,
-            users = users,
-            loans = loans,
-            stacks = stacks,
-            stackMembers = stackMembers,
-            baskets = baskets,
-            basketItems = basketItems,
-            lastModified = lastModified
-        )
+        val merged =
+            MergeInput(
+                attributeDefs = defs,
+                storages = stors,
+                locations = locs,
+                items = items,
+                annotations = anns,
+                labelTemplates = tpls,
+                labelDocs = docs,
+                sheetLayouts = layouts,
+                sheetSlots = slots,
+                printers = printers,
+                tags = tags,
+                users = users,
+                loans = loans,
+                stacks = stacks,
+                stackMembers = stackMembers,
+                baskets = baskets,
+                basketItems = basketItems,
+                actionLogs = actLogs.values.toList(),
+                lastModified = lastModified,
+            )
 
         return MergeResult(
             merged = merged,
             conflicts = allConflicts,
-            stats = total
+            stats = total,
         )
     }
 }
