@@ -2,10 +2,10 @@ package ru.vldkr.shkaff.features.annotations
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color as GColor
 import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -47,25 +47,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,25 +81,26 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.LocationData
 import ru.vldkr.shkaff.domain.visual.SchematicLayout
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.PhotoCapture
 import ru.vldkr.shkaff.util.PhotoPickers
 import ru.vldkr.shkaff.util.SchematicRenderer
-import ru.vldkr.shkaff.util.rememberPhotoPickers
 import ru.vldkr.shkaff.util.newId
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.text.rememberTextMeasurer
+import ru.vldkr.shkaff.util.rememberPhotoPickers
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import android.graphics.Color as GColor
 
-class AnnotationVm(val storageId: String) : ViewModel() {
-
+class AnnotationVm(
+    val storageId: String,
+) : ViewModel() {
     data class Ann(
         val id: String,
         val locationId: String?,
         val label: String,
         val rect: RectF,
-        val color: Int
+        val color: Int,
     )
 
     data class Ui(
@@ -108,7 +111,7 @@ class AnnotationVm(val storageId: String) : ViewModel() {
         val locations: List<LocationEntity> = emptyList(),
         val drawingMode: Boolean = false,
         val schematicMode: Boolean = false,
-        val selectedAnnId: String? = null
+        val selectedAnnId: String? = null,
     )
 
     // режим рисования: схема используется, пока фото нет или выбрана вручную
@@ -116,22 +119,26 @@ class AnnotationVm(val storageId: String) : ViewModel() {
 
     val ui = MutableStateFlow(Ui())
 
-    class Factory(private val storageId: String) : ViewModelProvider.Factory {
+    class Factory(
+        private val storageId: String,
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T = AnnotationVm(storageId) as T
     }
 
-    private fun update(f: (Ui) -> Ui) { ui.value = f(ui.value) }
+    private fun update(f: (Ui) -> Ui) {
+        ui.value = f(ui.value)
+    }
 
     init {
         viewModelScope.launch {
             val s = Deps.storages.byId(storageId)
             val ar = withContext(Dispatchers.IO) { photoAspect(s?.photo_path) }
-        update {
-            it.copy(
+            update {
+                it.copy(
                     storage = s,
                     photoUri = s?.photo_path,
-                    aspectRatio = ar
+                    aspectRatio = ar,
                 )
             }
         }
@@ -179,62 +186,71 @@ class AnnotationVm(val storageId: String) : ViewModel() {
     }
 
     fun handleTap(norm: Offset): Ann? {
-        val hit = ui.value.anns.firstOrNull { a ->
-            a.rect.contains(norm.x, norm.y)
-        }
+        val hit =
+            ui.value.anns.firstOrNull { a ->
+                a.rect.contains(norm.x, norm.y)
+            }
         hit?.let { select(it.id) }
         return hit
     }
 
-    fun finalizeRect(start: Offset, end: Offset) {
+    fun finalizeRect(
+        start: Offset,
+        end: Offset,
+    ) {
         val l = minOf(start.x, end.x).coerceIn(0f, 1f)
         val t = minOf(start.y, end.y).coerceIn(0f, 1f)
         val r = maxOf(start.x, end.x).coerceIn(0f, 1f)
         val b = maxOf(start.y, end.y).coerceIn(0f, 1f)
-        val rect = RectF(
-            (l * 1000).toInt() / 1000f,
-            (t * 1000).toInt() / 1000f,
-            (r * 1000).toInt() / 1000f,
-            (b * 1000).toInt() / 1000f
-        )
+        val rect =
+            RectF(
+                (l * 1000).toInt() / 1000f,
+                (t * 1000).toInt() / 1000f,
+                (r * 1000).toInt() / 1000f,
+                (b * 1000).toInt() / 1000f,
+            )
         if (rect.width() < 0.02f || rect.height() < 0.02f) {
             update { it.copy(drawingMode = false) }
             return
         }
         viewModelScope.launch {
-            val existing = ui.value.anns.firstOrNull { a ->
-                a.locationId != null &&
-                    rectDiff(a.rect, rect) < 0.03f &&
-                    Deps.locations.byId(a.locationId) != null
-            }
+            val existing =
+                ui.value.anns.firstOrNull { a ->
+                    a.locationId != null &&
+                        rectDiff(a.rect, rect) < 0.03f &&
+                        Deps.locations.byId(a.locationId) != null
+                }
             val loc = existing?.locationId?.let { Deps.locations.byId(it) } ?: createLocation()
             val now = System.currentTimeMillis()
-            val e = AnnotationEntity(
-                id = newId(),
-                storage_id = storageId,
-                location_id = loc.id,
-                shape = "rect",
-                points = """[[${rect.left},${rect.top}],[${rect.right},${rect.bottom}]]""",
-                label = loc.label.ifBlank { loc.name },
-                color = "#FFB300",
-                z_order = 0,
-                created_at = now,
-                updated_at = now,
-                deleted_at = null,
-                device_last_modified = Deps.deviceId
-            )
+            val e =
+                AnnotationEntity(
+                    id = newId(),
+                    storage_id = storageId,
+                    location_id = loc.id,
+                    shape = "rect",
+                    points = """[[${rect.left},${rect.top}],[${rect.right},${rect.bottom}]]""",
+                    label = loc.label.ifBlank { loc.name },
+                    color = "#FFB300",
+                    z_order = 0,
+                    created_at = now,
+                    updated_at = now,
+                    deleted_at = null,
+                    device_last_modified = Deps.deviceId,
+                )
             Deps.db.annotationDao().upsert(e)
             update { it.copy(drawingMode = false) }
         }
     }
 
-    private fun rectDiff(a: RectF, b: RectF): Float =
-        max(abs(a.centerX() - b.centerX()), abs(a.centerY() - b.centerY()))
+    private fun rectDiff(
+        a: RectF,
+        b: RectF,
+    ): Float = max(abs(a.centerX() - b.centerX()), abs(a.centerY() - b.centerY()))
 
     private suspend fun createLocation(): LocationEntity {
         val n = Deps.locations.allByStorage(storageId).size + 1
         return Deps.locations.create(
-            LocationData(storageId = storageId, label = "Ящик $n", name = "")
+            LocationData(storageId = storageId, label = "Ящик $n", name = ""),
         )
     }
 
@@ -247,48 +263,57 @@ class AnnotationVm(val storageId: String) : ViewModel() {
 }
 
 private fun AnnotationEntity.toAnn(): AnnotationVm.Ann {
-    val pts = try {
-        val arr = JSONArray(points)
-        (0 until arr.length()).map { i ->
-            val p = arr.getJSONArray(i)
-            Offset(p.getDouble(0).toFloat(), p.getDouble(1).toFloat())
+    val pts =
+        try {
+            val arr = JSONArray(points)
+            (0 until arr.length()).map { i ->
+                val p = arr.getJSONArray(i)
+                Offset(p.getDouble(0).toFloat(), p.getDouble(1).toFloat())
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
-    } catch (e: Exception) {
-        emptyList()
-    }
-    val rect = if (pts.size >= 2) {
-        RectF(
-            minOf(pts[0].x, pts[1].x),
-            minOf(pts[0].y, pts[1].y),
-            maxOf(pts[0].x, pts[1].x),
-            maxOf(pts[0].y, pts[1].y)
-        )
-    } else RectF(0.1f, 0.1f, 0.4f, 0.3f)
+    val rect =
+        if (pts.size >= 2) {
+            RectF(
+                minOf(pts[0].x, pts[1].x),
+                minOf(pts[0].y, pts[1].y),
+                maxOf(pts[0].x, pts[1].x),
+                maxOf(pts[0].y, pts[1].y),
+            )
+        } else {
+            RectF(0.1f, 0.1f, 0.4f, 0.3f)
+        }
     return AnnotationVm.Ann(
         id = id,
         locationId = location_id,
         label = label,
         rect = rect,
-        color = try {
-            GColor.parseColor(color)
-        } catch (e: Exception) {
-            0xFFFFB300.toInt()
-        }
+        color =
+            try {
+                GColor.parseColor(color)
+            } catch (e: Exception) {
+                Ozon.Orange.toArgb()
+            },
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnnotationScreen(nav: NavController, storageId: String) {
+fun AnnotationScreen(
+    nav: NavController,
+    storageId: String,
+) {
     val vm: AnnotationVm = viewModel(factory = AnnotationVm.Factory(storageId))
     val ui by vm.ui.collectAsState()
     var actionAnn by remember { mutableStateOf<AnnotationVm.Ann?>(null) }
     var showPhotoDialog by remember { mutableStateOf(false) }
 
-    val pickers: PhotoPickers = rememberPhotoPickers(
-        onCaptured = { f -> vm.setPhoto(f.absolutePath) },
-        onPicked = { f -> vm.setPhoto(f.absolutePath) }
-    )
+    val pickers: PhotoPickers =
+        rememberPhotoPickers(
+            onCaptured = { f -> vm.setPhoto(f.absolutePath) },
+            onPicked = { f -> vm.setPhoto(f.absolutePath) },
+        )
 
     Scaffold(
         topBar = {
@@ -303,16 +328,16 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                     IconButton(onClick = { showPhotoDialog = true }) {
                         Text("Фото", style = MaterialTheme.typography.labelLarge)
                     }
-                }
+                },
             )
-        }
+        },
     ) { padding ->
         Column(
             Modifier
                 .padding(padding)
                 .padding(16.dp)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState()),
         ) {
             if (ui.photoUri == null) {
                 Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -322,7 +347,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                         Text(
                             "Пока фото нет, ящики отрисовываются стандартными блоками — разметку можно рисовать и на схеме.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { showPhotoDialog = true }, modifier = Modifier.fillMaxWidth()) {
@@ -345,14 +370,14 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                 Button(
                     onClick = { vm.toggleDrawing() },
                     modifier = Modifier.weight(1f),
-                    enabled = ui.photoUri != null || ui.locations.isNotEmpty()
+                    enabled = ui.photoUri != null || ui.locations.isNotEmpty(),
                 ) {
                     Text(if (ui.drawingMode) "Готово" else "Нарисовать ящик")
                 }
                 OutlinedButton(
                     onClick = { vm.deleteAnn(ui.selectedAnnId!!) },
                     enabled = ui.selectedAnnId != null,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 ) { Text("Стереть") }
             }
 
@@ -368,22 +393,22 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                             .clip(MaterialTheme.shapes.medium)
                             .border(
                                 width = if (selected) 2.dp else 0.dp,
-                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-                            )
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            ),
                     ) {
                         Row(Modifier.padding(12.dp)) {
                             Box(
                                 Modifier
                                     .size(14.dp)
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(a.color))
+                                    .background(Color(a.color)),
                             )
                             Column(Modifier.padding(start = 10.dp).weight(1f)) {
                                 Text(a.label.ifBlank { "Ящик" }, style = MaterialTheme.typography.titleSmall)
                                 Text(
                                     if (a.locationId != null) "связан с ящиком" else "не связан",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             TextButton(onClick = { vm.select(a.id) }) { Text("Выбрать") }
@@ -396,7 +421,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                 "Подсказка: коснитесь ящика на фото или схеме — откроются действия: добавить вещь, открыть ящик, этикетка.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp)
+                modifier = Modifier.padding(top = 12.dp),
             )
         }
 
@@ -404,7 +429,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
             AnnActionsDialog(
                 ann = a,
                 nav = nav,
-                onDismiss = { actionAnn = null }
+                onDismiss = { actionAnn = null },
             )
         }
 
@@ -424,7 +449,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
                         showPhotoDialog = false
                         pickers.pickFromGallery()
                     }) { Text("Галерея") }
-                }
+                },
             )
         }
     }
@@ -434,7 +459,7 @@ fun AnnotationScreen(nav: NavController, storageId: String) {
 fun AnnotationPhotoArea(
     vm: AnnotationVm,
     ui: AnnotationVm.Ui,
-    onAction: (AnnotationVm.Ann) -> Unit
+    onAction: (AnnotationVm.Ann) -> Unit,
 ) {
     val anns = ui.anns
     val drawingMode = ui.drawingMode
@@ -445,22 +470,24 @@ fun AnnotationPhotoArea(
     var bmp by remember(key) { mutableStateOf<Bitmap?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(key) {
-        bmp = withContext(Dispatchers.IO) {
-            try {
-                if (showSchema) {
-                    val blocks = SchematicLayout.layout(
-                        ui.locations.map { l -> l.id to (l.label.ifBlank { l.name }.ifBlank { "Ящик" }) }
-                    )
-                    SchematicRenderer.render(blocks, 1080, 810)
-                } else {
-                    val path = ui.photoUri ?: return@withContext null
-                    PhotoCapture.maxBmp(BitmapFactory.decodeFile(path))
+        bmp =
+            withContext(Dispatchers.IO) {
+                try {
+                    if (showSchema) {
+                        val blocks =
+                            SchematicLayout.layout(
+                                ui.locations.map { l -> l.id to (l.label.ifBlank { l.name }.ifBlank { "Ящик" }) },
+                            )
+                        SchematicRenderer.render(blocks, 1080, 810)
+                    } else {
+                        val path = ui.photoUri ?: return@withContext null
+                        PhotoCapture.maxBmp(BitmapFactory.decodeFile(path))
+                    }
+                } catch (e: Exception) {
+                    err = e.message
+                    null
                 }
-            } catch (e: Exception) {
-                err = e.message
-                null
             }
-        }
     }
     val b = bmp
     if (b == null) {
@@ -472,39 +499,45 @@ fun AnnotationPhotoArea(
     var drawStart by remember { mutableStateOf<Offset?>(null) }
     var displaySize by remember { mutableStateOf(Size(0f, 0f)) }
     val textMeasurer = rememberTextMeasurer()
+    val ap = annotationPalette(MaterialTheme.colorScheme)
 
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(ui.aspectRatio)
             .clip(MaterialTheme.shapes.medium)
-            .onSizeChanged { displaySize = Size(it.width.toFloat(), it.height.toFloat()) }
+            .onSizeChanged { displaySize = Size(it.width.toFloat(), it.height.toFloat()) },
     ) {
         Image(
             bitmap = b.asImageBitmap(),
             contentDescription = "Фото хранилища",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            contentScale = ContentScale.FillBounds,
         )
 
         Canvas(Modifier.fillMaxSize()) {
             val s = displaySize
             if (s.width == 0f) return@Canvas
-            fun normRect(r: RectF): RectF = RectF(
-                r.left * s.width, r.top * s.height, r.right * s.width, r.bottom * s.height
-            )
+
+            fun normRect(r: RectF): RectF =
+                RectF(
+                    r.left * s.width,
+                    r.top * s.height,
+                    r.right * s.width,
+                    r.bottom * s.height,
+                )
 
             anns.forEach { a ->
                 val r = normRect(a.rect)
                 val isSel = a.id == selectedId
                 val c = Color(a.color)
-                val strokeC = if (isSel) Color(0xFF2196F3) else c
+                val strokeC = if (isSel) ap.selectedStroke else c
                 drawRect(color = c, topLeft = Offset(r.left, r.top), size = Size(r.width(), r.height()), alpha = 0.18f)
                 drawRect(
                     color = strokeC,
                     topLeft = Offset(r.left, r.top),
                     size = Size(r.width(), r.height()),
-                    style = Stroke(if (isSel) 4f else 3f)
+                    style = Stroke(if (isSel) 4f else 3f),
                 )
                 if (a.label.isNotBlank()) {
                     val pad = 10f
@@ -517,19 +550,24 @@ fun AnnotationPhotoArea(
                         color = strokeC,
                         topLeft = Offset(r.left, r.top),
                         size = Size(w, h),
-                        cornerRadius = CornerRadius(6f)
+                        cornerRadius = CornerRadius(6f),
                     )
                     drawText(textMeasurer, text = a.label, topLeft = Offset(r.left + pad, r.top + pad * 0.6f), style = style)
                 }
             }
 
             if (drawingMode && drawing.width() > 0f && drawing.height() > 0f) {
-                drawRect(color = Color(0xFFFFB300), topLeft = Offset(drawing.left, drawing.top), size = Size(drawing.width(), drawing.height()), alpha = 0.25f)
                 drawRect(
-                    color = Color(0xFFFFB300),
+                    color = ap.draftColor,
                     topLeft = Offset(drawing.left, drawing.top),
                     size = Size(drawing.width(), drawing.height()),
-                    style = Stroke(3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f))
+                    alpha = 0.25f,
+                )
+                drawRect(
+                    color = ap.draftColor,
+                    topLeft = Offset(drawing.left, drawing.top),
+                    size = Size(drawing.width(), drawing.height()),
+                    style = Stroke(3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)),
                 )
             }
         }
@@ -546,12 +584,13 @@ fun AnnotationPhotoArea(
                             },
                             onDrag = { change, _ ->
                                 val st = drawStart ?: return@detectDragGestures
-                                drawing = RectF(
-                                    minOf(st.x, change.position.x),
-                                    minOf(st.y, change.position.y),
-                                    maxOf(st.x, change.position.x),
-                                    maxOf(st.y, change.position.y)
-                                )
+                                drawing =
+                                    RectF(
+                                        minOf(st.x, change.position.x),
+                                        minOf(st.y, change.position.y),
+                                        maxOf(st.x, change.position.x),
+                                        maxOf(st.y, change.position.y),
+                                    )
                             },
                             onDragEnd = {
                                 if (displaySize.width > 0f && drawing.width() > 0f && drawing.height() > 0f) {
@@ -565,7 +604,7 @@ fun AnnotationPhotoArea(
                             onDragCancel = {
                                 drawStart = null
                                 drawing = RectF()
-                            }
+                            },
                         )
                     } else {
                         detectTapGestures { pos ->
@@ -575,7 +614,7 @@ fun AnnotationPhotoArea(
                             }
                         }
                     }
-                }
+                },
         )
     }
 }
@@ -584,7 +623,7 @@ fun AnnotationPhotoArea(
 fun AnnActionsDialog(
     ann: AnnotationVm.Ann,
     nav: NavController,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -592,7 +631,7 @@ fun AnnActionsDialog(
         text = {
             Text(
                 if (ann.locationId != null) "Связан с ящиком в базе" else "Ящик ещё не создан в базе",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
             )
         },
         confirmButton = {
@@ -602,25 +641,25 @@ fun AnnActionsDialog(
                         onDismiss()
                         if (ann.locationId != null) nav.navigate("location/${ann.locationId}")
                     },
-                    enabled = ann.locationId != null
+                    enabled = ann.locationId != null,
                 ) { Text("Ящик") }
                 TextButton(
                     onClick = {
                         onDismiss()
                         if (ann.locationId != null) nav.navigate("item-form/0/${ann.locationId}")
                     },
-                    enabled = ann.locationId != null
+                    enabled = ann.locationId != null,
                 ) { Text("Вещь") }
                 TextButton(
                     onClick = {
                         onDismiss()
                         nav.navigate("labels/0/0")
-                    }
+                    },
                 ) { Text("Этикетка") }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Закрыть") }
-        }
+        },
     )
 }

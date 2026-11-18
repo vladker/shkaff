@@ -34,9 +34,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -54,6 +55,7 @@ import ru.vldkr.shkaff.data.db.AnnotationEntity
 import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.visual.SchematicBlock
 import ru.vldkr.shkaff.domain.visual.SchematicLayout
+import ru.vldkr.shkaff.ui.theme.Ozon
 import ru.vldkr.shkaff.util.PhotoCapture
 
 // US-C2: «Визуализация хранилищ». Три режима: фото, загружаемое изображение (и фото,
@@ -66,37 +68,44 @@ private data class ViewerAnn(
     val locationId: String?,
     val label: String,
     val rect: RectF,
-    val color: Long
+    val color: Long,
 )
 
 private fun AnnotationEntity.toViewerAnn(): ViewerAnn {
-    val pts = try {
-        val arr = JSONArray(points)
-        (0 until arr.length()).map { i ->
-            val p = arr.getJSONArray(i)
-            Offset(p.getDouble(0).toFloat(), p.getDouble(1).toFloat())
+    val pts =
+        try {
+            val arr = JSONArray(points)
+            (0 until arr.length()).map { i ->
+                val p = arr.getJSONArray(i)
+                Offset(p.getDouble(0).toFloat(), p.getDouble(1).toFloat())
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
-    } catch (e: Exception) {
-        emptyList()
-    }
-    val rect = if (pts.size >= 2) {
-        RectF(
-            minOf(pts[0].x, pts[1].x),
-            minOf(pts[0].y, pts[1].y),
-            maxOf(pts[0].x, pts[1].x),
-            maxOf(pts[0].y, pts[1].y)
-        )
-    } else RectF(0.1f, 0.1f, 0.4f, 0.3f)
+    val rect =
+        if (pts.size >= 2) {
+            RectF(
+                minOf(pts[0].x, pts[1].x),
+                minOf(pts[0].y, pts[1].y),
+                maxOf(pts[0].x, pts[1].x),
+                maxOf(pts[0].y, pts[1].y),
+            )
+        } else {
+            RectF(0.1f, 0.1f, 0.4f, 0.3f)
+        }
     return ViewerAnn(
         id = id,
         locationId = location_id,
         label = label,
         rect = rect,
-        color = try {
-            android.graphics.Color.parseColor(color).toLong()
-        } catch (e: Exception) {
-            0xFFFFB300
-        }
+        color =
+            try {
+                android.graphics.Color
+                    .parseColor(color)
+                    .toLong()
+            } catch (e: Exception) {
+                Ozon.Orange.toArgb().toLong() and 0xFFFFFFFFL
+            },
     )
 }
 
@@ -105,10 +114,16 @@ fun StorageVisualization(
     storageId: String,
     onOpenLocation: (String) -> Unit,
     onEdit: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    val storage by Deps.storages.observeAll().map { list -> list.firstOrNull { it.id == storageId } }.collectAsState(initial = null)
-    val anns by Deps.db.annotationDao().observeByStorage(storageId).collectAsState(initial = emptyList())
+    val storage by Deps.storages
+        .observeAll()
+        .map { list -> list.firstOrNull { it.id == storageId } }
+        .collectAsState(initial = null)
+    val anns by Deps.db
+        .annotationDao()
+        .observeByStorage(storageId)
+        .collectAsState(initial = emptyList())
     val locations by Deps.locations.observeByStorage(storageId).collectAsState(initial = emptyList())
 
     val photoPath = storage?.photo_path
@@ -120,21 +135,23 @@ fun StorageVisualization(
     val isSchema = mode == "schema"
     val showToggle = !photoPath.isNullOrBlank()
 
-    val blocks = remember(locations) {
-        SchematicLayout.layout(locations.map { l -> l.id to (l.label.ifBlank { l.name }.ifBlank { "Ящик" }) })
-    }
+    val blocks =
+        remember(locations) {
+            SchematicLayout.layout(locations.map { l -> l.id to (l.label.ifBlank { l.name }.ifBlank { "Ящик" }) })
+        }
     val viewAnns = remember(anns) { anns.map { it.toViewerAnn() } }
 
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(Modifier.fillMaxWidth()) {
                 Text(
-                    if (photoPath.isNullOrBlank())
+                    if (photoPath.isNullOrBlank()) {
                         "Фото не задано — показываем схему ящиков."
-                    else
-                        "Кликните по ящику на фото или схеме, чтобы открыть его.",
+                    } else {
+                        "Кликните по ящику на фото или схеме, чтобы открыть его."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.padding(top = 12.dp))
@@ -162,16 +179,17 @@ fun StorageVisualization(
 private fun SchematicView(
     blocks: List<SchematicBlock>,
     anns: List<ViewerAnn>,
-    onOpenLocation: (String) -> Unit
+    onOpenLocation: (String) -> Unit,
 ) {
     var boxSize by remember { mutableStateOf(Size(0f, 0f)) }
     val textMeasurer = rememberTextMeasurer()
+    val sp = schematicPalette(MaterialTheme.colorScheme, MaterialTheme.typography)
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(4f / 3f)
             .clip(MaterialTheme.shapes.medium)
-            .onSizeChanged { boxSize = Size(it.width.toFloat(), it.height.toFloat()) }
+            .onSizeChanged { boxSize = Size(it.width.toFloat(), it.height.toFloat()) },
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val w = boxSize.width
@@ -180,32 +198,32 @@ private fun SchematicView(
             blocks.forEach { b ->
                 val r = RectF(b.rect.left * w, b.rect.top * h, b.rect.right * w, b.rect.bottom * h)
                 drawRoundRect(
-                    color = Color(0xFFE3F2FD),
-                    topLeft = Offset(r.left, r.top),
-                    size = Size(r.width(), r.height()),
-                    cornerRadius = CornerRadius(10f)
-                )
-                drawRoundRect(
-                    color = Color(0xFF90CAF9),
+                    color = sp.blockFill,
                     topLeft = Offset(r.left, r.top),
                     size = Size(r.width(), r.height()),
                     cornerRadius = CornerRadius(10f),
-                    style = Stroke(2f)
+                )
+                drawRoundRect(
+                    color = sp.blockStroke,
+                    topLeft = Offset(r.left, r.top),
+                    size = Size(r.width(), r.height()),
+                    cornerRadius = CornerRadius(10f),
+                    style = Stroke(2f),
                 )
                 val fontSize = (r.height() * 0.32f).coerceIn(12f, 44f)
-                val style = TextStyle(color = Color(0xFF0D47A1), fontSize = fontSize.sp)
+                val style = sp.labelBase.copy(color = sp.blockText, fontSize = fontSize.sp)
                 val text = textMeasurer.measure(b.label, style)
                 drawText(
                     textMeasurer,
                     text = b.label,
                     topLeft = Offset(r.centerX() - text.size.width / 2f, r.centerY() - text.size.height / 2f),
                     style = style,
-                    maxLines = 1
+                    maxLines = 1,
                 )
             }
         }
         Canvas(Modifier.fillMaxSize()) {
-            drawAnnOverlay(anns, textMeasurer, boxSize)
+            drawAnnOverlay(anns, textMeasurer, boxSize, sp.labelBase)
         }
         Box(
             Modifier
@@ -216,7 +234,7 @@ private fun SchematicView(
                         val norm = Offset(pos.x / boxSize.width, pos.y / boxSize.height)
                         openTarget(norm, anns, blocks, onOpenLocation)
                     }
-                }
+                },
         )
     }
 }
@@ -225,7 +243,7 @@ private fun SchematicView(
 private fun PhotoView(
     photoPath: String?,
     anns: List<ViewerAnn>,
-    onOpenLocation: (String) -> Unit
+    onOpenLocation: (String) -> Unit,
 ) {
     val path = photoPath
     if (path.isNullOrBlank()) {
@@ -235,13 +253,14 @@ private fun PhotoView(
     var bmp by remember(path) { mutableStateOf<Bitmap?>(null) }
     if (bmp == null) {
         LaunchedEffect(path) {
-            bmp = withContext(Dispatchers.IO) {
-                try {
-                    PhotoCapture.maxBmp(BitmapFactory.decodeFile(path))
-                } catch (e: Exception) {
-                    null
+            bmp =
+                withContext(Dispatchers.IO) {
+                    try {
+                        PhotoCapture.maxBmp(BitmapFactory.decodeFile(path))
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
-            }
         }
     }
     val b = bmp
@@ -251,21 +270,22 @@ private fun PhotoView(
     }
     var boxSize by remember { mutableStateOf(Size(0f, 0f)) }
     val textMeasurer = rememberTextMeasurer()
+    val labelBase = MaterialTheme.typography.labelLarge
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(b.width.toFloat() / b.height.toFloat())
             .clip(MaterialTheme.shapes.medium)
-            .onSizeChanged { boxSize = Size(it.width.toFloat(), it.height.toFloat()) }
+            .onSizeChanged { boxSize = Size(it.width.toFloat(), it.height.toFloat()) },
     ) {
         Image(
             bitmap = b.asImageBitmap(),
             contentDescription = "Фото хранилища",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            contentScale = ContentScale.FillBounds,
         )
         Canvas(Modifier.fillMaxSize()) {
-            drawAnnOverlay(anns, textMeasurer, boxSize)
+            drawAnnOverlay(anns, textMeasurer, boxSize, labelBase)
         }
         Box(
             Modifier
@@ -278,7 +298,7 @@ private fun PhotoView(
                             if (a.locationId != null) onOpenLocation(a.locationId)
                         }
                     }
-                }
+                },
         )
     }
 }
@@ -288,7 +308,7 @@ private fun openTarget(
     norm: Offset,
     anns: List<ViewerAnn>,
     blocks: List<SchematicBlock>,
-    onOpenLocation: (String) -> Unit
+    onOpenLocation: (String) -> Unit,
 ) {
     anns.lastOrNull { it.rect.contains(norm.x, norm.y) }?.let { a ->
         if (a.locationId != null) onOpenLocation(a.locationId)
@@ -301,10 +321,12 @@ private fun openTarget(
 private fun DrawScope.drawAnnOverlay(
     anns: List<ViewerAnn>,
     textMeasurer: TextMeasurer,
-    boxSize: Size
+    boxSize: Size,
+    labelBase: TextStyle,
 ) {
     val s = boxSize
     if (s.width == 0f) return
+
     fun normRect(r: RectF) = RectF(r.left * s.width, r.top * s.height, r.right * s.width, r.bottom * s.height)
     anns.forEach { a ->
         val r = normRect(a.rect)
@@ -314,7 +336,7 @@ private fun DrawScope.drawAnnOverlay(
         if (a.label.isNotBlank()) {
             val pad = 10f
             val fontSize = (r.height() * 0.24f).coerceIn(14f, 44f)
-            val st = TextStyle(color = Color.White, fontSize = fontSize.sp)
+            val st = labelBase.copy(color = Color.White, fontSize = fontSize.sp)
             val textW = textMeasurer.measure(a.label, st).size.width
             val w = minOf(r.width(), textW + pad * 2)
             val h = fontSize + pad * 0.8f
@@ -322,7 +344,7 @@ private fun DrawScope.drawAnnOverlay(
                 color = c,
                 topLeft = Offset(r.left, r.top),
                 size = Size(w, h),
-                cornerRadius = CornerRadius(6f)
+                cornerRadius = CornerRadius(6f),
             )
             drawText(textMeasurer, text = a.label, topLeft = Offset(r.left + pad, r.top + pad * 0.6f), style = st)
         }
