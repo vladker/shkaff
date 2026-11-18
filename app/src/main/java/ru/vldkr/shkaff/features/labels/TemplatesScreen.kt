@@ -50,7 +50,12 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.labels.ColorHex
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
+import ru.vldkr.shkaff.ui.components.ErrorState
+import ru.vldkr.shkaff.ui.components.ListSkeleton
 import ru.vldkr.shkaff.ui.components.SectionTitle
+import ru.vldkr.shkaff.ui.state.ListFeed
+import ru.vldkr.shkaff.ui.state.UiState
+import ru.vldkr.shkaff.ui.state.mergeFeeds
 import ru.vldkr.shkaff.util.newId
 
 class TemplatesVm : ViewModel() {
@@ -65,7 +70,12 @@ class TemplatesVm : ViewModel() {
         val form: Form? = null,
         // T-047: снимок формы на момент открытия — по нему определяется
         // «грязнота»: Back закрывает грязную форму только через подтверждение.
-        val formInitial: Form? = null
+        val formInitial: Form? = null,
+        // T-040b: «Шаблонов пока нет» показывалось и до первой эмиссии БД, и после
+        // сбоя подписки. error занято ошибкой формы (T-046…T-048) — сбой загрузки
+        // списка живёт в отдельном loadError, не затирая форму.
+        val loading: Boolean = true,
+        val loadError: String? = null
     )
 
     val ui = MutableStateFlow(Ui())
@@ -89,10 +99,26 @@ class TemplatesVm : ViewModel() {
         val quietZone: Boolean = true
     )
 
+    private val templatesFeed = ListFeed(viewModelScope) { Deps.db.labelTemplateDao().observeAll() }
+    private val feeds = listOf(templatesFeed)
+
     init {
+        feeds.forEach { it.start() }
         viewModelScope.launch {
-            Deps.db.labelTemplateDao().observeAll().collect { ui.value = ui.value.copy(templates = it) }
+            mergeFeeds(feeds).collect { g ->
+                ui.value = ui.value.copy(
+                    loading = g is UiState.Loading,
+                    loadError = (g as? UiState.Error)?.message
+                )
+            }
         }
+        viewModelScope.launch {
+            templatesFeed.state.collect { s -> if (s is UiState.Success) ui.value = ui.value.copy(templates = s.data) }
+        }
+    }
+
+    fun retry() {
+        feeds.forEach { it.retry() }
     }
 
     fun openNew() {
@@ -273,7 +299,12 @@ fun TemplatesScreen(nav: NavController) {
                 .padding(horizontal = 16.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
         ) {
-            if (ui.templates.isEmpty()) {
+            val loadError = ui.loadError
+            if (loadError != null) {
+                item { ErrorState(loadError) { vm.retry() } }
+            } else if (ui.loading) {
+                item { ListSkeleton(rows = 4, modifier = Modifier.padding(top = 8.dp)) }
+            } else if (ui.templates.isEmpty()) {
                 // П1.4: пустой список шаблонов — один CTA «создать шаблон» (тот же vm.openNew, что и «+»).
                 item {
                     EmptyState(
@@ -389,7 +420,7 @@ private fun TemplateFormContent(vm: TemplatesVm, onCancel: () -> Unit) {
         }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = f.showNumber, onCheckedChange = { v -> vm.editForm { it.copy(showNumber = v) } })
-            Text("Номер объекта (код) вместе с кодом", style = MaterialTheme.typography.bodyMedium)
+            Text("Печатать номер объекта (код)", style = MaterialTheme.typography.bodyMedium)
         }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = f.appLink, onCheckedChange = { v -> vm.editForm { it.copy(appLink = v) } })

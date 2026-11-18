@@ -72,21 +72,21 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.theme.Ozon
+import ru.vldkr.shkaff.util.pluralWordRu
 
 class ProfilesVm : ViewModel() {
-
     data class Stats(
         val itemsCount: Int = 0,
         val storagesCount: Int = 0,
         val activeLoans: Int = 0,
         val overdueLoans: Int = 0,
-        val expiringCount: Int = 0
+        val expiringCount: Int = 0,
     )
 
     data class Ui(
         val users: List<UserEntity> = emptyList(),
         val activeId: String? = null,
-        val stats: Stats = Stats()
+        val stats: Stats = Stats(),
     )
 
     val ui = MutableStateFlow(Ui())
@@ -103,15 +103,17 @@ class ProfilesVm : ViewModel() {
         ui.value = ui.value.copy(users = Deps.users.all(), activeId = Deps.users.activeUser()?.id)
         val loans = Deps.loans.observeActive().first()
         val now = System.currentTimeMillis()
-        ui.value = ui.value.copy(
-            stats = Stats(
-                itemsCount = Deps.items.all().size,
-                storagesCount = Deps.storages.count(),
-                activeLoans = loans.size,
-                overdueLoans = loans.count { it.due_at != null && it.due_at < now },
-                expiringCount = Deps.items.expiringSoon(Deps.expiryThresholdDays()).size
+        ui.value =
+            ui.value.copy(
+                stats =
+                    Stats(
+                        itemsCount = Deps.items.all().size,
+                        storagesCount = Deps.storages.count(),
+                        activeLoans = loans.size,
+                        overdueLoans = loans.count { it.due_at != null && it.due_at < now },
+                        expiringCount = Deps.items.expiringSoon(Deps.expiryThresholdDays()).size,
+                    ),
             )
-        )
     }
 
     fun select(u: UserEntity) {
@@ -132,7 +134,10 @@ class ProfilesVm : ViewModel() {
         showEditor = true
     }
 
-    fun save(name: String, role: Role) {
+    fun save(
+        name: String,
+        role: Role,
+    ) {
         viewModelScope.launch {
             if (name.isBlank()) return@launch
             val u = edit
@@ -175,7 +180,9 @@ fun ProfilesScreen(nav: NavController) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Ozon.TextSecondary)
                     }
                 },
-                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(containerColor = Ozon.Bg)
+                colors =
+                    androidx.compose.material3.TopAppBarDefaults
+                        .topAppBarColors(containerColor = Ozon.Bg),
             )
         },
         floatingActionButton = {
@@ -183,19 +190,21 @@ fun ProfilesScreen(nav: NavController) {
                 FloatingActionButton(
                     onClick = { vm.openNew() },
                     containerColor = Ozon.Blue,
-                    contentColor = Ozon.TextPrimary
+                    contentColor = Ozon.TextPrimary,
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Новый профиль")
                 }
             }
-        }
+        },
     ) { padding ->
         LazyColumn(
             Modifier
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
+            contentPadding =
+                androidx.compose.foundation.layout
+                    .PaddingValues(bottom = 96.dp),
         ) {
             // Шапка профиля: аватар-инициалы, имя, роль
             item {
@@ -203,32 +212,32 @@ fun ProfilesScreen(nav: NavController) {
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp, bottom = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
                         Modifier
                             .size(72.dp)
                             .clip(CircleShape)
                             .background(if (isAdmin) Ozon.Blue else Ozon.Purple),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             initials(active?.name),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
                         )
                     }
                     Text(
                         active?.name ?: "Гость",
                         style = MaterialTheme.typography.titleLarge,
                         color = Ozon.TextPrimary,
-                        modifier = Modifier.padding(top = 10.dp)
+                        modifier = Modifier.padding(top = 10.dp),
                     )
                     Text(
                         Access.label(role),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Ozon.TextSecondary
+                        color = Ozon.TextSecondary,
                     )
                 }
             }
@@ -237,14 +246,18 @@ fun ProfilesScreen(nav: NavController) {
             item {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp),
                 ) {
-                    ProfileStat(ui.stats.itemsCount, "вещей", Modifier.weight(1f))
-                    ProfileStat(ui.stats.storagesCount, "хранилищ", Modifier.weight(1f))
+                    ProfileStat(ui.stats.itemsCount, pluralWordRu(ui.stats.itemsCount, "вещь", "вещи", "вещей"), Modifier.weight(1f))
+                    ProfileStat(
+                        ui.stats.storagesCount,
+                        pluralWordRu(ui.stats.storagesCount, "хранилище", "хранилища", "хранилищ"),
+                        Modifier.weight(1f),
+                    )
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp),
                 ) {
                     ProfileStat(ui.stats.activeLoans, "выдано", Modifier.weight(1f), highlight = ui.stats.overdueLoans > 0)
                     ProfileStat(ui.stats.expiringCount, "истекает", Modifier.weight(1f))
@@ -254,14 +267,15 @@ fun ProfilesScreen(nav: NavController) {
             // Быстрые ссылки профиля
             item { SectionTitle("Мой профиль") }
             item {
-                val links = listOf(
-                    Triple(Icons.Filled.Settings, "Настройки", "settings"),
-                    Triple(Icons.Filled.Backup, "Бэкап и восстановление", "backup"),
-                    Triple(Icons.Filled.Upload, "Экспорт и выгрузка", "export"),
-                    Triple(Icons.Filled.Label, "Шаблоны этикеток", "templates"),
-                    Triple(Icons.Filled.History, "Журнал действий", "journal"),
-                    Triple(Icons.Filled.SyncProblem, "Конфликты слияния", "conflicts")
-                )
+                val links =
+                    listOf(
+                        Triple(Icons.Filled.Settings, "Настройки", "settings"),
+                        Triple(Icons.Filled.Backup, "Бэкап и восстановление", "backup"),
+                        Triple(Icons.Filled.Upload, "Экспорт и выгрузка", "export"),
+                        Triple(Icons.Filled.Label, "Шаблоны этикеток", "templates"),
+                        Triple(Icons.Filled.History, "Журнал действий", "journal"),
+                        Triple(Icons.Filled.SyncProblem, "Конфликты слияния", "conflicts"),
+                    )
                 Column {
                     links.forEachIndexed { idx, (icon, label, route) ->
                         ProfileLinkRow(icon, label) { nav.navigate(route) }
@@ -278,7 +292,12 @@ fun ProfilesScreen(nav: NavController) {
                     EmptyState(
                         "Профилей членов семьи пока нет.\nУ каждого — своя роль и права: кто-то только смотрит, кто-то создаёт и выдаёт вещи.",
                         actionLabel = ctaLabel,
-                        onAction = if (ctaLabel != null) { { vm.openNew() } } else null
+                        onAction =
+                            if (ctaLabel != null) {
+                                { vm.openNew() }
+                            } else {
+                                null
+                            },
                     )
                 }
             }
@@ -289,20 +308,20 @@ fun ProfilesScreen(nav: NavController) {
                         .fillMaxWidth()
                         .clickable { vm.select(u) }
                         .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
                         Modifier
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(if (isActive) Ozon.Blue.copy(alpha = 0.2f) else Ozon.Card),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             initials(u.name),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (isActive) Ozon.Blue else Ozon.TextSecondary
+                            color = if (isActive) Ozon.Blue else Ozon.TextSecondary,
                         )
                     }
                     Spacer(Modifier.width(12.dp))
@@ -315,7 +334,7 @@ fun ProfilesScreen(nav: NavController) {
                             Modifier
                                 .clip(CircleShape)
                                 .background(Ozon.Blue.copy(alpha = 0.15f))
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
                         ) {
                             Text("активен", style = MaterialTheme.typography.labelMedium, color = Ozon.Blue)
                         }
@@ -350,29 +369,34 @@ private fun initials(name: String?): String {
 
 // Счётчик как плитка в стиле Ozon: значение крупно, подпись мелко.
 @Composable
-private fun ProfileStat(value: Int, label: String, modifier: Modifier = Modifier, highlight: Boolean = false) {
+private fun ProfileStat(
+    value: Int,
+    label: String,
+    modifier: Modifier = Modifier,
+    highlight: Boolean = false,
+) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Ozon.Card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 12.dp)
+                .padding(vertical = 12.dp, horizontal = 12.dp),
         ) {
             Text(
                 "$value",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (highlight) Ozon.Pink else Ozon.TextPrimary
+                color = if (highlight) Ozon.Pink else Ozon.TextPrimary,
             )
             Text(
                 label,
                 style = MaterialTheme.typography.bodySmall,
                 color = Ozon.TextSecondary,
-                maxLines = 1
+                maxLines = 1,
             )
         }
     }
@@ -380,20 +404,24 @@ private fun ProfileStat(value: Int, label: String, modifier: Modifier = Modifier
 
 // Строка-ссылка профиля: иконка в цветном квадрате + подпись + стрелка.
 @Composable
-private fun ProfileLinkRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun ProfileLinkRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .size(28.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Ozon.Search),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = Ozon.Blue)
         }
@@ -402,7 +430,7 @@ private fun ProfileLinkRow(icon: ImageVector, label: String, onClick: () -> Unit
             label,
             style = MaterialTheme.typography.bodyLarge,
             color = Ozon.TextPrimary,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Ozon.TextSecondary)
     }
@@ -424,7 +452,7 @@ private fun ProfileEditorDialog(vm: ProfilesVm) {
                     onValueChange = { name = it },
                     label = { Text("Имя") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.width(0.dp))
                 Role.entries.forEach { r ->
@@ -433,7 +461,7 @@ private fun ProfileEditorDialog(vm: ProfilesVm) {
                             .fillMaxWidth()
                             .clickable { role = r }
                             .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(selected = role == r, onClick = { role = r })
                         Spacer(Modifier.width(10.dp))
@@ -447,6 +475,6 @@ private fun ProfileEditorDialog(vm: ProfilesVm) {
         },
         dismissButton = {
             TextButton(onClick = { vm.showEditor = false }) { Text("Отмена") }
-        }
+        },
     )
 }
