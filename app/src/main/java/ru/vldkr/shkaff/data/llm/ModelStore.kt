@@ -278,8 +278,6 @@ class ModelStore(private val context: Context) {
         }
     }
 
-    private fun done() = _state.value.bytes
-
     fun delete(row: ModelRow) {
         // T-054: во время докачки vision-файла activeName == mmprojFile — без
         // отмены сервис после удаления переименовывает *.part обратно в файл.
