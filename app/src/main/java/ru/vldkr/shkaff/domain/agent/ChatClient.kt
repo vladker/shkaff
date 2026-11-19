@@ -12,6 +12,7 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
 
 // Сообщение чата OpenAI-совместимого API: role = system|user|assistant|tool.
 // tool-роль несёт результат вызова (toolCallId ссылается на id в toolCalls ассистента).
@@ -59,6 +60,30 @@ data class AgentSettings(
 object ChatClient {
 
     const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
+    // T-025: живое соединение chat completion — чтобы «Стоп» в UI мог оборвать
+    // сетевой запрос (cloud/local), не дожидаясь readTimeout = 90 с.
+    private class LiveHttp(val conn: HttpURLConnection) {
+        @Volatile
+        var aborted = false
+    }
+
+    private val liveHttp = AtomicReference<LiveHttp?>()
+
+    // T-025: шов для тестов — путь продакшена настоящий (HttpURLConnection, чей
+    // disconnect() разблокирует ждущий чтения поток); в юнит-тестах — заглушка
+    // с блокирующим responseCode. Реальный сокет под Robolectric недосягаем.
+    internal var connectionFactory: (String) -> HttpURLConnection =
+        { URL(it).openConnection() as HttpURLConnection }
+
+    // Отменить живой HTTP-запрос к модели. true — соединение найдено и прервано,
+    // false — живого запроса нет (метод безопасно звать в любом состоянии).
+    fun abortHttp(): Boolean {
+        val req = liveHttp.getAndSet(null) ?: return false
+        req.aborted = true
+        runCatching { req.conn.disconnect() } // разблокирует читающий поток IOException'ом
+        return true
+    }
 
     fun endpoint(settings: AgentSettings): String {
         val base = settings.baseUrl.trim().ifBlank { DEFAULT_BASE_URL }.trimEnd('/')
@@ -108,7 +133,9 @@ object ChatClient {
             body.put("temperature", 0.0)
 
             val url = endpoint(settings)
-            val conn = URL(url).openConnection() as HttpURLConnection
+            val conn = connectionFactory(url)
+            val req = LiveHttp(conn)
+            liveHttp.set(req)
             try {
                 conn.requestMethod = "POST"
                 conn.connectTimeout = 15_000
@@ -122,6 +149,7 @@ object ChatClient {
                 OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
 
                 val code = conn.responseCode
+                if (req.aborted) throw IllegalStateException("Запрос к модели отменён")
                 val raw = (if (code in 200..299) conn.inputStream else conn.errorStream)
                     ?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
                 if (code !in 200..299) {
@@ -129,8 +157,10 @@ object ChatClient {
                 }
                 parseResponse(JSONObject(raw))
             } catch (e: java.io.IOException) {
+                if (req.aborted) throw IllegalStateException("Запрос к модели отменён", e)
                 throw IllegalStateException("Нет связи с $url: ${e.message}", e)
             } finally {
+                liveHttp.compareAndSet(req, null)
                 conn.disconnect()
             }
         }

@@ -75,6 +75,9 @@ import ru.vldkr.shkaff.di.Deps
 import ru.vldkr.shkaff.domain.ItemData
 import ru.vldkr.shkaff.domain.access.Access
 import ru.vldkr.shkaff.domain.access.Role
+import ru.vldkr.shkaff.domain.agent.Agent
+import ru.vldkr.shkaff.domain.agent.ChatClient
+import ru.vldkr.shkaff.domain.agent.DeviceLlm
 import ru.vldkr.shkaff.domain.capacity.OverCapacityException
 import ru.vldkr.shkaff.domain.ean.ProductPageBrowser
 import ru.vldkr.shkaff.domain.ean.findUrlInText
@@ -499,15 +502,25 @@ class ItemFormVm(
         }
     }
 
+    // T-025: «Стоп» обрывает и генерацию на устройстве (llama.cpp), и живой сетевой
+    // запрос к облаку/локальному серверу — иначе ответ ждётся до readTimeout (90 с).
+    private fun abortModel() {
+        if (Agent.isDevice(Deps.agentSettings())) {
+            viewModelScope.launch {
+                try {
+                    DeviceLlm.abort()
+                } catch (_: Exception) {
+                }
+            }
+        } else {
+            ChatClient.abortHttp()
+        }
+    }
+
     // Прерывает генерацию модели на устройстве («Стоп» рядом со строкой шага).
     fun cancelSmartSearch() {
         if (!smartSearchBusy.value) return
-        viewModelScope.launch {
-            try {
-                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
-            } catch (_: Exception) {
-            }
-        }
+        abortModel()
     }
 
     // «Описание с ИИ по фото» — кнопка в поле «Описание»: короткое описание по фото,
@@ -894,23 +907,13 @@ class ItemFormVm(
     // «Стоп» в диалоге скриншота: прерывает генерацию модели.
     fun cancelShot() {
         if (!shotBusy.value) return
-        viewModelScope.launch {
-            try {
-                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
-            } catch (_: Exception) {
-            }
-        }
+        abortModel()
     }
 
     // «Стоп» в диалоге ссылки: прерывает генерацию модели (актуально для модели на устройстве).
     fun cancelPageLink() {
         if (!pageLinkBusy.value) return
-        viewModelScope.launch {
-            try {
-                ru.vldkr.shkaff.domain.agent.DeviceLlm.abort()
-            } catch (_: Exception) {
-            }
-        }
+        abortModel()
     }
 
     fun removePhoto() {
