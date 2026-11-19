@@ -61,7 +61,6 @@ import ru.vldkr.shkaff.util.ScanBus
 
 // Глобальный поиск: одно поле — вещи, ящики и шкафы (поиск без учёта регистра).
 class SearchVm : ViewModel() {
-
     data class Ui(
         val items: List<ItemEntity> = emptyList(),
         val locations: List<LocationEntity> = emptyList(),
@@ -69,13 +68,16 @@ class SearchVm : ViewModel() {
         val query: String = "",
         // T-040: без этих флагов до первой эмиссии БД экран врал «Ничего не найдено».
         val loading: Boolean = true,
-        val error: String? = null
+        val error: String? = null,
     )
 
     data class Results(
         val items: List<ItemEntity> = emptyList(),
         val locations: List<LocationEntity> = emptyList(),
-        val storages: List<StorageEntity> = emptyList()
+        val storages: List<StorageEntity> = emptyList(),
+        val itemsTotal: Int = 0,
+        val locationsTotal: Int = 0,
+        val storagesTotal: Int = 0,
     )
 
     val ui = MutableStateFlow(Ui())
@@ -87,28 +89,42 @@ class SearchVm : ViewModel() {
     private val storagesFeed = ListFeed(viewModelScope) { Deps.storages.observeAll() }
     private val feeds = listOf(itemsFeed, locationsFeed, storagesFeed)
 
-    val results = ui.map { u ->
-        val t = u.query.trim()
-        if (t.isEmpty()) return@map Results()
-        Results(
-            items = u.items.filter { ItemMatch.matches(it, t) }.take(50),
-            locations = u.locations.filter {
-                it.label.contains(t, true) || it.name.contains(t, true)
-            }.take(50),
-            storages = u.storages.filter {
-                it.name.contains(t, true) || it.code.contains(t, true) || it.description.contains(t, true)
-            }.take(50)
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Results())
+    val results =
+        ui
+            .map { u ->
+                val t = u.query.trim()
+                if (t.isEmpty()) return@map Results()
+                // T-044: полные числа идут в заголовки секций, на экран — только первые SEARCH_LIMIT.
+                val items = u.items.filter { ItemMatch.matches(it, t) }
+                val locations =
+                    u.locations
+                        .filter { it.label.contains(t, true) || it.name.contains(t, true) }
+                val storages =
+                    u.storages
+                        .filter {
+                            it.name.contains(t, true) ||
+                                it.code.contains(t, true) ||
+                                it.description.contains(t, true)
+                        }
+                Results(
+                    items = items.take(SEARCH_LIMIT),
+                    locations = locations.take(SEARCH_LIMIT),
+                    storages = storages.take(SEARCH_LIMIT),
+                    itemsTotal = items.size,
+                    locationsTotal = locations.size,
+                    storagesTotal = storages.size,
+                )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Results())
 
     init {
         feeds.forEach { it.start() }
         viewModelScope.launch {
             mergeFeeds(feeds).collect { g ->
-                ui.value = ui.value.copy(
-                    loading = g is UiState.Loading,
-                    error = (g as? UiState.Error)?.message
-                )
+                ui.value =
+                    ui.value.copy(
+                        loading = g is UiState.Loading,
+                        error = (g as? UiState.Error)?.message,
+                    )
             }
         }
         viewModelScope.launch {
@@ -128,10 +144,23 @@ class SearchVm : ViewModel() {
     }
 }
 
+// T-044: глобальный поиск показывает первые N совпадений; полное число — в заголовке секции.
+const val SEARCH_LIMIT = 50
+
+fun countLabel(
+    shown: Int,
+    total: Int,
+): String = if (total > shown) "$shown из $total" else "$total"
+
+fun searchHint(truncated: Boolean): String? =
+    if (truncated) "Показаны первые $SEARCH_LIMIT совпадений — уточните запрос." else null
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(nav: NavController) {
-    val vm: SearchVm = androidx.lifecycle.viewmodel.compose.viewModel()
+    val vm: SearchVm =
+        androidx.lifecycle.viewmodel.compose
+            .viewModel()
     val results by vm.results.collectAsState()
     val ui by vm.ui.collectAsState()
     var queryText by remember { mutableStateOf(vm.ui.value.query) }
@@ -153,7 +182,7 @@ fun SearchScreen(nav: NavController) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Поиск") }) }
+        topBar = { TopAppBar(title = { Text("Поиск") }) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             TextField(
@@ -162,10 +191,11 @@ fun SearchScreen(nav: NavController) {
                     queryText = it
                     vm.ui.value = vm.ui.value.copy(query = it)
                 },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp)),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
                 trailingIcon = {
                     SearchClearIcon(queryText) {
@@ -175,17 +205,18 @@ fun SearchScreen(nav: NavController) {
                 },
                 placeholder = { Text("Вещи, ящики, шкафы…", color = Ozon.TextSecondary) },
                 singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Ozon.Search,
-                    unfocusedContainerColor = Ozon.Search,
-                    disabledContainerColor = Ozon.Search,
-                    focusedTextColor = Ozon.TextPrimary,
-                    unfocusedTextColor = Ozon.TextPrimary,
-                    cursorColor = Ozon.Blue,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                )
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = Ozon.Search,
+                        unfocusedContainerColor = Ozon.Search,
+                        disabledContainerColor = Ozon.Search,
+                        focusedTextColor = Ozon.TextPrimary,
+                        unfocusedTextColor = Ozon.TextPrimary,
+                        cursorColor = Ozon.Blue,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
             )
             val q = queryText.trim()
             // T-040: сбой подписки и загрузка — отдельные ветки; «Ничего не найдено» только
@@ -198,7 +229,7 @@ fun SearchScreen(nav: NavController) {
                 EmptyState(
                     "Введите название, код, EAN или номер — поищем по всем сущностям.",
                     actionLabel = "Сканировать",
-                    onAction = { nav.navigate("scan") }
+                    onAction = { nav.navigate("scan") },
                 )
             } else if (ui.loading) {
                 ListSkeleton(rows = 5)
@@ -209,36 +240,52 @@ fun SearchScreen(nav: NavController) {
                     onAction = {
                         queryText = ""
                         vm.ui.value = vm.ui.value.copy(query = "")
-                    }
+                    },
                 )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                    contentPadding =
+                        androidx.compose.foundation.layout
+                            .PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 ) {
+                    val truncated =
+                        results.itemsTotal > results.items.size ||
+                            results.locationsTotal > results.locations.size ||
+                            results.storagesTotal > results.storages.size
+                    searchHint(truncated)?.let { hint ->
+                        item {
+                            Text(
+                                hint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Ozon.TextSecondary,
+                                modifier = Modifier.padding(vertical = 6.dp),
+                            )
+                        }
+                    }
                     if (results.items.isNotEmpty()) {
-                        item { SectionTitle("Вещи · ${results.items.size}") }
+                        item { SectionTitle("Вещи · ${countLabel(results.items.size, results.itemsTotal)}") }
                         items(results.items, key = { "i-${it.id}" }) { it ->
                             SearchItemRow(it) { nav.navigate("item/${it.id}") }
                         }
                     }
                     if (results.locations.isNotEmpty()) {
-                        item { SectionTitle("Ящики · ${results.locations.size}") }
+                        item { SectionTitle("Ящики · ${countLabel(results.locations.size, results.locationsTotal)}") }
                         items(results.locations, key = { "l-${it.id}" }) { it ->
                             SearchRow(
                                 title = it.displayLabel(),
                                 subtitle = SearchSubtitles.locationStorageName(it, storageNames),
-                                onClick = { nav.navigate("location/${it.id}") }
+                                onClick = { nav.navigate("location/${it.id}") },
                             )
                         }
                     }
                     if (results.storages.isNotEmpty()) {
-                        item { SectionTitle("Шкафы · ${results.storages.size}") }
+                        item { SectionTitle("Шкафы · ${countLabel(results.storages.size, results.storagesTotal)}") }
                         items(results.storages, key = { "s-${it.id}" }) { it ->
                             SearchRow(
                                 title = it.name,
                                 subtitle = it.code.ifBlank { null },
-                                onClick = { nav.navigate("storage/${it.id}") }
+                                onClick = { nav.navigate("storage/${it.id}") },
                             )
                         }
                     }
@@ -249,13 +296,17 @@ fun SearchScreen(nav: NavController) {
 }
 
 @Composable
-private fun SearchItemRow(item: ItemEntity, onClick: () -> Unit) {
+private fun SearchItemRow(
+    item: ItemEntity,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -263,28 +314,40 @@ private fun SearchItemRow(item: ItemEntity, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 color = Ozon.TextPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
-            val sub = buildList {
-                if (item.code.isNotBlank()) add(item.code)
-                item.ean?.let { add("EAN $it") }
-                if (item.description.isNotBlank()) add(item.description.take(50))
-            }.joinToString(" · ")
+            val sub =
+                buildList {
+                    if (item.code.isNotBlank()) add(item.code)
+                    item.ean?.let { add("EAN $it") }
+                    if (item.description.isNotBlank()) add(item.description.take(50))
+                }.joinToString(" · ")
             if (sub.isNotEmpty()) {
-                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Ozon.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    sub,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Ozon.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SearchRow(title: String, subtitle: String?, onClick: () -> Unit) {
+private fun SearchRow(
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -292,10 +355,16 @@ private fun SearchRow(title: String, subtitle: String?, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 color = Ozon.TextPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Ozon.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Ozon.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
