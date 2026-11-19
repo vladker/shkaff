@@ -289,6 +289,11 @@ class ItemRepository(
 
     // US-I2: найденные агентом атрибуты — слить в существующие (только непустые ключи),
     // писать только после подтверждения пользователем.
+    // T-0145: модель отдаёт СЫРЫЕ ключи («Цвет», «COLOR»), а форма рендерит только поля словаря
+    // attribute_def. Ключ маппим через словарь по key/label без учёта регистра и пробелов
+    // (прецедент ItemForm.applySmartField); ключа в словаре нет → значение дописывается строкой
+    // «ключ: значение» в описание, чтобы предложение не терялось. Про этот ключ в описании уже
+    // есть строка — описание не трогаем, дубль не заводим.
     suspend fun applyAttributes(
         id: String,
         attrs: Map<String, String>,
@@ -296,10 +301,33 @@ class ItemRepository(
         val clean = attrs.filterKeys { it.isNotBlank() }.filterValues { it.isNotBlank() }
         if (clean.isEmpty()) return false
         val e = dao.byId(id) ?: return false
-        val merged = AttrJson.toMap(e.attributes).toMutableMap().apply { putAll(clean) }
+        val dict = mutableMapOf<String, String>()
+        for (d in Deps.attributes.forScope("item")) {
+            dict[d.key.trim().lowercase()] = d.key
+            dict[d.label.trim().lowercase()] = d.key
+        }
+        val mapped = linkedMapOf<String, String>()
+        val unknown = linkedMapOf<String, String>()
+        for ((raw, value) in clean) {
+            val key = dict[raw.trim().lowercase()]
+            if (key != null) mapped[key] = value else unknown[raw.trim()] = value
+        }
+        val merged = AttrJson.toMap(e.attributes).toMutableMap().apply { putAll(mapped) }
+        val extra =
+            unknown
+                .filterKeys { k -> e.description.lines().none { it.contains(k, ignoreCase = true) } }
+                .entries
+                .joinToString("\n") { (k, v) -> "$k: $v" }
+        val description =
+            when {
+                extra.isEmpty() -> e.description
+                e.description.isBlank() -> extra
+                else -> e.description + "\n" + extra
+            }
         dao.upsert(
             e.copy(
                 attributes = AttrJson.toJson(merged),
+                description = description,
                 updated_at = System.currentTimeMillis(),
                 device_last_modified = deviceId(),
             ),
@@ -308,7 +336,7 @@ class ItemRepository(
             "attributes",
             "item",
             id,
-            mapOf("name" to e.name, "keys" to clean.keys.joinToString(",")),
+            mapOf("name" to e.name, "keys" to mapped.keys.joinToString(",")),
         )
         return true
     }
