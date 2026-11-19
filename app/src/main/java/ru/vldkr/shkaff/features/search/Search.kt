@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -294,6 +295,14 @@ fun SearchScreen(nav: NavController) {
     }
 }
 
+// T-059: минимум тач-таргета кликабельной строки — 48dp (M3/WCAG): строка
+// без подзаголовка с padding 10dp выходила ~40dp.
+internal fun Modifier.searchRow(onClick: () -> Unit): Modifier =
+    this
+        .fillMaxWidth()
+        .heightIn(min = 48.dp)
+        .clickable(onClick = onClick)
+
 @Composable
 private fun SearchItemRow(
     item: ItemEntity,
@@ -302,8 +311,7 @@ private fun SearchItemRow(
     Row(
         modifier =
             Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .searchRow(onClick)
                 .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -343,8 +351,7 @@ private fun SearchRow(
     Row(
         modifier =
             Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .searchRow(onClick)
                 .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

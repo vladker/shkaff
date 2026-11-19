@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -155,6 +156,12 @@ class ItemsVm : ViewModel() {
     fun clearTagFilter() = setTagFilter("")
 }
 
+// T-059: чип фильтра по умолчанию 32dp — ниже минимального тач-таргета 48dp (M3/WCAG).
+internal fun Modifier.tagChip(): Modifier =
+    this
+        .padding(end = 8.dp)
+        .heightIn(min = 48.dp)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ItemsScreen(
@@ -262,7 +269,7 @@ fun ItemsScreen(
                         vm.clearTagFilter()
                     },
                     label = { Text("Все") },
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.tagChip(),
                 )
                 ui.tagChips.forEach { t ->
                     FilterChip(
@@ -273,7 +280,7 @@ fun ItemsScreen(
                             vm.setTagFilter(next)
                         },
                         label = { Text(t) },
-                        modifier = Modifier.padding(end = 8.dp),
+                        modifier = Modifier.tagChip(),
                     )
                 }
             }

@@ -1,6 +1,7 @@
 package ru.vldkr.shkaff.features.labels
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -353,6 +354,14 @@ fun TemplatesScreen(nav: NavController) {
     }
 }
 
+// T-059: ряд кнопок формата с weight(1f) на 360dp даёт ~43dp на кнопку — ниже
+// тач-таргета; теперь горизонтальный скролл, кнопки естественной ширины (≥48dp).
+@Composable
+internal fun Modifier.formatsRow(): Modifier =
+    this
+        .fillMaxWidth()
+        .horizontalScroll(rememberScrollState())
+
 @Composable
 private fun TemplateFormContent(vm: TemplatesVm, onCancel: () -> Unit) {
     val ui by vm.ui.collectAsState()
@@ -374,18 +383,22 @@ private fun TemplateFormContent(vm: TemplatesVm, onCancel: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         Text("Формат", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // T-059: семь кнопок формата с weight(1f) на 360dp gave ~43dp на кнопку;
+        // теперь ряд с горизонтальным скроллом — каждая кнопка естественной ширины.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.formatsRow(),
+        ) {
             LabelGenerator.FORMATS.forEach { fmt ->
                 val selected = f.format == fmt
                 OutlinedButton(
                     onClick = { vm.editForm { it.copy(format = fmt) } },
-                    modifier = Modifier.weight(1f),
                     // T-046: выбранный формат подсвечен (ср. LabelsScreen),
                     // раньше val selected нигде не использовался.
                     colors = if (selected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                             else ButtonDefaults.outlinedButtonColors()
                 ) {
-                    Text(fmt, style = MaterialTheme.typography.labelSmall)
+                    Text(fmt, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 }
             }
         }
