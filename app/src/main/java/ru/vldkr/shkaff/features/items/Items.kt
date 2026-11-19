@@ -56,21 +56,20 @@ import ru.vldkr.shkaff.domain.tags.TagChipRow
 import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
+import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ListSkeleton
+import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.SearchClearIcon
-import ru.vldkr.shkaff.ui.components.rememberRole
+import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.itemStatus
+import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.state.ListFeed
 import ru.vldkr.shkaff.ui.state.UiState
 import ru.vldkr.shkaff.ui.state.mergeFeeds
-import ru.vldkr.shkaff.util.ScanBus
-import ru.vldkr.shkaff.ui.components.ItemCard
-import ru.vldkr.shkaff.ui.components.LocationMap
-import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.theme.Ozon
+import ru.vldkr.shkaff.util.ScanBus
 
 class ItemsVm : ViewModel() {
-
     data class Ui(
         val allItems: List<ItemEntity> = emptyList(),
         val query: String = "",
@@ -82,7 +81,7 @@ class ItemsVm : ViewModel() {
         // US-O8: true до первой выдачи списка — показываем skeleton.
         val loading: Boolean = true,
         // T-040: сбой подписки (Room/DAO) — текст причины на экране + «Повторить».
-        val error: String? = null
+        val error: String? = null,
     )
 
     val ui = MutableStateFlow(Ui())
@@ -94,25 +93,28 @@ class ItemsVm : ViewModel() {
     private val loansFeed = ListFeed(viewModelScope) { Deps.loans.observeActive() }
     private val feeds = listOf(itemsFeed, tagsFeed, loansFeed)
 
-    val list = ui.map { u ->
-        val t = u.query.trim()
-        var l = if (t.isEmpty()) u.allItems else u.allItems.filter { ItemMatch.matches(it, t) }
-        // US-I3: фильтр по тегам — совпадение без учёта регистра
-        if (u.tagFilter.isNotEmpty()) {
-            l = l.filter { ItemMatch.matchesTag(it, u.tagFilter) }
-        }
-        l
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val list =
+        ui
+            .map { u ->
+                val t = u.query.trim()
+                var l = if (t.isEmpty()) u.allItems else u.allItems.filter { ItemMatch.matches(it, t) }
+                // US-I3: фильтр по тегам — совпадение без учёта регистра
+                if (u.tagFilter.isNotEmpty()) {
+                    l = l.filter { ItemMatch.matchesTag(it, u.tagFilter) }
+                }
+                l
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         feeds.forEach { it.start() }
         // T-040: общий гейт подписок экрана: loading пока хоть одна грузится, error — если любая упала.
         viewModelScope.launch {
             mergeFeeds(feeds).collect { g ->
-                ui.value = ui.value.copy(
-                    loading = g is UiState.Loading,
-                    error = (g as? UiState.Error)?.message
-                )
+                ui.value =
+                    ui.value.copy(
+                        loading = g is UiState.Loading,
+                        error = (g as? UiState.Error)?.message,
+                    )
             }
         }
         viewModelScope.launch {
@@ -121,7 +123,11 @@ class ItemsVm : ViewModel() {
         viewModelScope.launch {
             tagsFeed.state.collect { s ->
                 if (s is UiState.Success) {
-                    val names = s.data.map { e -> e.name }.distinct().sorted()
+                    val names =
+                        s.data
+                            .map { e -> e.name }
+                            .distinct()
+                            .sorted()
                     ui.value = ui.value.copy(tagOptions = names, tagChips = TagChipRow.row(names, ui.value.tagFilter))
                 }
             }
@@ -151,8 +157,13 @@ class ItemsVm : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemsScreen(nav: NavController, tag: String = "") {
-    val vm: ItemsVm = androidx.lifecycle.viewmodel.compose.viewModel()
+fun ItemsScreen(
+    nav: NavController,
+    tag: String = "",
+) {
+    val vm: ItemsVm =
+        androidx.lifecycle.viewmodel.compose
+            .viewModel()
     val list by vm.list.collectAsState()
     val ui by vm.ui.collectAsState()
     val locations = LocationMap()
@@ -187,7 +198,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                             Icon(Icons.Filled.Numbers, contentDescription = "Серия вещей")
                         }
                     }
-                }
+                },
             )
         },
         floatingActionButton = {
@@ -195,12 +206,12 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 FloatingActionButton(
                     onClick = { nav.navigate("item-wizard") },
                     containerColor = Ozon.Blue,
-                    contentColor = Ozon.TextPrimary
+                    contentColor = Ozon.TextPrimary,
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Новая вещь")
                 }
             }
-        }
+        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             TextField(
@@ -209,10 +220,11 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     queryText = it
                     vm.ui.value = vm.ui.value.copy(query = it)
                 },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp)),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
                 trailingIcon = {
                     SearchClearIcon(queryText) {
@@ -222,17 +234,18 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 },
                 placeholder = { Text("Поиск: название, код, атрибуты…", color = Ozon.TextSecondary) },
                 singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Ozon.Search,
-                    unfocusedContainerColor = Ozon.Search,
-                    disabledContainerColor = Ozon.Search,
-                    focusedTextColor = Ozon.TextPrimary,
-                    unfocusedTextColor = Ozon.TextPrimary,
-                    cursorColor = Ozon.Blue,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                )
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = Ozon.Search,
+                        unfocusedContainerColor = Ozon.Search,
+                        disabledContainerColor = Ozon.Search,
+                        focusedTextColor = Ozon.TextPrimary,
+                        unfocusedTextColor = Ozon.TextPrimary,
+                        cursorColor = Ozon.Blue,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
             )
             // T-039: ряд рендерится всегда (без гейта по словарю): минимум чип «Все»,
             // а при активном фильтре из роута — ещё и чип тега, даже нетого в словаре.
@@ -240,13 +253,16 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                 Modifier
                     .fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
-                    .horizontalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState()),
             ) {
                 FilterChip(
                     selected = activeTag.isEmpty(),
-                    onClick = { activeTag = ""; vm.clearTagFilter() },
+                    onClick = {
+                        activeTag = ""
+                        vm.clearTagFilter()
+                    },
                     label = { Text("Все") },
-                    modifier = Modifier.padding(end = 8.dp)
+                    modifier = Modifier.padding(end = 8.dp),
                 )
                 ui.tagChips.forEach { t ->
                     FilterChip(
@@ -257,7 +273,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                             vm.setTagFilter(next)
                         },
                         label = { Text(t) },
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp),
                     )
                 }
             }
@@ -276,11 +292,17 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     EmptyState(
                         if (filterActive) "Под фильтр «${ui.tagFilter}» ничего нет." else "Список пуст.",
                         actionLabel = EmptyStateCta.itemsEmpty(filterActive, canAdd),
-                        onAction = if (filterActive) {
-                            { activeTag = ""; vm.clearTagFilter() }
-                        } else if (canAdd) {
-                            { nav.navigate("item-wizard") }
-                        } else null
+                        onAction =
+                            if (filterActive) {
+                                {
+                                    activeTag = ""
+                                    vm.clearTagFilter()
+                                }
+                            } else if (canAdd) {
+                                { nav.navigate("item-wizard") }
+                            } else {
+                                null
+                            },
                     )
                 } else {
                     EmptyState(
@@ -289,7 +311,7 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                         onAction = {
                             queryText = ""
                             vm.ui.value = vm.ui.value.copy(query = "")
-                        }
+                        },
                     )
                 }
             } else {
@@ -297,15 +319,20 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     columns = GridCells.Fixed(2),
                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 96.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(list, key = { it.id }) { it ->
-                        val status = itemStatus(it, hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys), loan = ui.loansByItem[it.id])
+                        val status =
+                            itemStatus(
+                                it,
+                                hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys),
+                                loan = ui.loansByItem[it.id],
+                            )
                         ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),
                             { nav.navigate("item/${it.id}") },
-                            status = status
+                            status = status,
                         )
                     }
                 }

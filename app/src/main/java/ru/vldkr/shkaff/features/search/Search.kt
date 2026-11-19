@@ -152,8 +152,7 @@ fun countLabel(
     total: Int,
 ): String = if (total > shown) "$shown из $total" else "$total"
 
-fun searchHint(truncated: Boolean): String? =
-    if (truncated) "Показаны первые $SEARCH_LIMIT совпадений — уточните запрос." else null
+fun searchHint(truncated: Boolean): String? = if (truncated) "Показаны первые $SEARCH_LIMIT совпадений — уточните запрос." else null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

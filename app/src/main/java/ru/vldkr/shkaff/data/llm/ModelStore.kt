@@ -6,7 +6,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlin.coroutines.coroutineContext
 import org.json.JSONArray
 import org.json.JSONObject
 import ru.vldkr.shkaff.domain.llm.ModelPreset
@@ -19,6 +18,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import kotlin.coroutines.coroutineContext
 
 enum class ModelState { IDLE, DOWNLOADING, COMPLETED, ERROR }
 
@@ -67,8 +67,9 @@ private data class CustomModel(
  * загрузка. Файлы скачиваются в «*.part» и переименовываются по завершении,
  * поэтому прерванная загрузка продолжается с места остановки (HTTP Range).
  */
-class ModelStore(private val context: Context) {
-
+class ModelStore(
+    private val context: Context,
+) {
     private val _state = MutableStateFlow(StoreState())
     val state: StateFlow<StoreState> = _state
 
@@ -81,21 +82,26 @@ class ModelStore(private val context: Context) {
     }
 
     val dir: File
-        get() = context.getExternalFilesDir("models")
-            ?: File(context.filesDir, "models").also { it.mkdirs() }
+        get() =
+            context.getExternalFilesDir("models")
+                ?: File(context.filesDir, "models").also { it.mkdirs() }
 
     fun reload() {
         val (customs, customsError) = readCustoms()
-        val rows = ModelRegistry.presets.flatMap { preset ->
-            preset.quantizations.map { quant ->
-                rowOf(preset, quant)
-            }
-        } + customs.map { rowOf(it) }
+        val rows =
+            ModelRegistry.presets.flatMap { preset ->
+                preset.quantizations.map { quant ->
+                    rowOf(preset, quant)
+                }
+            } + customs.map { rowOf(it) }
         val prevActive = _state.value.activeName
         _state.value = StoreState(rows = rows, activeName = prevActive, customsError = customsError)
     }
 
-    private fun rowOf(p: ModelPreset, q: ModelQuantization) = ModelRow(
+    private fun rowOf(
+        p: ModelPreset,
+        q: ModelQuantization,
+    ) = ModelRow(
         id = "${p.id}-${q.id}",
         name = "${p.name} (${q.name})",
         file = q.fileName,
@@ -108,24 +114,27 @@ class ModelStore(private val context: Context) {
         quantName = q.name,
     )
 
-    private fun rowOf(c: CustomModel) = ModelRow(
-        id = c.id,
-        name = c.name,
-        file = c.file,
-        url = c.url,
-        sizeBytes = c.sizeBytes,
-        custom = true,
-    )
+    private fun rowOf(c: CustomModel) =
+        ModelRow(
+            id = c.id,
+            name = c.name,
+            file = c.file,
+            url = c.url,
+            sizeBytes = c.sizeBytes,
+            custom = true,
+        )
 
     fun isDownloaded(row: ModelRow): Boolean = fileComplete(row.file, row.sizeBytes)
 
-    fun fileComplete(file: String, expected: Long): Boolean {
+    fun fileComplete(
+        file: String,
+        expected: Long,
+    ): Boolean {
         val f = File(dir, file)
         return f.exists() && (expected <= 0 || f.length() >= expected)
     }
 
-    fun mmprojDone(row: ModelRow): Boolean =
-        row.mmprojFile?.let { File(dir, it).exists() } == true
+    fun mmprojDone(row: ModelRow): Boolean = row.mmprojFile?.let { File(dir, it).exists() } == true
 
     fun partBytes(file: String): Long {
         val p = File(dir, file + PART)
@@ -133,7 +142,11 @@ class ModelStore(private val context: Context) {
     }
 
     /** Прогресс активного файла из ModelDownloadService. */
-    fun trackProgress(file: String, bytes: Long, total: Long) {
+    fun trackProgress(
+        file: String,
+        bytes: Long,
+        total: Long,
+    ) {
         val s = _state.value
         _state.value = s.copy(activeName = file, bytes = bytes, total = total)
     }
@@ -151,12 +164,13 @@ class ModelStore(private val context: Context) {
         }
         // T-052: GGUF до 10 ГБ писались вслепую и ловили ENOSPC посреди загрузки —
         // сперва сверяем остаток (с учётом *.part) со свободным местом и запасом.
-        val needed = StorageFit.requiredBytes(
-            mainSize = row.sizeBytes,
-            mainDone = partBytes(row.file),
-            mmprojSize = if (row.mmprojFile != null && row.mmprojUrl != null) row.mmprojSizeBytes else null,
-            mmprojDone = row.mmprojFile?.let { partBytes(it) } ?: 0L,
-        )
+        val needed =
+            StorageFit.requiredBytes(
+                mainSize = row.sizeBytes,
+                mainDone = partBytes(row.file),
+                mmprojSize = if (row.mmprojFile != null && row.mmprojUrl != null) row.mmprojSizeBytes else null,
+                mmprojDone = row.mmprojFile?.let { partBytes(it) } ?: 0L,
+            )
         val usable = dir.usableSpace
         if (!StorageFit.fits(needed, usable)) {
             updateRow(row.id) {
@@ -166,9 +180,10 @@ class ModelStore(private val context: Context) {
         }
         updateRow(row.id) { it.copy(state = ModelState.DOWNLOADING, message = null) }
         _state.value = _state.value.copy(activeId = row.id, activeName = row.file)
-        val i = Intent(context, ModelDownloadService::class.java)
-            .setAction(ModelDownloadService.ACTION_DOWNLOAD)
-            .putExtra(ModelDownloadService.EXTRA_ID, row.id)
+        val i =
+            Intent(context, ModelDownloadService::class.java)
+                .setAction(ModelDownloadService.ACTION_DOWNLOAD)
+                .putExtra(ModelDownloadService.EXTRA_ID, row.id)
         context.startForegroundService(i)
     }
 
@@ -177,27 +192,38 @@ class ModelStore(private val context: Context) {
         // Скачивание живёт в scope сервиса — гасим его через ACTION_CANCEL
         // (onDestroy сервиса отменит coroutine), а локальное состояние чистим тут.
         context.startService(
-            Intent(context, ModelDownloadService::class.java).setAction(ModelDownloadService.ACTION_CANCEL)
+            Intent(context, ModelDownloadService::class.java).setAction(ModelDownloadService.ACTION_CANCEL),
         )
         val s = _state.value
         val activeId = s.activeId
         val activeFile = s.activeName
-        _state.value = s.copy(
-            activeId = null, activeName = null, bytes = 0, total = 0,
-            // T-055: сбрасываем только отменённую строку — чужие состояния
-            // (например, ошибка «недостаточно места») терять нельзя.
-            rows = s.rows.map {
-                if (it.id == activeId || it.file == activeFile || it.mmprojFile == activeFile)
-                    it.copy(state = ModelState.IDLE, message = null) else it
-            },
-        )
+        _state.value =
+            s.copy(
+                activeId = null,
+                activeName = null,
+                bytes = 0,
+                total = 0,
+                // T-055: сбрасываем только отменённую строку — чужие состояния
+                // (например, ошибка «недостаточно места») терять нельзя.
+                rows =
+                    s.rows.map {
+                        if (it.id == activeId || it.file == activeFile || it.mmprojFile == activeFile) {
+                            it.copy(state = ModelState.IDLE, message = null)
+                        } else {
+                            it
+                        }
+                    },
+            )
     }
 
     /**
      * Вызывается из ModelDownloadService. Гоняет файлы (основной + mmproj для
      * vision) в scope сервиса и публикует прогресс в state + уведомление.
      */
-    suspend fun perform(row: ModelRow, onProgress: (name: String, fraction: Float) -> Unit) {
+    suspend fun perform(
+        row: ModelRow,
+        onProgress: (name: String, fraction: Float) -> Unit,
+    ) {
         updateRow(row.id) { it.copy(state = ModelState.DOWNLOADING, message = null) }
         try {
             if (!fileComplete(row.file, row.sizeBytes)) {
@@ -226,23 +252,31 @@ class ModelStore(private val context: Context) {
         }
     }
 
-    private fun frac(done: Long, total: Long) =
-        if (total <= 0) 0f else (done.toFloat() / total).coerceIn(0f, 1f)
+    private fun frac(
+        done: Long,
+        total: Long,
+    ) = if (total <= 0) 0f else (done.toFloat() / total).coerceIn(0f, 1f)
 
     /** Скачивание одного файла с докачкой по HTTP Range; отмена = CancellationException. */
-    private suspend fun downloadFile(file: String, url: String, expected: Long, onProgress: (Long) -> Unit) {
+    private suspend fun downloadFile(
+        file: String,
+        url: String,
+        expected: Long,
+        onProgress: (Long) -> Unit,
+    ) {
         val part = File(dir, file + PART)
         var written = if (part.exists()) part.length() else 0L
         var conn: HttpURLConnection? = null
         try {
-            conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 20_000
-                readTimeout = 120_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Shkaff/1.0")
-                setRequestProperty("Accept-Encoding", "identity")
-                if (written > 0) setRequestProperty("Range", "bytes=$written-")
-            }
+            conn =
+                (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20_000
+                    readTimeout = 120_000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Shkaff/1.0")
+                    setRequestProperty("Accept-Encoding", "identity")
+                    if (written > 0) setRequestProperty("Range", "bytes=$written-")
+                }
             val code = conn.responseCode
             if (code !in 200..299) throw IOException("HTTP $code")
             if (code == 200 && written > 0) {
@@ -342,18 +376,23 @@ class ModelStore(private val context: Context) {
     private fun saveCustoms(list: List<CustomModel>) {
         val arr = JSONArray()
         list.forEach { c ->
-            arr.put(JSONObject().apply {
-                put("id", c.id)
-                put("name", c.name)
-                put("file", c.file)
-                put("url", c.url)
-                put("sizeBytes", c.sizeBytes)
-            })
+            arr.put(
+                JSONObject().apply {
+                    put("id", c.id)
+                    put("name", c.name)
+                    put("file", c.file)
+                    put("url", c.url)
+                    put("sizeBytes", c.sizeBytes)
+                },
+            )
         }
         customIndex().writeText(arr.toString())
     }
 
-    private fun updateRow(id: String, transform: (ModelRow) -> ModelRow) {
+    private fun updateRow(
+        id: String,
+        transform: (ModelRow) -> ModelRow,
+    ) {
         val s = _state.value
         _state.value = s.copy(rows = s.rows.map { if (it.id == id) transform(it) else it })
     }

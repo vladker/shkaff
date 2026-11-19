@@ -51,8 +51,8 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ListSkeleton
-import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.LocationMap
+import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.ui.components.rememberRole
@@ -66,7 +66,6 @@ import java.time.LocalDate
 // Продукты — магазинные вещи с рыночным штрихкодом (EAN); уличены отдельным
 // экраном-каталогом, но в базе это те же item (ean заполнен).
 class ProductsVm : ViewModel() {
-
     data class Ui(
         val allItems: List<ItemEntity> = emptyList(),
         val query: String = "",
@@ -76,7 +75,7 @@ class ProductsVm : ViewModel() {
         // T-040: «Продуктов пока нет» показывалось и до первой эмиссии БД, и после сбоя
         // подписки — теперь загрузка и сбой это отдельные ветки.
         val loading: Boolean = true,
-        val error: String? = null
+        val error: String? = null,
     )
 
     val ui = MutableStateFlow(Ui())
@@ -85,29 +84,33 @@ class ProductsVm : ViewModel() {
     private val loansFeed = ListFeed(viewModelScope) { Deps.loans.observeActive() }
     private val feeds = listOf(itemsFeed, loansFeed)
 
-    val list = ui.map { u ->
-        val t = u.query.trim()
-        var l = u.allItems.filter { it.ean?.isNotBlank() == true }
-        if (t.isNotEmpty()) {
-            l = l.filter {
-                it.name.contains(t, true) ||
-                    it.code.contains(t, true) ||
-                    (it.ean ?: "").contains(t, true) ||
-                    it.description.contains(t, true) ||
-                    it.attributes.contains(t, true)
-            }
-        }
-        l
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val list =
+        ui
+            .map { u ->
+                val t = u.query.trim()
+                var l = u.allItems.filter { it.ean?.isNotBlank() == true }
+                if (t.isNotEmpty()) {
+                    l =
+                        l.filter {
+                            it.name.contains(t, true) ||
+                                it.code.contains(t, true) ||
+                                (it.ean ?: "").contains(t, true) ||
+                                it.description.contains(t, true) ||
+                                it.attributes.contains(t, true)
+                        }
+                }
+                l
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         feeds.forEach { it.start() }
         viewModelScope.launch {
             mergeFeeds(feeds).collect { g ->
-                ui.value = ui.value.copy(
-                    loading = g is UiState.Loading,
-                    error = (g as? UiState.Error)?.message
-                )
+                ui.value =
+                    ui.value.copy(
+                        loading = g is UiState.Loading,
+                        error = (g as? UiState.Error)?.message,
+                    )
             }
         }
         viewModelScope.launch {
@@ -132,7 +135,9 @@ class ProductsVm : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductsScreen(nav: NavController) {
-    val vm: ProductsVm = androidx.lifecycle.viewmodel.compose.viewModel()
+    val vm: ProductsVm =
+        androidx.lifecycle.viewmodel.compose
+            .viewModel()
     val list by vm.list.collectAsState()
     val ui by vm.ui.collectAsState()
     val locations = LocationMap()
@@ -149,7 +154,7 @@ fun ProductsScreen(nav: NavController) {
                             Icon(Icons.Filled.Add, contentDescription = "Новый продукт")
                         }
                     }
-                }
+                },
             )
         },
         floatingActionButton = {
@@ -157,12 +162,12 @@ fun ProductsScreen(nav: NavController) {
                 FloatingActionButton(
                     onClick = { nav.navigate("item-wizard") },
                     containerColor = Ozon.Blue,
-                    contentColor = Ozon.TextPrimary
+                    contentColor = Ozon.TextPrimary,
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Новый продукт")
                 }
             }
-        }
+        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             TextField(
@@ -171,10 +176,11 @@ fun ProductsScreen(nav: NavController) {
                     queryText = it
                     vm.ui.value = vm.ui.value.copy(query = it)
                 },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp)),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
                 trailingIcon = {
                     SearchClearIcon(queryText) {
@@ -184,17 +190,18 @@ fun ProductsScreen(nav: NavController) {
                 },
                 placeholder = { Text("Название, код или EAN…", color = Ozon.TextSecondary) },
                 singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Ozon.Search,
-                    unfocusedContainerColor = Ozon.Search,
-                    disabledContainerColor = Ozon.Search,
-                    focusedTextColor = Ozon.TextPrimary,
-                    unfocusedTextColor = Ozon.TextPrimary,
-                    cursorColor = Ozon.Blue,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                )
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = Ozon.Search,
+                        unfocusedContainerColor = Ozon.Search,
+                        disabledContainerColor = Ozon.Search,
+                        focusedTextColor = Ozon.TextPrimary,
+                        unfocusedTextColor = Ozon.TextPrimary,
+                        cursorColor = Ozon.Blue,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
             )
             // T-040: сбой подписки и загрузка — отдельные ветки, «пока нет» только по факту пустоты.
             val error = ui.error
@@ -208,7 +215,12 @@ fun ProductsScreen(nav: NavController) {
                     EmptyState(
                         "Продуктов пока нет.\nПродукт — вещь с рыночным штрихкодом (EAN).",
                         actionLabel = if (canAdd) "Добавить продукт" else null,
-                        onAction = if (canAdd) { { nav.navigate("item-wizard") } } else null
+                        onAction =
+                            if (canAdd) {
+                                { nav.navigate("item-wizard") }
+                            } else {
+                                null
+                            },
                     )
                 } else {
                     EmptyState(
@@ -217,7 +229,7 @@ fun ProductsScreen(nav: NavController) {
                         onAction = {
                             queryText = ""
                             vm.ui.value = vm.ui.value.copy(query = "")
-                        }
+                        },
                     )
                 }
             } else {
@@ -225,7 +237,7 @@ fun ProductsScreen(nav: NavController) {
                     columns = GridCells.Fixed(2),
                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 96.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(list, key = { it.id }) { it ->
                         val date = Expiry.parse(it.expiry_date)
@@ -233,11 +245,12 @@ fun ProductsScreen(nav: NavController) {
                         val days = date?.let { d -> Expiry.daysUntil(d, today) }
                         // T-042: общая ItemCard со статусом по активной выдаче — как на «Вещах»;
                         // «место» считаем по живым ящикам (T-041), «призрак» — не место.
-                        val status = itemStatus(
-                            it,
-                            hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys),
-                            loan = ui.loansByItem[it.id]
-                        )
+                        val status =
+                            itemStatus(
+                                it,
+                                hasLocation = LocationPlacement.hasPlace(it.location_id, locations.keys),
+                                loan = ui.loansByItem[it.id],
+                            )
                         ItemCard(
                             it,
                             locations[it.location_id]?.displayLabel(),
@@ -245,7 +258,7 @@ fun ProductsScreen(nav: NavController) {
                             expiryText = date?.let { d -> Expiry.label(d, today) },
                             expiryColor = if ((days ?: 1) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             status = status,
-                            ean = it.ean
+                            ean = it.ean,
                         )
                     }
                 }
@@ -253,4 +266,3 @@ fun ProductsScreen(nav: NavController) {
         }
     }
 }
-
