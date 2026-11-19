@@ -79,6 +79,19 @@ fun SectionTitle(text: String) {
     )
 }
 
+// T-062: крестик «Очистить» в полях поиска — один на все экраны (до этого был только в «Поиске»).
+@Composable
+fun SearchClearIcon(
+    text: String,
+    onClear: () -> Unit
+) {
+    if (text.isNotEmpty()) {
+IconButton(onClick = onClear) {
+Icon(Icons.Filled.Close, contentDescription = "Очистить")
+}
+    }
+}
+
 @Composable
 fun EmptyState(
     text: String,

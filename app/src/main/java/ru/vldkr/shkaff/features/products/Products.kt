@@ -51,6 +51,7 @@ import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ItemCard
 import ru.vldkr.shkaff.ui.components.ListSkeleton
+import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.LocationMap
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.components.itemStatus
@@ -175,6 +176,12 @@ fun ProductsScreen(nav: NavController) {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
+                trailingIcon = {
+                    SearchClearIcon(queryText) {
+                        queryText = ""
+                        vm.ui.value = vm.ui.value.copy(query = "")
+                    }
+                },
                 placeholder = { Text("Название, код или EAN…", color = Ozon.TextSecondary) },
                 singleLine = true,
                 colors = TextFieldDefaults.colors(

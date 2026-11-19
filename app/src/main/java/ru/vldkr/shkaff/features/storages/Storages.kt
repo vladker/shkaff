@@ -52,6 +52,7 @@ import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
+import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.state.ListFeed
 import ru.vldkr.shkaff.ui.state.UiState
@@ -221,6 +222,12 @@ fun StoragesScreen(nav: NavController) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
+                trailingIcon = {
+                    SearchClearIcon(queryText) {
+                        queryText = ""
+                        vm.setQuery("")
+                    }
+                },
                 placeholder = { Text("Поиск: название, уровень, код…", color = Ozon.TextSecondary) },
                 singleLine = true,
                 colors =

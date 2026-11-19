@@ -57,6 +57,7 @@ import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
+import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.rememberRole
 import ru.vldkr.shkaff.ui.components.itemStatus
 import ru.vldkr.shkaff.ui.state.ListFeed
@@ -213,6 +214,12 @@ fun ItemsScreen(nav: NavController, tag: String = "") {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
+                trailingIcon = {
+                    SearchClearIcon(queryText) {
+                        queryText = ""
+                        vm.ui.value = vm.ui.value.copy(query = "")
+                    }
+                },
                 placeholder = { Text("Поиск: название, код, атрибуты…", color = Ozon.TextSecondary) },
                 singleLine = true,
                 colors = TextFieldDefaults.colors(

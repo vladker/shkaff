@@ -10,11 +10,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -52,6 +50,7 @@ import ru.vldkr.shkaff.domain.ui.EmptyStateCta
 import ru.vldkr.shkaff.ui.components.EmptyState
 import ru.vldkr.shkaff.ui.components.ErrorState
 import ru.vldkr.shkaff.ui.components.ListSkeleton
+import ru.vldkr.shkaff.ui.components.SearchClearIcon
 import ru.vldkr.shkaff.ui.components.SectionTitle
 import ru.vldkr.shkaff.ui.components.displayLabel
 import ru.vldkr.shkaff.ui.state.ListFeed
@@ -169,13 +168,9 @@ fun SearchScreen(nav: NavController) {
                     .clip(RoundedCornerShape(12.dp)),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Ozon.Blue) },
                 trailingIcon = {
-                    if (queryText.isNotEmpty()) {
-                        IconButton(onClick = {
-                            queryText = ""
-                            vm.ui.value = vm.ui.value.copy(query = "")
-                        }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Очистить")
-                        }
+                    SearchClearIcon(queryText) {
+                        queryText = ""
+                        vm.ui.value = vm.ui.value.copy(query = "")
                     }
                 },
                 placeholder = { Text("Вещи, ящики, шкафы…", color = Ozon.TextSecondary) },
